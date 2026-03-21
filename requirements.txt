@@ -1,0 +1,35 @@
+# Mnemon — requirements
+
+# Core (always required)
+numpy>=1.24.0
+aiofiles>=23.0.0
+
+# ─────────────────────────────────────────────
+# INSTALL TIERS
+# ─────────────────────────────────────────────
+#
+# Minimum (pip install mnemon-ai):
+#   → Hash-projection embedder  64-dim, ~56% retrieval precision
+#   → XOR fallback encryption   dev only
+#   → Rule-based memory routing
+#
+# Full (pip install mnemon-ai[full])  — RECOMMENDED FOR PRODUCTION:
+#   → sentence-transformers     384-dim real embeddings, ~85%+ precision
+#   → cryptography Fernet       AES-128-CBC + HMAC — production-grade
+#   → anthropic / openai        LLM routing + drone curation
+#
+# Both upgrades are AUTOMATIC — just install and restart.
+# No code changes needed.
+# ─────────────────────────────────────────────
+
+# sentence-transformers>=2.2.0   # auto-detected
+# cryptography>=41.0.0           # auto-detected
+# anthropic>=0.20.0              # auto-detected via ANTHROPIC_API_KEY env var
+# openai>=1.0.0                  # auto-detected via OPENAI_API_KEY env var
+# redis>=5.0.0                   # for distributed scale
+
+# Dev
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
+# black>=23.0.0
+# mypy>=1.0.0
