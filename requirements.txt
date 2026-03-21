@@ -1,0 +1,12 @@
+numpy>=1.24.0
+aiofiles>=23.0.0
+
+# Optional but recommended for production
+# sentence-transformers>=2.2.0  # replace SimpleEmbedder with real embeddings
+# redis>=5.0.0                   # distributed scale
+# anthropic>=0.20.0              # Anthropic LLM client
+# openai>=1.0.0                  # OpenAI LLM client
+
+# Dev
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
