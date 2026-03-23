@@ -1,4 +1,4 @@
-![Mnemon](banneer.png.png)
+![Mnemon](banner.png)
 # Mnemon
 
 **The intelligence layer between your agents and oblivion.**
