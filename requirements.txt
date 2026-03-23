@@ -1,0 +1,17 @@
+# Mnemon — requirements
+
+# Core (always installed with pip install mnemon-ai)
+numpy>=1.24.0
+sentence-transformers>=2.2.0   # real semantic embeddings — 384-dim, ~85%+ retrieval precision
+cryptography>=41.0.0           # Fernet AES-128 encryption — production-grade
+anthropic>=0.20.0              # LLM routing + drone curation — auto-activated via ANTHROPIC_API_KEY
+
+# Optional
+# openai>=1.0.0                # alternative LLM — pip install mnemon-ai[openai]
+# redis>=5.0.0                 # distributed scale — pip install mnemon-ai[redis]
+
+# Dev
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
+# black>=23.0.0
+# mypy>=1.0.0
