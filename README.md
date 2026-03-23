@@ -3,7 +3,6 @@
 
 **The intelligence layer between your agents and oblivion.**
 
-By Mahika Jadhav ([@smartass-4ever](https://github.com/smartass-4ever))
 
 ---
 
