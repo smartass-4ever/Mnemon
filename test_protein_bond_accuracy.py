@@ -41,6 +41,11 @@ from mnemon.core.models import (
 TENANT = "benchmark_corp"
 DB_PATH = "test_protein_bond.db"
 
+# ── display helpers ──────────────────────────────────────────────────────────
+PASS_STR = "\033[92mPASS\033[0m"
+FAIL_STR = "\033[91mFAIL\033[0m"
+INFO     = "\033[94m[INFO]\033[0m"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CORPUS — 100 memories with ground truth relevance labels
 #
@@ -484,9 +489,6 @@ async def main():
     print(f"\n{'='*70}")
     print("  VERDICTS")
     print(f"{'='*70}")
-
-    PASS_STR = "\033[92mPASS\033[0m"
-    FAIL_STR = "\033[91mFAIL\033[0m"
 
     def verdict(name, condition, detail):
         icon = PASS_STR if condition else FAIL_STR
