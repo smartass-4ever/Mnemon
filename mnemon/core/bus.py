@@ -459,6 +459,15 @@ class ExperienceBus:
 
         self._running = False
         self._processor_task = None
+        self._retrospector = None
+
+    def register_retrospector(self, retrospector) -> None:
+        """
+        Attach a Retrospector instance and subscribe it to Tier 1 signals.
+        Call after bus.start() if you want the retrospector to receive signals.
+        """
+        self._retrospector = retrospector
+        self.tier1.register_callback(retrospector._on_bus_signal)
 
     # ──────────────────────────────────────────
     # LIFECYCLE

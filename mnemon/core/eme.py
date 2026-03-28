@@ -67,6 +67,7 @@ import numpy as np
 
 from .models import (
     ComputationFingerprint,
+    DecisionTrace,
     ExecutionTemplate,
     TemplateSegment,
     RiskLevel,
@@ -530,6 +531,16 @@ class ExecutionMemoryEngine:
         self._tenant_locks = TenantLockRegistry()
 
         self._fragments_loaded = False
+        self.retrospector = None
+
+        # Per-call buffers populated in _fill_gap for retrospector tracing.
+        # Reset at the top of run() — asyncio-safe (single-threaded event loop).
+        self._trace_frags_buf: List[str] = []
+        self._trace_gen_buf:   List[str] = []
+
+    def set_retrospector(self, retrospector) -> None:
+        """Attach a Retrospector instance. Call before the first run()."""
+        self.retrospector = retrospector
 
     # ──────────────────────────────────────────
     # WARM
@@ -589,31 +600,62 @@ class ExecutionMemoryEngine:
             constraints=constraints,
         )
 
+        # Reset per-call fragment/generation buffers for retrospector tracing.
+        self._trace_frags_buf = []
+        self._trace_gen_buf   = []
+
         # ── SYSTEM 1: Exact Match ──────────────
         result = await self._try_system1(fp, inputs, goal)
-        if result:
-            return result
 
-        # ── SYSTEM 2: Partial Match ────────────
-        result = await self._try_system2(
-            fp, goal, inputs, context, capabilities,
-            constraints, memory_context
-        )
-        if result:
-            # [FIX BUG-2] Must await the write-back.
-            # create_task (original) let the cache write race against the next
-            # call. The second identical run arrived before the write completed,
-            # found nothing in System 1, and fell through to System 2 again
-            # with tokens_saved=0. Awaiting here guarantees System 1 is ready
-            # for any subsequent call before we return.
-            await self._cache_template(goal, result.template, fp, capabilities)
-            return result
+        if not result:
+            # ── SYSTEM 2: Partial Match ────────
+            result = await self._try_system2(
+                fp, goal, inputs, context, capabilities,
+                constraints, memory_context
+            )
+            if result:
+                # [FIX BUG-2] Must await the write-back.
+                # create_task (original) let the cache write race against the next
+                # call. The second identical run arrived before the write completed,
+                # found nothing in System 1, and fell through to System 2 again
+                # with tokens_saved=0. Awaiting here guarantees System 1 is ready
+                # for any subsequent call before we return.
+                await self._cache_template(goal, result.template, fp, capabilities)
 
-        # ── FULL GENERATION ────────────────────
-        return await self._full_generation(
-            goal, inputs, context, capabilities,
-            constraints, generation_fn, fp
-        )
+        if not result:
+            # ── FULL GENERATION ────────────────
+            result = await self._full_generation(
+                goal, inputs, context, capabilities,
+                constraints, generation_fn, fp
+            )
+
+        # ── RETROSPECTOR TRACE ─────────────────
+        if self.retrospector:
+            try:
+                trace = DecisionTrace(
+                    trace_id=hashlib.md5(
+                        f"{self.tenant_id}:{task_id}:{time.time()}".encode()
+                    ).hexdigest()[:16],
+                    tenant_id=self.tenant_id,
+                    task_id=task_id,
+                    goal_hash=fp.goal_hash,
+                    fragment_ids_used=list(self._trace_frags_buf),
+                    memory_ids_retrieved=(
+                        memory_context.get("memory_ids", [])
+                        if memory_context else []
+                    ),
+                    segments_generated=list(self._trace_gen_buf),
+                    tools_called=capabilities,
+                    step_outcomes={},
+                    overall_outcome=result.status,
+                    latency_ms=result.latency_saved_ms,
+                    timestamp=time.time(),
+                )
+                asyncio.create_task(self.retrospector.submit_trace(trace))
+            except Exception as e:
+                logger.debug(f"Retrospector trace submission failed (non-fatal): {e}")
+
+        return result
 
     # ──────────────────────────────────────────
     # SYSTEM 1
@@ -926,10 +968,20 @@ class ExecutionMemoryEngine:
             if frag is None:
                 continue
 
+            # Retrospector quarantine check — skip fragments flagged as bad.
+            if self.retrospector:
+                try:
+                    sys_db = self.retrospector.system_db
+                    if await sys_db.is_quarantined(frag.segment_id, self.tenant_id):
+                        continue
+                except Exception:
+                    pass  # quarantine check failure must never block gap fill
+
             if sim >= FRAGMENT_EXACT_THRESHOLD:
                 # Tier 1: exact hit — zero LLM
                 frag.use_count += 1
                 await self._write_behind.enqueue(frag)
+                self._trace_frags_buf.append(frag.segment_id)
                 return frag, True
 
             if sim > best_sim:
@@ -941,6 +993,7 @@ class ExecutionMemoryEngine:
             if self.llm and self.budget.can_call():
                 adapted = await self._adapt_fragment(best_frag, goal, execution_context)
                 self.budget.record_call()
+                self._trace_frags_buf.append(best_frag.segment_id)
                 return adapted, True
 
         # Tier 3: LLM generation
@@ -955,6 +1008,7 @@ class ExecutionMemoryEngine:
                     self.tenant_id, generated.segment_id, generated.signature
                 )
             self._fragment_map[generated.segment_id] = generated
+            self._trace_gen_buf.append(generated.segment_id)
             return generated, False
 
         logger.warning(

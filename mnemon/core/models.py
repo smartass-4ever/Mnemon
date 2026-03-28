@@ -393,4 +393,29 @@ class LLMCallLog:
     task_id:       str
 
 
+# ─────────────────────────────────────────────
+# DECISION TRACE (Retrospector)
+# ─────────────────────────────────────────────
+
+@dataclass
+class DecisionTrace:
+    """
+    Immutable record of one EME decision.
+    Stored in SystemDatabase (never EROSDatabase).
+    goal_hash is a fingerprint only — raw goal text is never persisted.
+    """
+    trace_id:             str
+    tenant_id:            str
+    task_id:              str
+    goal_hash:            str                        # fingerprint only, never goal text
+    fragment_ids_used:    List[str]                  # fragment IDs retrieved in gap fill
+    memory_ids_retrieved: List[str]                  # memory IDs from CognitiveMemorySystem
+    segments_generated:   List[str]                  # segment IDs created by LLM gap fill
+    tools_called:         List[str]                  # capability list passed to EME
+    step_outcomes:        Dict[str, str]             # step_id → "ok"|"fail"|"timeout"
+    overall_outcome:      str                        # EMEResult.status
+    latency_ms:           float
+    timestamp:            float
+
+
 MNEMON_VERSION = "1.0.2"
