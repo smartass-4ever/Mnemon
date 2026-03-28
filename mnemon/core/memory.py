@@ -35,7 +35,7 @@ SOFT_FILTER_THRESHOLD  = 0.85   # vector similarity override for zero-tag memori
 SOFT_FILTER_PENALTY    = 0.75   # score multiplier for soft-filter candidates
 INTENT_WEIGHT          = 0.60   # combined score weighting
 PATTERN_WEIGHT         = 0.40
-DRONE_SPARSE_THRESHOLD = 500    # below this — no drone
+DRONE_SPARSE_THRESHOLD = 50     # below this — no drone
 DRONE_MEDIUM_THRESHOLD = 5000   # below this — lightweight drone
 DRONE_TIMEOUT_SECONDS  = 0.30   # hard limit on drone processing
 DRONE_REVIEW_FRACTION  = 0.30   # lightweight mode reviews bottom N%
@@ -314,6 +314,7 @@ class CognitiveMemorySystem:
         enabled_layers: Optional[List[MemoryLayer]] = None,
         drone_model: str = "claude-haiku-4-5-20251001",
         router_model: str = "claude-haiku-4-5-20251001",
+        watchdog=None,            # optional Watchdog reference
     ):
         self.tenant_id  = tenant_id
         self.db         = db
@@ -322,6 +323,7 @@ class CognitiveMemorySystem:
         self.llm        = llm_client
         self.drone_model  = drone_model
         self.router_model = router_model
+        self.watchdog   = watchdog
 
         self.enabled_layers = set(enabled_layers or list(MemoryLayer))
 
@@ -333,6 +335,39 @@ class CognitiveMemorySystem:
         self._pool_size_updated: float = 0
 
         self._lock = asyncio.Lock()
+
+        # Background prune loop
+        self._running = False
+        self._prune_task = None
+
+    # ──────────────────────────────────────────
+    # LIFECYCLE
+    # ──────────────────────────────────────────
+
+    async def start(self):
+        """Start background prune loop (runs every 24 h)."""
+        self._running = True
+        self._prune_task = asyncio.create_task(self._prune_loop())
+
+    async def stop(self):
+        """Stop background prune loop."""
+        self._running = False
+        if self._prune_task:
+            self._prune_task.cancel()
+            try:
+                await self._prune_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _prune_loop(self):
+        while self._running:
+            try:
+                await asyncio.sleep(86400)  # 24 hours
+                await self.prune()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Prune loop error for tenant {self.tenant_id}: {e}")
 
     # ──────────────────────────────────────────
     # WRITE PATH
@@ -636,12 +671,11 @@ or
                 combined = min(1.0, combined + (mem.drone_keep_score - 0.5) * 0.1)
                 pool.append((mem.memory_id, combined))
 
-        # Soft filter — recover relevant memories with zero tag overlap
-        # Only fetch a sample to keep this fast
-        all_memories = await self.db.fetch_memories(
-            self.tenant_id,
-            [m.memory_id for m in await self._sample_recent_memories(50)]
-        )
+        # Soft filter — recover relevant memories with zero tag overlap.
+        # Filter by domain so we stay within the query's semantic space.
+        signal_domain = self._infer_domain(signal_tags)
+        recent_ids = await self.db.fetch_recent_by_domain(self.tenant_id, signal_domain, 50)
+        all_memories = await self.db.fetch_memories(self.tenant_id, recent_ids)
         tag_ids = {m.memory_id for m in tag_memories}
         for mem in all_memories:
             if mem.memory_id in tag_ids:
@@ -665,16 +699,6 @@ or
             pool = [(m, s) for m, s in pool if s >= threshold]
 
         return pool
-
-    async def _sample_recent_memories(self, n: int) -> List[BondedMemory]:
-        """Sample recent memories for soft-filter check."""
-        async with self.db._lock:
-            rows = self.db._conn.execute(
-                "SELECT memory_id FROM memories WHERE tenant_id=? AND intent_valid=1 ORDER BY timestamp DESC LIMIT ?",
-                (self.tenant_id, n)
-            ).fetchall()
-        ids = [r["memory_id"] for r in rows]
-        return await self.db.fetch_memories(self.tenant_id, ids)
 
     # ──────────────────────────────────────────
     # RETRIEVE — PART 2: INTENT DRONE
@@ -744,13 +768,7 @@ or
 
         # Fetch intent labels only (not full content)
         memory_ids = [m_id for m_id, _ in candidates]
-        async with self.db._lock:
-            placeholders = ",".join("?" * len(memory_ids))
-            rows = self.db._conn.execute(
-                f"SELECT memory_id, intent_label, drone_keep_score FROM memories WHERE tenant_id=? AND memory_id IN ({placeholders})",
-                [self.tenant_id] + memory_ids
-            ).fetchall()
-        label_map = {r["memory_id"]: (r["intent_label"], r["drone_keep_score"]) for r in rows}
+        label_map = await self.db.fetch_drone_labels(self.tenant_id, memory_ids)
 
         candidate_list = [
             {
@@ -785,12 +803,18 @@ Only keep memories that help achieve the goal. Flag conflicts where two memories
             )
             data = json.loads(response)
             keep_ids = set(data.get("keep", []))
-
-            # Schedule drone feedback loop async
             drop_ids = set(data.get("drop", []))
-            asyncio.create_task(
-                self._drone_feedback(keep_ids, drop_ids)
-            )
+
+            # Record decisions in watchdog for trend tracking
+            if self.watchdog:
+                for _ in keep_ids:
+                    self.watchdog.record_drone_decision(correct=True)
+                for _ in drop_ids:
+                    self.watchdog.record_drone_decision(correct=False)
+
+            # Schedule async feedback — only drop_delta now;
+            # keep_delta is applied by confirm_memory_useful() after task success
+            asyncio.create_task(self._drone_feedback(drop_ids))
 
             return [(m_id, score) for m_id, score in candidates if m_id in keep_ids]
 
@@ -798,15 +822,22 @@ Only keep memories that help achieve the goal. Flag conflicts where two memories
             logger.warning(f"Drone evaluation failed: {e} — returning pattern results")
             return candidates
 
-    async def _drone_feedback(self, kept: Set[str], dropped: Set[str]):
+    async def _drone_feedback(self, dropped: Set[str]):
         """
-        Async feedback loop — updates drone accuracy scores.
-        Runs after task completes to avoid blocking retrieval.
+        Async feedback — penalises memories the drone excluded.
+        keep_delta is NOT applied here; call confirm_memory_useful()
+        after actual task success so the score reflects real usefulness.
         """
-        for memory_id in kept:
-            await self.db.update_drone_scores(self.tenant_id, memory_id, keep_delta=0.02)
         for memory_id in dropped:
             await self.db.update_drone_scores(self.tenant_id, memory_id, drop_delta=0.01)
+
+    async def confirm_memory_useful(self, memory_id: str):
+        """
+        Call after a task succeeds and a retrieved memory proved helpful.
+        Applies keep_delta so the drone learns from actual outcomes,
+        not from its own curation decisions.
+        """
+        await self.db.update_drone_scores(self.tenant_id, memory_id, keep_delta=0.02)
 
     def _ensure_layer_diversity(
         self,
@@ -914,12 +945,7 @@ Only keep memories that help achieve the goal. Flag conflicts where two memories
     async def _get_pool_size(self) -> int:
         now = time.time()
         if now - self._pool_size_updated > 60:  # refresh every 60s
-            async with self.db._lock:
-                row = self.db._conn.execute(
-                    "SELECT COUNT(*) as c FROM memories WHERE tenant_id=? AND intent_valid=1",
-                    (self.tenant_id,)
-                ).fetchone()
-            self._pool_size = row["c"] if row else 0
+            self._pool_size = await self.db.count_memories(self.tenant_id)
             self._pool_size_updated = now
         return self._pool_size
 

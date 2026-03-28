@@ -10,7 +10,7 @@ import sqlite3
 import json
 import time
 import logging
-from typing import Dict, List, Optional, Any, Set
+from typing import Dict, List, Optional, Any, Set, Tuple
 from dataclasses import asdict
 from pathlib import Path
 
@@ -819,6 +819,71 @@ class EROSDatabase:
                 )
             self._conn.commit()
         logger.info(f"Tenant {tenant_id} data fully erased")
+
+    # ──────────────────────────────────────────
+    # PUBLIC UTILITY METHODS (replacing direct _conn access)
+    # ──────────────────────────────────────────
+
+    async def ping(self) -> bool:
+        """Health check — returns True if DB responds. Used by Watchdog."""
+        try:
+            async with self._lock:
+                self._conn.execute("SELECT 1").fetchone()
+            return True
+        except Exception:
+            return False
+
+    async def fetch_recent_by_domain(
+        self, tenant_id: str, domain: str, n: int
+    ) -> List[str]:
+        """
+        Return up to n recent valid memory_ids whose activation_domain
+        matches the given domain. Falls back to any domain if no match
+        or domain is 'general'.
+        """
+        async with self._lock:
+            if domain and domain != "general":
+                rows = self._conn.execute(
+                    "SELECT memory_id FROM memories "
+                    "WHERE tenant_id=? AND intent_valid=1 AND activation_domain=? "
+                    "ORDER BY timestamp DESC LIMIT ?",
+                    (tenant_id, domain, n)
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT memory_id FROM memories "
+                    "WHERE tenant_id=? AND intent_valid=1 "
+                    "ORDER BY timestamp DESC LIMIT ?",
+                    (tenant_id, n)
+                ).fetchall()
+        return [r["memory_id"] for r in rows]
+
+    async def fetch_drone_labels(
+        self, tenant_id: str, memory_ids: List[str]
+    ) -> Dict[str, Tuple[str, float]]:
+        """
+        Return {memory_id: (intent_label, drone_keep_score)} for the
+        given ids. Replaces direct _conn access in _drone_evaluate().
+        """
+        if not memory_ids:
+            return {}
+        async with self._lock:
+            placeholders = ",".join("?" * len(memory_ids))
+            rows = self._conn.execute(
+                f"SELECT memory_id, intent_label, drone_keep_score FROM memories "
+                f"WHERE tenant_id=? AND memory_id IN ({placeholders})",
+                [tenant_id] + memory_ids
+            ).fetchall()
+        return {r["memory_id"]: (r["intent_label"], r["drone_keep_score"]) for r in rows}
+
+    async def count_memories(self, tenant_id: str) -> int:
+        """Count valid (non-superseded) memories for a tenant."""
+        async with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) as c FROM memories WHERE tenant_id=? AND intent_valid=1",
+                (tenant_id,)
+            ).fetchone()
+        return row["c"] if row else 0
 
     def get_stats(self) -> Dict[str, Any]:
         rows = self._conn.execute("""

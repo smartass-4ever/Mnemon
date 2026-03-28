@@ -774,7 +774,7 @@ class ExperienceBus:
             matches += 1
 
         # Tool / API overlap
-        signal_api  = signal.discovery.get("api", "") if hasattr(signal, "discovery") else signal.content.get("api", "")
+        signal_api  = signal.content.get("api", "")
         agent_apis  = agent_ctx.get("apis_used", [])
         if signal_api and signal_api in agent_apis:
             matches += 1

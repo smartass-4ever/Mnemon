@@ -171,14 +171,19 @@ class Watchdog:
 
         start = time.time()
         try:
-            async with self.db._lock:
-                self.db._conn.execute("SELECT 1").fetchone()
+            ok = await self.db.ping()
             latency_ms = (time.time() - start) * 1000
+
+            if not ok:
+                return HealthCheckResult(
+                    "db_latency", False, None, None,
+                    "DB ping returned False", "critical"
+                )
 
             baseline = self._baselines.get("db_latency", latency_ms)
             self._baselines["db_latency"] = (baseline * 0.9) + (latency_ms * 0.1)
 
-            threshold = baseline * LATENCY_SPIKE_MULTIPLIER
+            threshold = max(baseline * LATENCY_SPIKE_MULTIPLIER, 1.0)  # floor prevents zero-threshold edge case
             passed = latency_ms < threshold
 
             return HealthCheckResult(
