@@ -91,7 +91,7 @@ def test_pad_vector_severity():
 # ─────────────────────────────────────────────
 
 async def test_persistence_write_read():
-    db = EROSDatabase(DB_PATH)
+    db = EROSDatabase(tenant_id=TENANT, db_dir="/tmp")
     await db.connect()
 
     mem = BondedMemory(

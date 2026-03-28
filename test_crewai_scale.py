@@ -26,7 +26,7 @@ async def run_agent(eme, agent_id, goal):
     return agent_id, result.cache_level, result.tokens_saved
 
 async def main():
-    db = EROSDatabase("test_scale.db")
+    db = EROSDatabase(tenant_id="swarm_test", db_dir=".")
     await db.connect()
 
     eme = ExecutionMemoryEngine(

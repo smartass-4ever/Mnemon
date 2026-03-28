@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import os,tempfile,glob; [os.remove\\(f\\) for f in glob.glob\\(tempfile.gettempdir\\(\\)+''/mnemon_tenant_*.db''\\)+glob.glob\\(tempfile.gettempdir\\(\\)+''/test_signal_*.db''\\)+glob.glob\\(tempfile.gettempdir\\(\\)+''/sig_*.db''\\)]; print\\(''cleaned''\\)\")"
+    ]
+  }
+}

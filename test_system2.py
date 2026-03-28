@@ -15,7 +15,7 @@ async def fake_generation(goal, inputs, context, capabilities, constraints):
     }
 
 async def main():
-    db = EROSDatabase("test_eme.db")
+    db = EROSDatabase(tenant_id="test_tenant", db_dir=".")
     await db.connect()
 
     eme = ExecutionMemoryEngine(

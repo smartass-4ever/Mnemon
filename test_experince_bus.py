@@ -19,7 +19,7 @@ async def simulate_experience_feedback(eme, task_id, goal, plan):
     )
 
 async def main():
-    db = EROSDatabase("experience_bus.db")
+    db = EROSDatabase(tenant_id="bus_stress_test", db_dir=".")
     await db.connect()
 
     eme = ExecutionMemoryEngine(

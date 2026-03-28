@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import struct
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -23,6 +24,7 @@ from .models import (
     SemanticFact, SignalType, MNEMON_VERSION
 )
 from .persistence import EROSDatabase, InvertedIndex
+from .signal_db import SignalDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -315,6 +317,7 @@ class CognitiveMemorySystem:
         drone_model: str = "claude-haiku-4-5-20251001",
         router_model: str = "claude-haiku-4-5-20251001",
         watchdog=None,            # optional Watchdog reference
+        signal_db: Optional[SignalDatabase] = None,
     ):
         self.tenant_id  = tenant_id
         self.db         = db
@@ -324,6 +327,7 @@ class CognitiveMemorySystem:
         self.drone_model  = drone_model
         self.router_model = router_model
         self.watchdog   = watchdog
+        self.signal_db  = signal_db
 
         self.enabled_layers = set(enabled_layers or list(MemoryLayer))
 
@@ -838,6 +842,24 @@ Only keep memories that help achieve the goal. Flag conflicts where two memories
         not from its own curation decisions.
         """
         await self.db.update_drone_scores(self.tenant_id, memory_id, keep_delta=0.02)
+        # Fire-and-forget: record cross-tenant success signal (never blocks caller)
+        if self.signal_db:
+            asyncio.create_task(self._record_memory_signal(memory_id))
+
+    async def _record_memory_signal(self, memory_id: str):
+        """Background task: fetch memory and record its shape hash as a success signal."""
+        try:
+            memories = await self.db.fetch_memories(self.tenant_id, [memory_id])
+            if memories:
+                mem = memories[0]
+                if mem.activation_signature:
+                    dims = mem.activation_signature[:32]
+                    raw = struct.pack(f">{len(dims)}f", *dims)
+                    shape_hash = hashlib.sha256(raw).hexdigest()[:32]
+                    domain = mem.activation_domain or "general"
+                    await self.signal_db.record_fragment_success(shape_hash, domain)
+        except Exception as e:
+            logger.debug(f"_record_memory_signal failed (non-critical): {e}")
 
     def _ensure_layer_diversity(
         self,

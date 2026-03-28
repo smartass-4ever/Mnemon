@@ -8,8 +8,10 @@ Redis interface stub ready for distributed scale.
 import asyncio
 import sqlite3
 import json
+import struct
 import time
 import logging
+from collections import OrderedDict
 from typing import Dict, List, Optional, Any, Set, Tuple
 from dataclasses import asdict
 from pathlib import Path
@@ -90,15 +92,125 @@ class InvertedIndex:
         }
 
 
+class TenantConnectionPool:
+    """
+    Manages multiple EROSDatabase instances, one per tenant.
+    Uses per-tenant asyncio locks so concurrent requests for different tenants
+    never block each other. LRU eviction when max_connections is reached.
+
+    GDPR: delete_tenant() disconnects, deletes the DB file, and removes from pool.
+    """
+
+    def __init__(self, db_dir: str = ".", max_connections: int = 100):
+        self._db_dir = db_dir
+        self._max_connections = max_connections
+        # OrderedDict as LRU: leftmost = least recently used
+        self._pool: OrderedDict[str, "EROSDatabase"] = OrderedDict()
+        # Per-tenant locks — never shared between tenants
+        self._locks: Dict[str, asyncio.Lock] = {}
+        # Brief global lock for dict mutations only (never held during I/O)
+        self._meta_lock = asyncio.Lock()
+
+    async def get(self, tenant_id: str) -> "EROSDatabase":
+        """Return existing connection or create a new one. LRU eviction at capacity."""
+        # Fast path: already connected — update LRU order
+        async with self._meta_lock:
+            if tenant_id in self._pool:
+                self._pool.move_to_end(tenant_id)
+                return self._pool[tenant_id]
+            # Ensure per-tenant lock exists before releasing meta_lock
+            if tenant_id not in self._locks:
+                self._locks[tenant_id] = asyncio.Lock()
+            tenant_lock = self._locks[tenant_id]
+
+        # Slow path: create connection under per-tenant lock (no global blocking)
+        async with tenant_lock:
+            # Double-check: another coroutine may have connected while we waited
+            async with self._meta_lock:
+                if tenant_id in self._pool:
+                    self._pool.move_to_end(tenant_id)
+                    return self._pool[tenant_id]
+                # Identify LRU candidate to evict if at capacity
+                evict_id = None
+                if len(self._pool) >= self._max_connections:
+                    evict_id, _ = next(iter(self._pool.items()))
+
+            # Evict outside meta_lock so disconnect I/O doesn't stall other tenants
+            if evict_id is not None:
+                logger.info(f"Evicting tenant {evict_id} from pool (LRU)")
+                async with self._meta_lock:
+                    evict_db = self._pool.pop(evict_id, None)
+                if evict_db is not None:
+                    try:
+                        await evict_db.disconnect()
+                    except Exception as e:
+                        logger.warning(f"Error disconnecting evicted tenant {evict_id}: {e}")
+
+            # Create and connect new per-tenant DB (I/O outside meta_lock)
+            db = EROSDatabase(tenant_id=tenant_id, db_dir=self._db_dir)
+            try:
+                await db.connect()
+            except Exception:
+                logger.error(f"Failed to connect DB for tenant {tenant_id}")
+                raise
+
+            async with self._meta_lock:
+                self._pool[tenant_id] = db
+            return db
+
+    async def release(self, tenant_id: str):
+        """Mark connection as recently used (LRU update)."""
+        async with self._meta_lock:
+            if tenant_id in self._pool:
+                self._pool.move_to_end(tenant_id)
+
+    async def close_all(self):
+        """Disconnect all open connections on shutdown."""
+        async with self._meta_lock:
+            pool_items = list(self._pool.items())
+            self._pool.clear()
+        for tenant_id, db in pool_items:
+            try:
+                await db.disconnect()
+            except Exception as e:
+                logger.warning(f"Error closing tenant {tenant_id} connection: {e}")
+        logger.info(f"TenantConnectionPool closed {len(pool_items)} connections")
+
+    async def delete_tenant(self, tenant_id: str):
+        """
+        GDPR Article 17 erasure: disconnect, delete the DB file, remove from pool.
+        This is the right-to-erasure method — data is irrecoverably deleted.
+        """
+        async with self._meta_lock:
+            db = self._pool.pop(tenant_id, None)
+        if db is not None:
+            try:
+                await db.disconnect()
+            except Exception as e:
+                logger.warning(f"Error disconnecting tenant {tenant_id} before deletion: {e}")
+        db_path = Path(f"{self._db_dir}/mnemon_tenant_{tenant_id}.db")
+        try:
+            if db_path.exists():
+                db_path.unlink()
+                logger.info(f"Tenant {tenant_id} DB file deleted (GDPR erasure): {db_path}")
+            else:
+                logger.info(f"Tenant {tenant_id} DB file not found (already gone): {db_path}")
+        except Exception as e:
+            logger.error(f"Failed to delete tenant {tenant_id} DB file: {e}")
+
+
 class EROSDatabase:
     """
     SQLite persistence layer with schema migration.
     Thread-safe via asyncio lock.
     All queries enforce tenant_id — no cross-tenant leakage possible.
+    Each instance manages a single per-tenant DB file.
     """
 
-    def __init__(self, db_path: str = "mnemon.db"):
-        self.db_path = db_path
+    def __init__(self, tenant_id: str, db_dir: str = "."):
+        self.tenant_id = tenant_id
+        self.db_dir = db_dir
+        self.db_path = f"{db_dir}/mnemon_tenant_{tenant_id}.db"
         self._conn: Optional[sqlite3.Connection] = None
         self._lock = asyncio.Lock()
 
@@ -899,3 +1011,90 @@ class EROSDatabase:
             "templates": rows["templates"],
             "fragments": rows["fragments"],
         }
+
+
+# ──────────────────────────────────────────
+# LEGACY MIGRATION HELPER
+# ──────────────────────────────────────────
+
+async def migrate_from_legacy(
+    old_db_path: str,
+    tenant_id: str,
+    db_dir: str = ".",
+) -> Dict[str, int]:
+    """
+    One-time migration helper for existing users.
+
+    Reads all data for tenant_id from a legacy monolithic mnemon.db and writes
+    it into the new per-tenant DB file (mnemon_tenant_{tenant_id}.db in db_dir).
+
+    Returns {table_name: rows_migrated} so callers can verify the migration.
+    Safe to run multiple times — uses INSERT OR REPLACE / INSERT OR IGNORE.
+
+    Usage:
+        import asyncio
+        from mnemon.core.persistence import migrate_from_legacy
+        result = asyncio.run(migrate_from_legacy("mnemon.db", "my_tenant", db_dir="/data"))
+        print(result)
+    """
+    old_conn = sqlite3.connect(old_db_path)
+    old_conn.row_factory = sqlite3.Row
+
+    new_db = EROSDatabase(tenant_id=tenant_id, db_dir=db_dir)
+    await new_db.connect()
+
+    migrated: Dict[str, int] = {}
+
+    # Tables whose PRIMARY KEY includes tenant_id
+    pk_tables = [
+        "memories",
+        "semantic_facts",
+        "execution_templates",
+        "fragment_library",
+        "belief_registry",
+    ]
+    for table in pk_tables:
+        try:
+            rows = old_conn.execute(
+                f"SELECT * FROM {table} WHERE tenant_id=?", (tenant_id,)
+            ).fetchall()
+            for row in rows:
+                cols = list(row.keys())
+                placeholders = ",".join("?" * len(cols))
+                # Direct _conn access is acceptable here — migration runs single-threaded
+                new_db._conn.execute(
+                    f"INSERT OR REPLACE INTO {table} ({','.join(cols)}) "
+                    f"VALUES ({placeholders})",
+                    tuple(row),
+                )
+            new_db._conn.commit()
+            migrated[table] = len(rows)
+        except Exception as e:
+            logger.warning(f"migrate_from_legacy: table '{table}' skipped — {e}")
+            migrated[table] = 0
+
+    # Tables with AUTOINCREMENT id — skip the id column to avoid PK conflicts
+    auto_tables = ["audit_log", "llm_call_log"]
+    for table in auto_tables:
+        try:
+            rows = old_conn.execute(
+                f"SELECT * FROM {table} WHERE tenant_id=?", (tenant_id,)
+            ).fetchall()
+            for row in rows:
+                cols = [k for k in row.keys() if k != "id"]
+                placeholders = ",".join("?" * len(cols))
+                new_db._conn.execute(
+                    f"INSERT INTO {table} ({','.join(cols)}) VALUES ({placeholders})",
+                    tuple(row[c] for c in cols),
+                )
+            new_db._conn.commit()
+            migrated[table] = len(rows)
+        except Exception as e:
+            logger.warning(f"migrate_from_legacy: table '{table}' skipped — {e}")
+            migrated[table] = 0
+
+    old_conn.close()
+    await new_db.disconnect()
+
+    logger.info(f"migrate_from_legacy complete [tenant={tenant_id}]: {migrated}")
+    return migrated

@@ -57,6 +57,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import struct
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -75,6 +76,7 @@ from .models import (
 )
 from .persistence import EROSDatabase
 from .memory import SimpleEmbedder
+from .signal_db import SignalDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -509,6 +511,7 @@ class ExecutionMemoryEngine:
         similarity_threshold: float = SYSTEM2_THRESHOLD_DEFAULT,
         gap_fill_model: str = "claude-sonnet-4-6",
         cost_budget: Optional[CostBudget] = None,
+        signal_db: Optional[SignalDatabase] = None,
     ):
         self.tenant_id = tenant_id
         self.db = db
@@ -518,6 +521,7 @@ class ExecutionMemoryEngine:
         self.threshold = similarity_threshold
         self.gap_model = gap_fill_model
         self.budget = cost_budget or CostBudget()
+        self.signal_db = signal_db
 
         # System 1: in-memory hash lookup, sub-millisecond
         self._system1_cache: Dict[str, str] = {}   # fingerprint_hash → template_id
@@ -558,6 +562,27 @@ class ExecutionMemoryEngine:
                 await self._template_index.add(self.tenant_id, t.template_id, t.embedding)
 
         fragments = await self.db.fetch_fragments(self.tenant_id)
+
+        # Re-rank by cross-tenant signal_db success_rate on warm() so proven
+        # fragments sort earlier in the ANN index and get retrieved first.
+        if self.signal_db and fragments:
+            ranked: List[Tuple[float, Any]] = []
+            for frag in fragments:
+                signal_score = 0.5  # neutral default
+                if frag.signature:
+                    try:
+                        dims = frag.signature[:32]
+                        raw = struct.pack(f">{len(dims)}f", *dims)
+                        shape_hash = hashlib.sha256(raw).hexdigest()[:32]
+                        sig = await self.signal_db.get_fragment_signal(shape_hash)
+                        if sig:
+                            signal_score = sig["success_rate"]
+                    except Exception:
+                        pass
+                ranked.append((signal_score, frag))
+            ranked.sort(key=lambda x: x[0], reverse=True)
+            fragments = [f for _, f in ranked]
+
         for frag in fragments:
             if frag.signature:
                 await self._fragment_index.add(
@@ -1192,6 +1217,18 @@ class ExecutionMemoryEngine:
                     if sig:
                         await self._fragment_index.add(self.tenant_id, seg.segment_id, sig)
                         self._fragment_map[seg.segment_id] = seg
+                    # Fire-and-forget: record cross-tenant success signal (never blocks agent)
+                    if self.signal_db and seg.signature:
+                        try:
+                            dims = seg.signature[:32]
+                            raw = struct.pack(f">{len(dims)}f", *dims)
+                            shape_hash = hashlib.sha256(raw).hexdigest()[:32]
+                            domain = list(seg.domain_tags)[0] if seg.domain_tags else "general"
+                            asyncio.create_task(
+                                self.signal_db.record_fragment_success(shape_hash, domain)
+                            )
+                        except Exception:
+                            pass
 
                 template_id = hashlib.sha256(
                     f"{self.tenant_id}:{fp.full_hash}:{time.time()}".encode()
@@ -1300,6 +1337,20 @@ class ExecutionMemoryEngine:
             if fp_hash in self._system1_cache:
                 del self._system1_cache[fp_hash]
             logger.info(f"Template {template_id} evicted — failure rate > 50%")
+            # Fire-and-forget: record cross-tenant failure signal for each segment
+            if self.signal_db:
+                for seg in template.segments:
+                    if seg.signature:
+                        try:
+                            dims = seg.signature[:32]
+                            raw = struct.pack(f">{len(dims)}f", *dims)
+                            shape_hash = hashlib.sha256(raw).hexdigest()[:32]
+                            domain = list(seg.domain_tags)[0] if seg.domain_tags else "general"
+                            asyncio.create_task(
+                                self.signal_db.record_fragment_failure(shape_hash, domain)
+                            )
+                        except Exception:
+                            pass
 
     # ──────────────────────────────────────────
     # EMBEDDING HELPERS

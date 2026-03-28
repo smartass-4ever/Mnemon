@@ -23,6 +23,7 @@ import asyncio
 import hashlib
 import logging
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from mnemon.core.models import (
@@ -73,7 +74,10 @@ class Mnemon:
         self.bus_enabled    = bus_enabled
 
         self._embedder = SimpleEmbedder()
-        self._db       = EROSDatabase(db_path)
+        # Derive db_dir from db_path so the caller's directory preference is respected.
+        # The actual file becomes: {db_dir}/mnemon_tenant_{tenant_id}.db
+        _db_dir = str(Path(db_path).parent)
+        self._db       = EROSDatabase(tenant_id=tenant_id, db_dir=_db_dir)
         self._index    = InvertedIndex()
         # LLM client — explicit > auto-detect from env > None (rule-based)
         if llm_client is not None:

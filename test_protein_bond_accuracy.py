@@ -242,7 +242,7 @@ QUERIES = [
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def setup() -> CognitiveMemorySystem:
-    db = EROSDatabase(DB_PATH)
+    db = EROSDatabase(tenant_id=TENANT, db_dir=".")
     await db.connect()
     index = InvertedIndex()
     await index.load_from_db(db)
@@ -378,8 +378,9 @@ def naive_retrieve(query_signal: str, top_k: int = 12) -> list:
 
 async def main():
     # Clean slate
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
+    _new_db_path = f"./mnemon_tenant_{TENANT}.db"
+    if os.path.exists(_new_db_path):
+        os.remove(_new_db_path)
 
     memory = await setup()
     total_written = await load_corpus(memory)
@@ -586,7 +587,8 @@ async def main():
     print()
 
     # Cleanup
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
+    _new_db_path = f"./mnemon_tenant_{TENANT}.db"
+    if os.path.exists(_new_db_path):
+        os.remove(_new_db_path)
 
 asyncio.run(main())
