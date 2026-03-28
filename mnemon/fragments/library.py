@@ -296,3 +296,80 @@ def load_fragments(tenant_id: str) -> List[TemplateSegment]:
 
 
 FRAGMENT_COUNT = len(CURATED_FRAGMENTS)
+
+
+# ─────────────────────────────────────────────
+# META-VOCABULARY FOR SEMANTIC TAGGER
+# ─────────────────────────────────────────────
+# 150 domain concepts across 9 categories.
+# Used by SemanticVocabularyTagger to assign tags
+# via embedding similarity — no LLM on the write path.
+
+META_VOCABULARY: List[str] = [
+    # security (20)
+    "security audit", "vulnerability scan", "penetration test",
+    "access control", "encryption key", "firewall rule", "threat model",
+    "incident response", "compliance check", "security patch",
+    "authentication flow", "authorisation policy", "data breach",
+    "security monitoring", "certificate rotation", "zero day exploit",
+    "DDoS protection", "identity verification", "intrusion detection",
+    "security hardening",
+
+    # finance (20)
+    "budget planning", "revenue forecast", "invoice processing",
+    "expense report", "financial audit", "cash flow", "profit margin",
+    "tax compliance", "payroll processing", "accounts receivable",
+    "cost reduction", "financial statement", "investment analysis",
+    "contract negotiation", "purchase order", "vendor payment",
+    "quarterly report", "balance sheet", "credit assessment", "billing cycle",
+
+    # engineering (20)
+    "code review", "deployment pipeline", "API integration",
+    "database migration", "performance optimization", "bug fix",
+    "unit testing", "system architecture", "load balancing", "caching strategy",
+    "microservices", "container deployment", "CI/CD pipeline", "code refactor",
+    "technical debt", "dependency update", "monitoring alert", "error handling",
+    "version control", "service endpoint",
+
+    # data (15)
+    "data analysis", "data pipeline", "ETL process", "data quality",
+    "dashboard report", "metrics tracking", "analytics query",
+    "data warehouse", "business intelligence", "KPI measurement",
+    "data validation", "statistical model", "data export", "data import",
+    "data governance",
+
+    # communication (15)
+    "customer email", "meeting agenda", "project update",
+    "stakeholder report", "team communication", "client presentation",
+    "feedback response", "escalation notice", "status update",
+    "onboarding document", "training material", "policy announcement",
+    "user notification", "support ticket", "release note",
+
+    # operations (15)
+    "incident response", "system outage", "capacity planning",
+    "resource allocation", "process automation", "workflow optimization",
+    "vendor management", "SLA compliance", "change management",
+    "disaster recovery", "backup procedure", "maintenance window",
+    "operational review", "risk assessment", "audit trail",
+
+    # product (15)
+    "feature request", "product roadmap", "user research",
+    "A/B testing", "product launch", "customer feedback", "use case",
+    "acceptance criteria", "product backlog", "sprint planning",
+    "user story", "product requirement", "competitive analysis",
+    "market research", "product metric",
+
+    # hr (15)
+    "performance review", "hiring process", "employee onboarding",
+    "leave request", "compensation review", "training program",
+    "team structure", "role definition", "succession planning",
+    "employee feedback", "culture initiative", "policy update",
+    "org change", "talent development", "workforce planning",
+
+    # legal (15)
+    "contract review", "legal compliance", "regulatory filing",
+    "intellectual property", "terms of service", "privacy policy",
+    "NDA agreement", "litigation risk", "legal opinion", "patent filing",
+    "license agreement", "regulatory change", "legal entity",
+    "dispute resolution", "legal audit",
+]

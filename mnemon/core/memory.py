@@ -33,8 +33,6 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 
 RESONANCE_FLOOR        = 0.70   # minimum for protein bond activation
-SOFT_FILTER_THRESHOLD  = 0.85   # vector similarity override for zero-tag memories
-SOFT_FILTER_PENALTY    = 0.75   # score multiplier for soft-filter candidates
 INTENT_WEIGHT          = 0.60   # combined score weighting
 PATTERN_WEIGHT         = 0.40
 DRONE_SPARSE_THRESHOLD = 50     # below this — no drone
@@ -175,6 +173,165 @@ class SimpleEmbedder:
         if denom == 0:
             return 0.0
         return float(np.dot(va, vb) / denom)
+
+
+# ─────────────────────────────────────────────
+# SEMANTIC VOCABULARY TAGGER
+# ─────────────────────────────────────────────
+
+class SemanticVocabularyTagger:
+    """
+    Embedding-based tag assignment against a pre-built meta-vocabulary.
+
+    No LLM on the write path for high-confidence content.
+    Low-confidence content queued for async LLM tagging.
+
+    Threshold: 0.72 cosine similarity.
+    Above threshold → tags assigned immediately, no LLM.
+    Below threshold → no tags assigned, memory added to async queue.
+    """
+
+    CONFIDENCE_THRESHOLD = 0.72
+    TOP_K_TAGS = 5  # max tags to assign per memory
+
+    def __init__(self, embedder: "SimpleEmbedder"):
+        self.embedder = embedder
+        self._vocab: List[str] = []
+        self._vocab_matrix = None          # numpy array (N, dim)
+        self._ready = False
+        self._lock = asyncio.Lock()
+        self._async_queue: asyncio.Queue = asyncio.Queue()
+        self._worker_task = None
+
+    async def start(self, vocabulary: List[str]):
+        """
+        Embed all vocabulary concepts into matrix at startup.
+        Called once. After this, tag assignment is pure numpy.
+        """
+        self._vocab = vocabulary
+        embeddings = []
+        for concept in vocabulary:
+            emb = self.embedder.embed(concept)
+            embeddings.append(emb)
+        self._vocab_matrix = np.array(embeddings)  # shape: (N, dim)
+        # L2-normalise rows for fast cosine via dot product
+        norms = np.linalg.norm(self._vocab_matrix, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1, norms)
+        self._vocab_matrix = self._vocab_matrix / norms
+        self._ready = True
+        self._worker_task = asyncio.create_task(self._llm_tag_worker())
+
+    async def stop(self):
+        if self._worker_task:
+            self._worker_task.cancel()
+            try:
+                await self._worker_task
+            except asyncio.CancelledError:
+                pass
+
+    def assign_tags(self, content: str) -> Tuple[Set[str], bool]:
+        """
+        Assign tags synchronously using numpy matrix multiply.
+        Returns (tags, high_confidence).
+
+        high_confidence=False means caller should queue for LLM tagging.
+        Never assigns low-confidence tags — returns empty set instead.
+        """
+        if not self._ready or self._vocab_matrix is None:
+            # Not initialised — caller must fall back to RuleClassifier
+            return set(), False
+
+        content_emb = np.array(self.embedder.embed(content[:512]))
+        norm = np.linalg.norm(content_emb)
+        if norm > 0:
+            content_emb = content_emb / norm
+
+        # One matrix multiply gives all similarities simultaneously
+        similarities = self._vocab_matrix @ content_emb  # shape: (N,)
+
+        top_score = float(np.max(similarities))
+
+        if top_score < self.CONFIDENCE_THRESHOLD:
+            return set(), False
+
+        # Get top-k concepts above threshold
+        above_threshold = np.where(similarities >= self.CONFIDENCE_THRESHOLD)[0]
+        top_indices = above_threshold[
+            np.argsort(similarities[above_threshold])[::-1]
+        ][:self.TOP_K_TAGS]
+
+        tags: Set[str] = set()
+        for idx in top_indices:
+            concept = self._vocab[idx]
+            # "security audit" → {"security", "audit", "security_audit"}
+            words = concept.lower().split()
+            tags.update(words)
+            if len(words) > 1:
+                tags.add("_".join(words))
+
+        return tags, True
+
+    async def queue_for_llm_tagging(
+        self, memory_id: str, tenant_id: str, content: str
+    ):
+        """Queue low-confidence memory for async LLM tag assignment."""
+        await self._async_queue.put({
+            "memory_id": memory_id,
+            "tenant_id": tenant_id,
+            "content":   content[:500],
+            "queued_at": time.time(),
+        })
+
+    async def _llm_tag_worker(self):
+        """
+        Background worker. Processes low-confidence memories.
+        One Haiku call per item. Never blocks the write path.
+        Runs until stop() is called.
+        """
+        while True:
+            try:
+                item = await asyncio.wait_for(
+                    self._async_queue.get(), timeout=5.0
+                )
+                await self._tag_with_llm(item)
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"LLM tag worker error: {e}")
+
+    async def _tag_with_llm(self, item: dict):
+        """Single LLM call to tag one low-confidence memory."""
+        if not hasattr(self, '_llm') or not self._llm:
+            return
+        if not hasattr(self, '_db') or not self._db:
+            return
+
+        prompt = f"""Assign 3-5 tags to this content.
+Reply with JSON only: {{"tags": ["tag1", "tag2", "tag3"]}}
+Tags must be single words, lowercase, specific to the content domain.
+Content: {item['content']}"""
+
+        try:
+            response = await self._llm.complete(
+                prompt=prompt,
+                model="claude-haiku-4-5-20251001",
+                max_tokens=60,
+            )
+            data = json.loads(response)
+            tags = set(data.get("tags", []))
+            if tags:
+                await self._db.update_memory_tags(
+                    item["tenant_id"], item["memory_id"], tags
+                )
+                if hasattr(self, '_index') and self._index:
+                    await self._index.update(
+                        item["tenant_id"], item["memory_id"], tags
+                    )
+                logger.debug(f"LLM tagged {item['memory_id']}: {tags}")
+        except Exception as e:
+            logger.warning(f"LLM tagging failed for {item['memory_id']}: {e}")
 
 
 # ─────────────────────────────────────────────
@@ -331,6 +488,12 @@ class CognitiveMemorySystem:
 
         self.enabled_layers = set(enabled_layers or list(MemoryLayer))
 
+        # Vocabulary tagger — embedding-based, no LLM on write path
+        self.vocab_tagger = SemanticVocabularyTagger(self.embedder)
+        self.vocab_tagger._llm   = self.llm
+        self.vocab_tagger._db    = self.db
+        self.vocab_tagger._index = self.index
+
         # Layer 1 — in-memory only
         self._working: Dict[str, WorkingMemory] = {}
 
@@ -349,12 +512,14 @@ class CognitiveMemorySystem:
     # ──────────────────────────────────────────
 
     async def start(self):
-        """Start background prune loop (runs every 24 h)."""
+        """Start background prune loop (runs every 24 h) and vocab tagger."""
         self._running = True
         self._prune_task = asyncio.create_task(self._prune_loop())
+        from mnemon.fragments.library import META_VOCABULARY
+        await self.vocab_tagger.start(META_VOCABULARY)
 
     async def stop(self):
-        """Stop background prune loop."""
+        """Stop background prune loop and vocab tagger."""
         self._running = False
         if self._prune_task:
             self._prune_task.cancel()
@@ -362,6 +527,7 @@ class CognitiveMemorySystem:
                 await self._prune_task
             except asyncio.CancelledError:
                 pass
+        await self.vocab_tagger.stop()
 
     async def _prune_loop(self):
         while self._running:
@@ -405,13 +571,20 @@ class CognitiveMemorySystem:
             return None
 
         # Step 3: Build BondedMemory
-        memory = await self._build_memory(signal, layer)
+        memory, high_confidence = await self._build_memory(signal, layer)
 
         # Step 4: Persist and index
         await self.db.write_memory(memory)
         await self.index.update(self.tenant_id, memory.memory_id, memory.activation_tags)
 
-        # Step 5: Async tag verification — never blocks caller
+        # Step 5: Queue low-confidence memories for async LLM tagging
+        if not high_confidence:
+            content_str = json.dumps(signal.content) if isinstance(signal.content, dict) else str(signal.content)
+            await self.vocab_tagger.queue_for_llm_tagging(
+                memory.memory_id, self.tenant_id, content_str
+            )
+
+        # Step 6: Async tag verification — never blocks caller
         asyncio.create_task(self._verify_tags(memory))
 
         # Update pool size cache
@@ -432,11 +605,19 @@ class CognitiveMemorySystem:
             if "goals" in signal.content:
                 wm.active_goals = signal.content["goals"]
 
-    async def _build_memory(self, signal: ExperienceSignal, layer: MemoryLayer) -> BondedMemory:
+    async def _build_memory(self, signal: ExperienceSignal, layer: MemoryLayer) -> Tuple["BondedMemory", bool]:
         content_str = json.dumps(signal.content) if isinstance(signal.content, dict) else str(signal.content)
 
-        # Tags from rule classifier (fast)
-        tags = RuleClassifier.extract_tags(content_str, layer)
+        # Tags from vocab tagger (embedding-based, synchronous numpy)
+        tags, high_confidence = self.vocab_tagger.assign_tags(content_str)
+        if not self.vocab_tagger._ready:
+            # Vocab tagger not yet initialized (start() not called) — use rule classifier
+            tags = RuleClassifier.extract_tags(content_str, layer)
+            high_confidence = True
+        elif not high_confidence:
+            # Tagger ready but below threshold — minimal tags, queue for async LLM
+            domain = self._infer_domain(RuleClassifier.extract_tags(content_str, layer))
+            tags = {domain, layer.value}
 
         # Activation signature
         act_sig = self.embedder.embed(content_str)
@@ -449,7 +630,7 @@ class CognitiveMemorySystem:
             f"{self.tenant_id}:{signal.session_id}:{signal.timestamp}:{content_str[:100]}".encode()
         ).hexdigest()[:24]
 
-        return BondedMemory(
+        memory = BondedMemory(
             memory_id=memory_id,
             tenant_id=self.tenant_id,
             layer=layer,
@@ -467,6 +648,7 @@ class CognitiveMemorySystem:
             timestamp=signal.timestamp,
             last_accessed=signal.timestamp,
         )
+        return memory, high_confidence
 
     def _heuristic_intent(self, content: str, layer: MemoryLayer) -> str:
         layer_intents = {
@@ -645,8 +827,7 @@ or
         """
         Step 1: Tag intersection (inverted index, milliseconds)
         Step 2: Protein bond resonance (64-dim cosine, fuzzy 70%+)
-        Step 3: Soft filter override for high-similarity zero-tag memories
-        Step 4: Dynamic threshold self-regulation
+        Step 3: Dynamic threshold self-regulation
         Returns: List of (memory_id, score) sorted descending
         """
         signal_tags = RuleClassifier.extract_tags(task_signal, MemoryLayer.EPISODIC)
@@ -674,22 +855,6 @@ or
                 # Boost by drone keep history
                 combined = min(1.0, combined + (mem.drone_keep_score - 0.5) * 0.1)
                 pool.append((mem.memory_id, combined))
-
-        # Soft filter — recover relevant memories with zero tag overlap.
-        # Filter by domain so we stay within the query's semantic space.
-        signal_domain = self._infer_domain(signal_tags)
-        recent_ids = await self.db.fetch_recent_by_domain(self.tenant_id, signal_domain, 50)
-        all_memories = await self.db.fetch_memories(self.tenant_id, recent_ids)
-        tag_ids = {m.memory_id for m in tag_memories}
-        for mem in all_memories:
-            if mem.memory_id in tag_ids:
-                continue
-            if not mem.activation_signature:
-                continue
-            vec_sim = SimpleEmbedder.cosine_similarity(signal_sig, mem.activation_signature)
-            if vec_sim >= SOFT_FILTER_THRESHOLD:
-                penalised = vec_sim * SOFT_FILTER_PENALTY
-                pool.append((mem.memory_id, penalised))
 
         # Sort descending
         pool.sort(key=lambda x: x[1], reverse=True)

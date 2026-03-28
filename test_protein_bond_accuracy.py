@@ -254,6 +254,7 @@ async def setup() -> CognitiveMemorySystem:
         embedder=SimpleEmbedder(),
         llm_client=None,  # no LLM — pure protein bond + heuristic drone
     )
+    await memory.start()
     return memory
 
 
@@ -377,10 +378,13 @@ def naive_retrieve(query_signal: str, top_k: int = 12) -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def main():
-    # Clean slate
+    # Clean slate — ignore PermissionError on Windows if prior run left file locked
     _new_db_path = f"./mnemon_tenant_{TENANT}.db"
     if os.path.exists(_new_db_path):
-        os.remove(_new_db_path)
+        try:
+            os.remove(_new_db_path)
+        except PermissionError:
+            pass  # prior process still holds the file; SQLite will reuse it
 
     memory = await setup()
     total_written = await load_corpus(memory)
@@ -585,6 +589,9 @@ async def main():
         print("    issue — install sentence-transformers and re-run.")
 
     print()
+
+    # Teardown
+    await memory.stop()
 
     # Cleanup
     _new_db_path = f"./mnemon_tenant_{TENANT}.db"
