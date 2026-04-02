@@ -23,7 +23,7 @@ import hashlib
 import json
 import logging
 import time
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
@@ -52,6 +52,8 @@ PAD_FLATLINE_EPSILON = 0.03  # max variance for flatline detection
 # Queue overflow
 QUEUE_MAX_SIZE = 10_000
 BOOTSTRAP_BATCH = 50         # max historical signals per bootstrap
+SIGNAL_STORE_MAX = 100_000   # max in-memory signals before LRU eviction
+INDEX_LIST_MAX   = 50        # max signal_ids per error/workaround key
 
 
 # ─────────────────────────────────────────────
@@ -441,7 +443,7 @@ class ExperienceBus:
 
         # Signal infrastructure
         self._queue:   asyncio.Queue = asyncio.Queue(maxsize=QUEUE_MAX_SIZE)
-        self._signals: Dict[str, ExperienceSignal] = {}
+        self._signals: OrderedDict[str, ExperienceSignal] = OrderedDict()
 
         # Signal indices for fast lookup
         self._error_solutions: Dict[str, List[str]] = defaultdict(list)
@@ -710,15 +712,23 @@ class ExperienceBus:
         4. Propagate to relevant agents
         """
         self._signals[signal.signal_id] = signal
+        if len(self._signals) > SIGNAL_STORE_MAX:
+            self._signals.popitem(last=False)  # evict oldest
 
         # Index by type
         if signal.signal_type == SignalType.ERROR_RESOLVED:
             error_key = signal.content.get("error_type", "unknown")
-            self._error_solutions[error_key].append(signal.signal_id)
+            lst = self._error_solutions[error_key]
+            lst.append(signal.signal_id)
+            if len(lst) > INDEX_LIST_MAX:
+                del lst[0]
 
         elif signal.signal_type == SignalType.WORKAROUND_FOUND:
             api = signal.content.get("api", "unknown")
-            self._workarounds[api].append(signal.signal_id)
+            lst = self._workarounds[api]
+            lst.append(signal.signal_id)
+            if len(lst) > INDEX_LIST_MAX:
+                del lst[0]
 
         elif signal.signal_type in (SignalType.VALIDATION_PASSED, SignalType.VALIDATION_FAILED):
             approach = signal.content.get("approach", "")

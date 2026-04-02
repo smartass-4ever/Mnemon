@@ -24,7 +24,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 class SchemaError(Exception):
@@ -188,6 +188,9 @@ class TenantConnectionPool:
                 await db.disconnect()
             except Exception as e:
                 logger.warning(f"Error disconnecting tenant {tenant_id} before deletion: {e}")
+        if self._db_dir == ":memory:":
+            logger.info(f"Tenant {tenant_id} in-memory DB dropped (GDPR erasure)")
+            return
         db_path = Path(f"{self._db_dir}/mnemon_tenant_{tenant_id}.db")
         try:
             if db_path.exists():
@@ -210,7 +213,10 @@ class EROSDatabase:
     def __init__(self, tenant_id: str, db_dir: str = "."):
         self.tenant_id = tenant_id
         self.db_dir = db_dir
-        self.db_path = f"{db_dir}/mnemon_tenant_{tenant_id}.db"
+        if db_dir == ":memory:":
+            self.db_path = ":memory:"
+        else:
+            self.db_path = f"{db_dir}/mnemon_tenant_{tenant_id}.db"
         self._conn: Optional[sqlite3.Connection] = None
         self._lock = asyncio.Lock()
 
@@ -219,6 +225,10 @@ class EROSDatabase:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        self._conn.execute("PRAGMA synchronous=NORMAL")       # safe with WAL; halves fsync cost
+        self._conn.execute("PRAGMA cache_size=-65536")        # 64 MB page cache
+        self._conn.execute("PRAGMA busy_timeout=5000")        # 5 s retry on SQLITE_BUSY
+        self._conn.execute("PRAGMA wal_autocheckpoint=1000")  # checkpoint every 1000 WAL pages
         await self._migrate()
         logger.info(f"Database connected: {self.db_path}")
 
@@ -256,6 +266,7 @@ class EROSDatabase:
 
         migrations = {
             0: self._migration_v0_to_v1,
+            1: self._migration_v1_to_v2,
         }
 
         for v in range(current, CURRENT_SCHEMA_VERSION):
@@ -382,12 +393,22 @@ class EROSDatabase:
                 ON memories(tenant_id, layer, intent_valid);
             CREATE INDEX IF NOT EXISTS idx_memories_timestamp
                 ON memories(tenant_id, timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_memories_domain
+                ON memories(tenant_id, activation_domain, timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_facts_tenant_key
                 ON semantic_facts(tenant_id, key);
             CREATE INDEX IF NOT EXISTS idx_templates_fingerprint
                 ON execution_templates(tenant_id, fingerprint_hash);
             CREATE INDEX IF NOT EXISTS idx_audit_tenant
                 ON audit_log(tenant_id, timestamp DESC);
+        """)
+        self._conn.commit()
+
+    async def _migration_v1_to_v2(self):
+        """Add activation_domain index for fetch_recent_by_domain hot path."""
+        self._conn.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_memories_domain
+                ON memories(tenant_id, activation_domain, timestamp DESC);
         """)
         self._conn.commit()
 
@@ -461,7 +482,8 @@ class EROSDatabase:
     async def fetch_all_memory_tags(self):
         async with self._lock:
             rows = self._conn.execute(
-                "SELECT tenant_id, memory_id, activation_tags FROM memories"
+                "SELECT tenant_id, memory_id, activation_tags FROM memories WHERE tenant_id=?",
+                (self.tenant_id,)
             ).fetchall()
         return [(r["tenant_id"], r["memory_id"], r["activation_tags"]) for r in rows]
 
@@ -998,13 +1020,14 @@ class EROSDatabase:
         return row["c"] if row else 0
 
     def get_stats(self) -> Dict[str, Any]:
+        # sync, no await — safe in asyncio since no yield point means no write can interleave
         rows = self._conn.execute("""
             SELECT
-                (SELECT COUNT(*) FROM memories) as memories,
-                (SELECT COUNT(*) FROM semantic_facts) as facts,
-                (SELECT COUNT(*) FROM execution_templates) as templates,
-                (SELECT COUNT(*) FROM fragment_library) as fragments
-        """).fetchone()
+                (SELECT COUNT(*) FROM memories WHERE tenant_id=?) as memories,
+                (SELECT COUNT(*) FROM semantic_facts WHERE tenant_id=?) as facts,
+                (SELECT COUNT(*) FROM execution_templates WHERE tenant_id=?) as templates,
+                (SELECT COUNT(*) FROM fragment_library WHERE tenant_id=?) as fragments
+        """, (self.tenant_id, self.tenant_id, self.tenant_id, self.tenant_id)).fetchone()
         return {
             "memories":  rows["memories"],
             "facts":     rows["facts"],

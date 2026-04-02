@@ -57,11 +57,17 @@ IMPORTANCE_DECAY_RATE  = 0.02   # per day (episodic)
 # No code changes needed. No restart needed after install.
 # ─────────────────────────────────────────────
 
+_ST_MODEL_CACHE = None  # module-level cache so model loads only once per process
+
 def _try_load_sentence_transformers():
-    """Attempt to load sentence-transformers. Returns model or None."""
+    """Attempt to load sentence-transformers. Returns cached model or None."""
+    global _ST_MODEL_CACHE
+    if _ST_MODEL_CACHE is not None:
+        return _ST_MODEL_CACHE
     try:
         from sentence_transformers import SentenceTransformer
         model = SentenceTransformer("all-MiniLM-L6-v2")
+        _ST_MODEL_CACHE = model
         logger.info("Mnemon embedder: sentence-transformers loaded (all-MiniLM-L6-v2, 384-dim)")
         return model
     except ImportError:
@@ -125,6 +131,13 @@ class SentenceTransformerEmbedder:
         vec = self._model.encode(text[:512], normalize_embeddings=True)
         return vec.tolist()
 
+    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        if not texts:
+            return []
+        truncated = [t[:512] if t and t.strip() else "" for t in texts]
+        vecs = self._model.encode(truncated, normalize_embeddings=True, batch_size=256)
+        return vecs.tolist()
+
     def embed_full(self, text: str) -> List[float]:
         return self.embed(text)
 
@@ -175,6 +188,11 @@ class SimpleEmbedder:
         return float(np.dot(va, vb) / denom)
 
 
+# Module-level cache: vocab_list hash → (vocab_list, vocab_matrix)
+# Avoids re-embedding the same META_VOCABULARY for every CognitiveMemorySystem.
+_VOCAB_MATRIX_CACHE: dict = {}
+
+
 # ─────────────────────────────────────────────
 # SEMANTIC VOCABULARY TAGGER
 # ─────────────────────────────────────────────
@@ -202,18 +220,28 @@ class SemanticVocabularyTagger:
         self._lock = asyncio.Lock()
         self._async_queue: asyncio.Queue = asyncio.Queue()
         self._worker_task = None
+        self._stopped = False              # flag for Python 3.11 wait_for cancellation bug
 
     async def start(self, vocabulary: List[str]):
         """
         Embed all vocabulary concepts into matrix at startup.
         Called once. After this, tag assignment is pure numpy.
+        Caches the matrix so repeated CMS instances skip re-embedding.
         """
         self._vocab = vocabulary
-        embeddings = []
-        for concept in vocabulary:
-            emb = self.embedder.embed(concept)
-            embeddings.append(emb)
-        self._vocab_matrix = np.array(embeddings)  # shape: (N, dim)
+        # Key on the underlying model object (cached globally) + vocab content
+        backend = getattr(self.embedder, '_backend', self.embedder)
+        model_obj = getattr(backend, '_model', backend)
+        vocab_key = (id(model_obj), tuple(vocabulary))
+        if vocab_key in _VOCAB_MATRIX_CACHE:
+            self._vocab_matrix = _VOCAB_MATRIX_CACHE[vocab_key]
+        else:
+            if hasattr(self.embedder, 'embed_batch'):
+                embeddings = self.embedder.embed_batch(vocabulary)
+            else:
+                embeddings = [self.embedder.embed(concept) for concept in vocabulary]
+            self._vocab_matrix = np.array(embeddings)  # shape: (N, dim)
+            _VOCAB_MATRIX_CACHE[vocab_key] = self._vocab_matrix
         # L2-normalise rows for fast cosine via dot product
         norms = np.linalg.norm(self._vocab_matrix, axis=1, keepdims=True)
         norms = np.where(norms == 0, 1, norms)
@@ -222,11 +250,13 @@ class SemanticVocabularyTagger:
         self._worker_task = asyncio.create_task(self._llm_tag_worker())
 
     async def stop(self):
+        self._stopped = True
         if self._worker_task:
             self._worker_task.cancel()
             try:
-                await self._worker_task
-            except asyncio.CancelledError:
+                # Use wait_for so Python 3.11.x wait_for/cancellation bugs can't hang us
+                await asyncio.wait_for(self._worker_task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
 
     def assign_tags(self, content: str) -> Tuple[Set[str], bool]:
@@ -288,14 +318,14 @@ class SemanticVocabularyTagger:
         One Haiku call per item. Never blocks the write path.
         Runs until stop() is called.
         """
-        while True:
+        while not self._stopped:
             try:
                 item = await asyncio.wait_for(
-                    self._async_queue.get(), timeout=5.0
+                    self._async_queue.get(), timeout=1.0
                 )
                 await self._tag_with_llm(item)
             except asyncio.TimeoutError:
-                continue
+                continue  # re-check _stopped flag
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -502,6 +532,7 @@ class CognitiveMemorySystem:
         self._pool_size_updated: float = 0
 
         self._lock = asyncio.Lock()
+        self._verify_sem = asyncio.Semaphore(10)
 
         # Background prune loop
         self._running = False
@@ -606,7 +637,10 @@ class CognitiveMemorySystem:
                 wm.active_goals = signal.content["goals"]
 
     async def _build_memory(self, signal: ExperienceSignal, layer: MemoryLayer) -> Tuple["BondedMemory", bool]:
-        content_str = json.dumps(signal.content) if isinstance(signal.content, dict) else str(signal.content)
+        if isinstance(signal.content, dict):
+            content_str = signal.content.get("text", "") or signal.content.get("content", "") or json.dumps(signal.content)
+        else:
+            content_str = str(signal.content)
 
         # Tags from vocab tagger (embedding-based, synchronous numpy)
         tags, high_confidence = self.vocab_tagger.assign_tags(content_str)
@@ -619,9 +653,9 @@ class CognitiveMemorySystem:
             domain = self._infer_domain(RuleClassifier.extract_tags(content_str, layer))
             tags = {domain, layer.value}
 
-        # Activation signature
-        act_sig = self.embedder.embed(content_str)
-        intent_sig = self.embedder.embed(f"use when: {content_str[:200]}")
+        # Activation signature — embed the bare text, not a JSON wrapper
+        act_sig = self.embedder.embed(content_str[:512])
+        intent_sig = self.embedder.embed(f"need to know: {content_str[:200]}")
 
         # Intent label — simple heuristic, LLM router will improve it
         intent_label = self._heuristic_intent(content_str, layer)
@@ -721,10 +755,11 @@ Reply format:
         if not self.llm:
             return
 
-        content_str = json.dumps(memory.content) if isinstance(memory.content, dict) else str(memory.content)
-        current_tags = list(memory.activation_tags)
+        async with self._verify_sem:
+            content_str = json.dumps(memory.content) if isinstance(memory.content, dict) else str(memory.content)
+            current_tags = list(memory.activation_tags)
 
-        prompt = f"""Check if these tags accurately represent this memory content.
+            prompt = f"""Check if these tags accurately represent this memory content.
 Reply with JSON only, no markdown.
 
 Content: {content_str[:300]}
@@ -737,30 +772,30 @@ or
 or
 {{"verdict": "WRONG", "remove_tags": ["bad_tag"]}}"""
 
-        try:
-            response = await self.llm.complete(
-                prompt=prompt,
-                model=self.router_model,
-                max_tokens=100,
-            )
-            data = json.loads(response)
+            try:
+                response = await self.llm.complete(
+                    prompt=prompt,
+                    model=self.router_model,
+                    max_tokens=100,
+                )
+                data = json.loads(response)
 
-            if data["verdict"] == "YES":
-                return
+                if data["verdict"] == "YES":
+                    return
 
-            if data["verdict"] == "MISSING" and data.get("amended_tags"):
-                new_tags = set(data["amended_tags"])
-                await self.db.update_memory_tags(self.tenant_id, memory.memory_id, new_tags)
-                await self.index.update(self.tenant_id, memory.memory_id, new_tags)
-                logger.debug(f"Tags amended for {memory.memory_id}: {new_tags}")
+                if data["verdict"] == "MISSING" and data.get("amended_tags"):
+                    new_tags = set(data["amended_tags"])
+                    await self.db.update_memory_tags(self.tenant_id, memory.memory_id, new_tags)
+                    await self.index.update(self.tenant_id, memory.memory_id, new_tags)
+                    logger.debug(f"Tags amended for {memory.memory_id}: {new_tags}")
 
-            elif data["verdict"] == "WRONG" and data.get("remove_tags"):
-                corrected = memory.activation_tags - set(data["remove_tags"])
-                await self.db.update_memory_tags(self.tenant_id, memory.memory_id, corrected)
-                logger.debug(f"Bad tags removed for {memory.memory_id}")
+                elif data["verdict"] == "WRONG" and data.get("remove_tags"):
+                    corrected = memory.activation_tags - set(data["remove_tags"])
+                    await self.db.update_memory_tags(self.tenant_id, memory.memory_id, corrected)
+                    logger.debug(f"Bad tags removed for {memory.memory_id}")
 
-        except Exception as e:
-            logger.debug(f"Tag verification skipped: {e}")
+            except Exception as e:
+                logger.debug(f"Tag verification skipped: {e}")
 
     # ──────────────────────────────────────────
     # RETRIEVE — PART 1: PATTERN ASSEMBLY

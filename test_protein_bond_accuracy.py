@@ -30,6 +30,9 @@ import time
 import sys
 import os
 
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mnemon.core.persistence import EROSDatabase, InvertedIndex
@@ -407,10 +410,10 @@ async def main():
     layer_diversity = []
 
     for q in QUERIES:
-        print(f"\n{'─'*70}")
+        print(f"\n{'-'*70}")
         print(f"  {q['id']}: {q['description']}")
         print(f"  Signal: \"{q['signal'][:65]}...\"" if len(q['signal']) > 65 else f"  Signal: \"{q['signal']}\"")
-        print(f"{'─'*70}")
+        print(f"{'-'*70}")
 
         # ── Protein Bond retrieval ─────────────────────────────────────────
         t0 = time.time()
@@ -440,7 +443,7 @@ async def main():
         lift_recall    = pb_scores["recall"] - naive_scores["recall"]
 
         print(f"  {'Metric':<22} {'Protein Bond':>14} {'Naive Keyword':>14} {'Lift':>10}")
-        print(f"  {'─'*22} {'─'*14} {'─'*14} {'─'*10}")
+        print(f"  {'-'*22} {'-'*14} {'-'*14} {'-'*10}")
         print(f"  {'Precision':<22} {pb_scores['precision']:>14.3f} {naive_scores['precision']:>14.3f} {lift_precision:>+10.3f}")
         print(f"  {'Recall':<22} {pb_scores['recall']:>14.3f} {naive_scores['recall']:>14.3f} {lift_recall:>+10.3f}")
         print(f"  {'F1':<22} {pb_scores['f1']:>14.3f} {naive_scores['f1']:>14.3f} {lift_f1:>+10.3f}")
@@ -476,7 +479,7 @@ async def main():
     print("  AGGREGATE BENCHMARK RESULTS  (6 queries × 100 memories)")
     print(f"{'='*70}")
     print(f"  {'Metric':<40} {'Value':>12}")
-    print(f"  {'─'*40} {'─'*12}")
+    print(f"  {'-'*40} {'-'*12}")
     print(f"  {'Avg Precision (Protein Bond)':<40} {avg_precision:>12.3f}")
     print(f"  {'Avg Recall (Protein Bond)':<40} {avg_recall:>12.3f}")
     print(f"  {'Avg F1 (Protein Bond)':<40} {avg_pb_f1:>12.3f}")

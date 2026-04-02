@@ -47,7 +47,7 @@ def run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
-async def make_eros(llm=None) -> EROS:
+async def make_eros(llm=None) -> EROSDatabase:
     mnemon = Mnemon(
         tenant_id=TENANT,
         agent_id="test_agent",
