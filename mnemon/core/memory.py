@@ -182,6 +182,8 @@ class SimpleEmbedder:
         if not a or not b:
             return 0.0
         va, vb = np.array(a), np.array(b)
+        if va.shape != vb.shape:
+            return 0.0
         denom = np.linalg.norm(va) * np.linalg.norm(vb)
         if denom == 0:
             return 0.0
@@ -883,8 +885,11 @@ or
         for mem in tag_memories:
             if not mem.activation_signature:
                 continue
-            pattern_score = SimpleEmbedder.cosine_similarity(signal_sig, mem.activation_signature)
-            intent_score  = SimpleEmbedder.cosine_similarity(signal_intent_sig, mem.intent_signature) if mem.intent_signature else 0.0
+            try:
+                pattern_score = SimpleEmbedder.cosine_similarity(signal_sig, mem.activation_signature)
+                intent_score  = SimpleEmbedder.cosine_similarity(signal_intent_sig, mem.intent_signature) if mem.intent_signature else 0.0
+            except Exception:
+                continue
             combined = (PATTERN_WEIGHT * pattern_score) + (INTENT_WEIGHT * intent_score)
             if combined >= RESONANCE_FLOOR:
                 # Boost by drone keep history
