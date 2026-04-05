@@ -37,6 +37,8 @@ Generalised execution template cache for any expensive recurring computation.
 - **System 1** — exact fingerprint match → zero LLM, sub-millisecond
 - **System 2** — partial segment match → gap fill with windowed context
 - **Fragment library** — 49 pre-warmed proven segments, grows with use
+
+> Ships with pre-warmed fragment library from 42 real enterprise workflow runs
 - Works for agent plans, RAG pipelines, data pipelines, any structured workflow
 
 ### `mnemon.bus` — Two-Tier Experience Bus
