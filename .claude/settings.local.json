@@ -5,7 +5,8 @@
       "Bash(cmd /c \"taskkill /F /IM python.exe\")",
       "Bash(python:*)",
       "Bash(venv/Scripts/python.exe example.py)",
-      "Bash(venv/Scripts/python:*)"
+      "Bash(venv/Scripts/python:*)",
+      "WebSearch"
     ]
   }
 }

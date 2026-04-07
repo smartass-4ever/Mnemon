@@ -154,9 +154,21 @@ class GenericAdapter(TemplateAdapter):
         return {"nodes": [s.content for s in segments], "type": "eros_template"}
 
     def extract_signature(self, template: Any, goal: str) -> ComputationFingerprint:
+        # Derive a structural schema from the template so that templates with the
+        # same goal but different shapes produce different fingerprints.
+        if isinstance(template, list):
+            schema = {"type": "list", "length": len(template),
+                      "keys": sorted({k for step in template
+                                      if isinstance(step, dict) for k in step})}
+        elif isinstance(template, dict):
+            nodes = template.get("nodes", template.get("steps", []))
+            schema = {"type": "dict", "top_keys": sorted(template.keys()),
+                      "node_count": len(nodes)}
+        else:
+            schema = {"type": type(template).__name__}
         return ComputationFingerprint.build(
             goal=goal,
-            input_schema={},
+            input_schema=schema,
             context={},
             capabilities=[],
             constraints={},
@@ -175,16 +187,19 @@ class CostBudget:
 
     _calls_this_hour: int = field(default=0, init=False)
     _hour_start: float = field(default_factory=time.time, init=False)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
-    def can_call(self) -> bool:
-        now = time.time()
-        if now - self._hour_start > 3600:
-            self._calls_this_hour = 0
-            self._hour_start = now
-        return self._calls_this_hour < self.max_llm_calls_per_hour
+    async def can_call(self) -> bool:
+        async with self._lock:
+            now = time.time()
+            if now - self._hour_start > 3600:
+                self._calls_this_hour = 0
+                self._hour_start = now
+            return self._calls_this_hour < self.max_llm_calls_per_hour
 
-    def record_call(self):
-        self._calls_this_hour += 1
+    async def record_call(self):
+        async with self._lock:
+            self._calls_this_hour += 1
 
 
 # ─────────────────────────────────────────────
@@ -1015,18 +1030,18 @@ class ExecutionMemoryEngine:
 
         if best_frag and best_sim >= FRAGMENT_SIMILAR_THRESHOLD:
             # Tier 2: similar match — minimal LLM adaptation
-            if self.llm and self.budget.can_call():
+            if self.llm and await self.budget.can_call():
                 adapted = await self._adapt_fragment(best_frag, goal, execution_context)
-                self.budget.record_call()
+                await self.budget.record_call()
                 self._trace_frags_buf.append(best_frag.segment_id)
                 return adapted, True
 
         # Tier 3: LLM generation
-        if self.llm and self.budget.can_call():
+        if self.llm and await self.budget.can_call():
             generated = await self._llm_generate_segment(
                 segment, goal, context_window, memory_context, execution_context
             )
-            self.budget.record_call()
+            await self.budget.record_call()
             await self._write_behind.enqueue(generated)
             if generated.signature:
                 await self._fragment_index.add(

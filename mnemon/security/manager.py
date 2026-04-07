@@ -189,15 +189,23 @@ class SimpleEncryption:
     If upgrading a live system, run a one-time migration to re-encrypt stored data.
     """
 
-    def __init__(self, tenant_key: Optional[str] = None):
+    def __init__(self, tenant_key: Optional[str] = None, strict: bool = False):
         fernet = _try_load_fernet(tenant_key)
         if fernet:
             self._backend = FernetEncryption(fernet)
             self.backend_name = "fernet-aes"
+            self.is_secure = True
             logger.info("Mnemon encryption: Fernet AES-128 active")
         else:
+            if strict:
+                raise ImportError(
+                    "Mnemon encryption: 'cryptography' package is required when "
+                    "encrypt_privileged=True or encrypt_confidential=True. "
+                    "Run: pip install mnemon-ai[full]"
+                )
             self._backend = XORFallbackEncryption(tenant_key or "default_dev_key_change_in_production")
             self.backend_name = "xor-fallback"
+            self.is_secure = False
             logger.warning(
                 "Mnemon encryption: using XOR fallback (NOT production-safe). "
                 "Run: pip install mnemon-ai[full]"
@@ -239,7 +247,9 @@ class TenantSecurityConfig:
 
     def __post_init__(self):
         self._filter    = ContentFilter(self.blocked_categories)
-        self._encryptor = SimpleEncryption(self.encryption_key)
+        # strict=True when real encryption is actually required — refuses XOR fallback
+        needs_encryption = self.encrypt_privileged or self.encrypt_confidential
+        self._encryptor = SimpleEncryption(self.encryption_key, strict=needs_encryption)
 
     def should_store(self, content: Any) -> bool:
         return self._filter.should_store(content)

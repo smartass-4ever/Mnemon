@@ -60,10 +60,16 @@ class InvertedIndex:
             sets = [shard.get(tag, set()) for tag in tags]
             if not sets:
                 return set()
-            # union across tags — a memory matching ANY tag is a candidate
-            result: Set[str] = set()
-            for s in sets:
-                result |= s
+            # True intersection: only memories matching ALL queried tags.
+            # Falls back to union when intersection is empty (sparse index or
+            # single-tag queries) so recall never drops to zero.
+            result = sets[0].copy()
+            for s in sets[1:]:
+                result &= s
+            if not result:
+                # Fallback: union across tags so recall stays non-zero
+                for s in sets:
+                    result |= s
             return result
 
     async def remove(self, tenant_id: str, memory_id: str, tags: Set[str]):
@@ -486,6 +492,22 @@ class EROSDatabase:
                 (self.tenant_id,)
             ).fetchall()
         return [(r["tenant_id"], r["memory_id"], r["activation_tags"]) for r in rows]
+
+    async def fetch_sample_embedding_dim(self) -> Optional[int]:
+        """Return the vector length of the first stored activation_signature, or None."""
+        async with self._lock:
+            row = self._conn.execute(
+                "SELECT activation_signature FROM memories WHERE tenant_id=? "
+                "AND activation_signature != '[]' LIMIT 1",
+                (self.tenant_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            sig = json.loads(row["activation_signature"])
+            return len(sig) if sig else None
+        except Exception:
+            return None
 
     async def update_memory_tags(self, tenant_id: str, memory_id: str, tags: Set[str]):
         async with self._lock:

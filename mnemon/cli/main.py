@@ -86,11 +86,27 @@ async def cmd_init(args):
 
     # Write config
     config = {
-        "tenant_id":    args.tenant_id or "my_company",
-        "db_path":      db_path or "mnemon.db",
-        "framework":    framework,
-        "version":      "1.0.0",
-        "created_at":   time.time(),
+        "tenant_id":          args.tenant_id or "my_company",
+        "db_path":            db_path or "mnemon.db",
+        "framework":          framework,
+        "version":            "1.0.0",
+        "created_at":         time.time(),
+        # Subsystem toggles
+        "memory_enabled":     True,
+        "eme_enabled":        True,
+        "bus_enabled":        True,
+        "prewarm_fragments":  True,
+        # Observability
+        "enable_watchdog":    False,
+        "enable_telemetry":   True,
+        # Models
+        "router_model":       "claude-haiku-4-5-20251001",
+        "gap_fill_model":     "claude-sonnet-4-6",
+        "drone_model":        "claude-haiku-4-5-20251001",
+        # Retrieval
+        "similarity_threshold": 0.70,
+        "data_region":        "default",
+        "blocked_categories": [],
     }
     config_path = args.config or "./mnemon.config.json"
     with open(config_path, "w") as f:

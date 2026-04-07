@@ -136,6 +136,17 @@ class Mnemon:
     async def start(self):
         await self._db.connect()
         await self._index.load_from_db(self._db)
+        # Detect embedder dimension mismatch between stored vectors and current backend.
+        # Cosine similarity between 64-dim and 384-dim vectors is undefined — retrieval
+        # degrades silently to near-random without this check.
+        stored_dim = await self._db.fetch_sample_embedding_dim()
+        if stored_dim is not None and stored_dim != self._embedder.dim:
+            logger.critical(
+                f"Mnemon embedder dimension mismatch: stored vectors are {stored_dim}-dim "
+                f"but current embedder produces {self._embedder.dim}-dim. "
+                f"Retrieval will be unreliable until embeddings are re-indexed. "
+                f"Run: mnemon reindex --tenant {self.tenant_id}"
+            )
         if self._eme:
             await self._eme.warm()
             # Load pre-warmed fragments on cold start
@@ -193,32 +204,41 @@ class Mnemon:
         caps        = capabilities or []
         constraints = constraints  or {}
         start_time  = time.time()
-        memory_context = {}
 
-        if self._memory:
+        async def _retrieve():
+            if not self._memory:
+                return {}
             try:
-                memory_context = await self._memory.retrieve(
+                return await self._memory.retrieve(
                     task_signal=goal, session_id=session_id, task_goal=goal,
                 )
             except Exception as e:
                 logger.warning(f"Memory retrieval failed: {e}")
+                return {}
 
-        eme_result: Optional[EMEResult] = None
-        if self._eme:
+        async def _run_eme():
+            if not self._eme:
+                return None
             try:
-                eme_result = await self._eme.run(
+                # memory_context=None: EME handles this gracefully (optional hint only).
+                # Memory retrieval runs concurrently and the result is included in the
+                # response dict after both tasks complete.
+                return await self._eme.run(
                     goal=goal, inputs=inputs, context=context,
                     capabilities=caps, constraints=constraints,
                     generation_fn=generation_fn, task_id=task_id,
-                    memory_context=memory_context,
+                    memory_context=None,
                 )
             except Exception as e:
                 logger.warning(f"EME failed: {e} — direct generation")
                 try:
                     template = await generation_fn(goal, inputs, context, caps, constraints)
-                    eme_result = EMEResult(status="fallback", template=template, template_id=None)
+                    return EMEResult(status="fallback", template=template, template_id=None)
                 except Exception as gen_e:
                     logger.error(f"Generation failed: {gen_e}")
+                    return None
+
+        memory_context, eme_result = await asyncio.gather(_retrieve(), _run_eme())
 
         latency_ms = (time.time() - start_time) * 1000
 
@@ -347,14 +367,30 @@ class Mnemon:
 
     @classmethod
     def from_config(cls, config_path: str = "./mnemon.config.json") -> "Mnemon":
-        """Load EROS from a config file created by `mnemon init`."""
+        """Load Mnemon from a config file created by `mnemon init`."""
         import json
         with open(config_path) as f:
             config = json.load(f)
-        return cls(
+        kwargs: dict = dict(
             tenant_id=config.get("tenant_id", "default"),
             db_path=config.get("db_path", "mnemon.db"),
+            memory_enabled=config.get("memory_enabled", True),
+            eme_enabled=config.get("eme_enabled", True),
+            bus_enabled=config.get("bus_enabled", True),
+            prewarm_fragments=config.get("prewarm_fragments", True),
+            enable_watchdog=config.get("enable_watchdog", False),
+            enable_telemetry=config.get("enable_telemetry", True),
+            similarity_threshold=config.get("similarity_threshold", 0.70),
+            router_model=config.get("router_model", "claude-haiku-4-5-20251001"),
+            gap_fill_model=config.get("gap_fill_model", "claude-sonnet-4-6"),
+            drone_model=config.get("drone_model", "claude-haiku-4-5-20251001"),
+            data_region=config.get("data_region", "default"),
         )
+        if "blocked_categories" in config:
+            kwargs["blocked_categories"] = config["blocked_categories"]
+        if "watchdog_webhook" in config:
+            kwargs["watchdog_webhook"] = config["watchdog_webhook"]
+        return cls(**kwargs)
 
     async def health_check(self) -> dict:
         """On-demand health check. Returns structured health report."""
