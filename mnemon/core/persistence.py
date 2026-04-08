@@ -52,6 +52,11 @@ class InvertedIndex:
                     shard[tag] = set()
                 shard[tag].add(memory_id)
 
+    # Max IDs returned from union fallback — prevents O(n) cosine scan at 10M scale.
+    # Pattern assembly in memory.py applies an additional cap, but capping here too
+    # avoids loading millions of rows from SQLite before the cosine stage.
+    _UNION_CAP = 10_000
+
     async def intersect(self, tenant_id: str, tags: Set[str]) -> Set[str]:
         async with self._lock:
             shard = self._shards.get(tenant_id, {})
@@ -67,9 +72,20 @@ class InvertedIndex:
             for s in sets[1:]:
                 result &= s
             if not result:
-                # Fallback: union across tags so recall stays non-zero
+                # Fallback: union across tags so recall stays non-zero.
+                # Capped at _UNION_CAP to prevent O(n) cosine scan at 10M+ scale.
+                # Stable deterministic subsample: sort by hash so the same memories
+                # surface consistently across calls (not arbitrary slice order).
+                import hashlib as _hl
+                union: Set[str] = set()
                 for s in sets:
-                    result |= s
+                    union |= s
+                if len(union) > self._UNION_CAP:
+                    union = set(
+                        sorted(union, key=lambda x: _hl.md5(x.encode()).digest())
+                        [:self._UNION_CAP]
+                    )
+                result = union
             return result
 
     async def remove(self, tenant_id: str, memory_id: str, tags: Set[str]):
@@ -514,6 +530,23 @@ class EROSDatabase:
             self._conn.execute(
                 "UPDATE memories SET activation_tags=? WHERE tenant_id=? AND memory_id=?",
                 (json.dumps(list(tags)), tenant_id, memory_id)
+            )
+            self._conn.commit()
+
+    async def update_cross_layer_refs(self, tenant_id: str, memory_id: str, ref_ids: List[str]):
+        """Append causal refs to a memory, deduplicating. Bidirectional writes caller's responsibility."""
+        async with self._lock:
+            row = self._conn.execute(
+                "SELECT cross_layer_refs FROM memories WHERE tenant_id=? AND memory_id=?",
+                (tenant_id, memory_id)
+            ).fetchone()
+            if not row:
+                return
+            existing = set(json.loads(row["cross_layer_refs"]))
+            updated = list(existing | set(ref_ids))
+            self._conn.execute(
+                "UPDATE memories SET cross_layer_refs=? WHERE tenant_id=? AND memory_id=?",
+                (json.dumps(updated), tenant_id, memory_id)
             )
             self._conn.commit()
 

@@ -42,6 +42,11 @@ DRONE_REVIEW_FRACTION  = 0.30   # lightweight mode reviews bottom N%
 MAX_CONTEXT_TOKENS     = 2000   # token budget for memory context
 EMOTION_DECAY_RATE     = 0.05   # per hour
 IMPORTANCE_DECAY_RATE  = 0.02   # per day (episodic)
+DRONE_CANDIDATE_CAP    = 80     # max candidates sent to drone LLM (was hard-coded 30)
+UNION_FALLBACK_CAP     = 10_000 # max IDs from union fallback to prevent O(n) scan
+RECENCY_WEIGHT         = 0.05   # max recency bonus (decays exponentially by age)
+RECENCY_HALFLIFE_DAYS  = 365    # recency bonus halves every year
+DIVERSITY_SCORE_GAP    = 0.10   # only enforce layer diversity when gap < this
 
 
 # ─────────────────────────────────────────────
@@ -535,6 +540,7 @@ class CognitiveMemorySystem:
 
         self._lock = asyncio.Lock()
         self._verify_sem = asyncio.Semaphore(10)
+        self._causal_sem  = asyncio.Semaphore(3)   # max 3 concurrent causal-ref builds
 
         # Background prune loop
         self._running = False
@@ -619,6 +625,10 @@ class CognitiveMemorySystem:
 
         # Step 6: Async tag verification — never blocks caller
         asyncio.create_task(self._verify_tags(memory))
+
+        # Step 7: Async causal ref graph — links this memory to related existing ones
+        if self.llm and self._pool_size > 5:
+            asyncio.create_task(self._build_causal_refs(memory))
 
         # Update pool size cache
         self._pool_size += 1
@@ -799,6 +809,92 @@ or
             except Exception as e:
                 logger.debug(f"Tag verification skipped: {e}")
 
+    async def _build_causal_refs(self, new_memory: "BondedMemory"):
+        """
+        Async — fires after write, never blocks caller.
+        Fetches top-10 similar existing memories, asks LLM which ones
+        have a CAUSAL or EXPLANATORY relationship (not just similarity).
+        Writes bidirectional cross_layer_refs.
+
+        Only runs when pool > 5 (checked by caller) and llm is present.
+        Semaphore-capped at 3 concurrent builds to limit write-path cost.
+        Uses router_model (Haiku) — cheap call, max 150 tokens.
+        """
+        async with self._causal_sem:
+            try:
+                content_str = (
+                    json.dumps(new_memory.content)
+                    if isinstance(new_memory.content, dict)
+                    else str(new_memory.content)
+                )
+
+                # Candidate pool: tag intersection → top-10 by cosine
+                signal_tags = RuleClassifier.extract_tags(content_str, new_memory.layer)
+                candidate_ids = await self.index.intersect(self.tenant_id, signal_tags)
+                candidate_ids.discard(new_memory.memory_id)
+                if not candidate_ids:
+                    return
+
+                sig = self.embedder.embed(content_str)
+                raw = await self.db.fetch_memories(self.tenant_id, list(candidate_ids)[:50])
+                scored = sorted(
+                    [(c, SimpleEmbedder.cosine_similarity(sig, c.activation_signature))
+                     for c in raw if c.activation_signature],
+                    key=lambda x: x[1], reverse=True
+                )
+                top = [c for c, _ in scored[:10]]
+                if not top:
+                    return
+
+                candidates_list = [
+                    {
+                        "id":      c.memory_id,
+                        "layer":   c.layer.value,
+                        "content": str(c.content)[:200],
+                    }
+                    for c in top
+                ]
+
+                prompt = f"""You are analyzing a cognitive memory system.
+
+New memory ({new_memory.layer.value}):
+{content_str[:300]}
+
+Candidates:
+{json.dumps(candidates_list, indent=2)}
+
+Which candidates have a CAUSAL or EXPLANATORY link to the new memory?
+Examples of valid links: causes, explains, is caused by, contradicts, enables, is prerequisite for.
+Similarity alone is NOT enough — we want structural meaning connections.
+
+Reply with JSON only, no markdown:
+{{"related_ids": ["id1", "id2"], "reason": "brief"}}
+If none qualify: {{"related_ids": [], "reason": "no causal links"}}"""
+
+                response = await self.llm.complete(
+                    prompt=prompt,
+                    model=self.router_model,
+                    max_tokens=150,
+                )
+                data = json.loads(response)
+                related_ids = [r for r in data.get("related_ids", []) if isinstance(r, str)]
+
+                if not related_ids:
+                    return
+
+                # Write bidirectional refs
+                await self.db.update_cross_layer_refs(
+                    self.tenant_id, new_memory.memory_id, related_ids
+                )
+                for ref_id in related_ids:
+                    await self.db.update_cross_layer_refs(
+                        self.tenant_id, ref_id, [new_memory.memory_id]
+                    )
+                logger.debug(f"Causal refs built for {new_memory.memory_id}: {related_ids}")
+
+            except Exception as e:
+                logger.debug(f"Causal ref build failed (non-critical): {e}")
+
     # ──────────────────────────────────────────
     # RETRIEVE — PART 1: PATTERN ASSEMBLY
     # ──────────────────────────────────────────
@@ -821,6 +917,9 @@ or
 
         # Part 1: Pattern Assembly
         candidates = await self._pattern_assembly(task_signal)
+
+        # Part 1b: Spreading Activation — follow causal refs from seeds
+        candidates = await self._spreading_activation(candidates)
 
         # Part 2: Intent Drone (conditional)
         if pool_size < DRONE_SPARSE_THRESHOLD:
@@ -849,22 +948,26 @@ or
         # Detect conflicts
         conflicts = self._detect_conflicts(memories)
 
+        # Compressed context — pre-assembled picture for LLM injection
+        compressed = self._compress_context(final, memories_by_id, conflicts)
+
         return {
-            "working":        working_ctx,
-            "memories":       [memories_by_id[m_id].content for m_id, _ in final if m_id in memories_by_id],
-            "memory_ids":     [m_id for m_id, _ in final],
-            "memory_scores":  {m_id: score for m_id, score in final},
-            "conflicts":      conflicts,
-            "pool_size":      pool_size,
-            "drone_used":     drone_used,
-            "layers_present": list({memories_by_id[m_id].layer.value for m_id, _ in final if m_id in memories_by_id}),
+            "working":            working_ctx,
+            "memories":           [memories_by_id[m_id].content for m_id, _ in final if m_id in memories_by_id],
+            "memory_ids":         [m_id for m_id, _ in final],
+            "memory_scores":      {m_id: score for m_id, score in final},
+            "conflicts":          conflicts,
+            "pool_size":          pool_size,
+            "drone_used":         drone_used,
+            "layers_present":     list({memories_by_id[m_id].layer.value for m_id, _ in final if m_id in memories_by_id}),
+            "compressed_context": compressed,
         }
 
     async def _pattern_assembly(self, task_signal: str) -> List[Tuple[str, float]]:
         """
         Step 1: Tag intersection (inverted index, milliseconds)
         Step 2: Protein bond resonance (64-dim cosine, fuzzy 70%+)
-        Step 3: Dynamic threshold self-regulation
+        Step 3: Score-gap-aware pool trimming (replaces blind count ratchet)
         Returns: List of (memory_id, score) sorted descending
         """
         signal_tags = RuleClassifier.extract_tags(task_signal, MemoryLayer.EPISODIC)
@@ -874,12 +977,23 @@ or
         # Tag intersection — hard candidates
         tag_candidates = await self.index.intersect(self.tenant_id, signal_tags)
 
+        # Union fallback cap: prevent O(n) scan at 10M+ scale.
+        # If union returned far more IDs than intersection, sort by ID hash to
+        # get a stable, deterministic subsample rather than an arbitrary slice.
+        if len(tag_candidates) > UNION_FALLBACK_CAP:
+            import hashlib as _hl
+            tag_candidates = set(
+                sorted(tag_candidates, key=lambda x: _hl.md5(x.encode()).digest())
+                [:UNION_FALLBACK_CAP]
+            )
+
         # Fetch signatures for resonance scoring
         if tag_candidates:
             tag_memories = await self.db.fetch_memories(self.tenant_id, list(tag_candidates))
         else:
             tag_memories = []
 
+        now = time.time()
         pool: List[Tuple[str, float]] = []
 
         for mem in tag_memories:
@@ -894,20 +1008,93 @@ or
             if combined >= RESONANCE_FLOOR:
                 # Boost by drone keep history
                 combined = min(1.0, combined + (mem.drone_keep_score - 0.5) * 0.1)
+                # Recency bonus: decays exponentially, max +RECENCY_WEIGHT for today's memory
+                age_days = (now - mem.timestamp) / 86400.0
+                recency_bonus = RECENCY_WEIGHT * (0.5 ** (age_days / RECENCY_HALFLIFE_DAYS))
+                combined = min(1.0, combined + recency_bonus)
                 pool.append((mem.memory_id, combined))
 
         # Sort descending
         pool.sort(key=lambda x: x[1], reverse=True)
 
-        # Dynamic threshold — self-regulate pool size
+        # Score-gap-aware trimming: find the natural score cliff and cut there.
+        # Avoids the blind count ratchet that wiped correct moderate-score memories.
         if len(pool) > 100:
-            # Raise effective threshold until pool is manageable
-            threshold = RESONANCE_FLOOR
-            while len([p for p in pool if p[1] >= threshold]) > 80 and threshold < 0.95:
-                threshold += 0.02
-            pool = [(m, s) for m, s in pool if s >= threshold]
+            scores = [s for _, s in pool]
+            # Compute gaps between consecutive scores
+            gaps = [scores[i] - scores[i + 1] for i in range(len(scores) - 1)]
+            if gaps:
+                # Find the largest gap in the top-200 range
+                search_end = min(200, len(gaps))
+                max_gap_idx = max(range(search_end), key=lambda i: gaps[i])
+                gap_at_cut = gaps[max_gap_idx]
+                # Only cut at this gap if it's a real cliff (gap >= 0.03)
+                # and the cut keeps >= 10 memories (to avoid cutting too aggressively)
+                if gap_at_cut >= 0.03 and (max_gap_idx + 1) >= 10:
+                    pool = pool[:max_gap_idx + 1]
+                else:
+                    # No natural cliff: hard cap at 200 to bound scan cost
+                    pool = pool[:200]
 
         return pool
+
+    async def _spreading_activation(
+        self,
+        seeds: List[Tuple[str, float]],
+        max_hops: int = 2,
+        decay: float = 0.5,
+        threshold: float = 0.15,
+    ) -> List[Tuple[str, float]]:
+        """
+        BFS spreading activation across the causal ref graph.
+
+        Starting from seed memories (protein bond output), follows
+        cross_layer_refs with decaying activation per hop. Merges
+        activated memories into the candidate list — taking max
+        activation where a memory appears via multiple paths.
+
+        If cross_layer_refs are empty (graph not yet built), this
+        returns seeds unchanged. Zero-overhead when graph is sparse.
+
+        max_hops=2, decay=0.5:
+          hop 0 (seeds):   activation = cosine score       (e.g. 0.85)
+          hop 1 (refs):    activation = 0.85 × 0.5 = 0.42
+          hop 2 (ref-refs): activation = 0.42 × 0.5 = 0.21
+          below threshold (0.15) → stops
+        """
+        if not seeds:
+            return seeds
+
+        # Start: seed activations
+        activation: Dict[str, float] = {m_id: score for m_id, score in seeds}
+        frontier = [m_id for m_id, _ in seeds]
+
+        for _hop in range(max_hops):
+            if not frontier:
+                break
+
+            # Fetch frontier memories to read their cross_layer_refs
+            frontier_mems = await self.db.fetch_memories(self.tenant_id, frontier)
+
+            # Check if any refs exist — if not, short-circuit
+            has_refs = any(m.cross_layer_refs for m in frontier_mems)
+            if not has_refs:
+                break
+
+            next_frontier: List[str] = []
+            for mem in frontier_mems:
+                current = activation.get(mem.memory_id, 0.0)
+                spread = current * decay
+                if spread < threshold:
+                    continue
+                for ref_id in mem.cross_layer_refs:
+                    if activation.get(ref_id, 0.0) < spread:
+                        activation[ref_id] = spread
+                        next_frontier.append(ref_id)
+
+            frontier = list(set(next_frontier))
+
+        return sorted(activation.items(), key=lambda x: x[1], reverse=True)
 
     # ──────────────────────────────────────────
     # RETRIEVE — PART 2: INTENT DRONE
@@ -997,7 +1184,7 @@ Each memory shows its intent label and historical keep rate.
 Reply with JSON only — no markdown.
 
 Candidates:
-{json.dumps(candidate_list[:30], indent=2)}
+{json.dumps(candidate_list[:DRONE_CANDIDATE_CAP], indent=2)}
 
 Reply format:
 {{"keep": ["id1", "id2"], "drop": ["id3"], "conflicts": [["id4", "id5"]]}}
@@ -1008,7 +1195,7 @@ Only keep memories that help achieve the goal. Flag conflicts where two memories
             response = await self.llm.complete(
                 prompt=prompt,
                 model=self.drone_model,
-                max_tokens=300,
+                max_tokens=500,
             )
             data = json.loads(response)
             keep_ids = set(data.get("keep", []))
@@ -1025,7 +1212,13 @@ Only keep memories that help achieve the goal. Flag conflicts where two memories
             # keep_delta is applied by confirm_memory_useful() after task success
             asyncio.create_task(self._drone_feedback(drop_ids))
 
-            return [(m_id, score) for m_id, score in candidates if m_id in keep_ids]
+            curated = [(m_id, score) for m_id, score in candidates if m_id in keep_ids]
+            # Blackout guard: if drone dropped everything, fall back to top-k from
+            # pattern assembly so the agent never receives an empty context.
+            if not curated and candidates:
+                logger.debug("Drone returned 0 keeps — blackout guard activated, using pattern top results")
+                return candidates
+            return curated
 
         except Exception as e:
             logger.warning(f"Drone evaluation failed: {e} — returning pattern results")
@@ -1073,9 +1266,19 @@ Only keep memories that help achieve the goal. Flag conflicts where two memories
         top_k: int,
     ) -> List[Tuple[str, float]]:
         """
-        Ensure at least one memory from each available layer.
-        Fill token budget from top of ranked list.
+        Soft layer diversity: promote the first memory from each unseen layer
+        ONLY when its score is within DIVERSITY_SCORE_GAP of the next
+        same-layer memory it would displace. This prevents a low-relevance
+        Emotional/Relationship memory (score 0.71) from pushing out a
+        high-relevance Semantic memory (score 0.88) just to fill a layer slot.
         """
+        # Track next-best score per layer for gap calculation
+        layer_best: Dict[MemoryLayer, float] = {}
+        for m_id, score in candidates:
+            mem = memories_by_id.get(m_id)
+            if mem and mem.layer not in layer_best:
+                layer_best[mem.layer] = score
+
         seen_layers: Set[MemoryLayer] = set()
         priority: List[Tuple[str, float]] = []
         remainder: List[Tuple[str, float]] = []
@@ -1085,8 +1288,17 @@ Only keep memories that help achieve the goal. Flag conflicts where two memories
             if not mem:
                 continue
             if mem.layer not in seen_layers:
-                priority.append((m_id, score))
-                seen_layers.add(mem.layer)
+                # Only force diversity if the candidate score is close to the
+                # top of the overall list — i.e., not too far below the best score
+                best_overall = candidates[0][1] if candidates else 1.0
+                gap = best_overall - score
+                if gap <= DIVERSITY_SCORE_GAP:
+                    priority.append((m_id, score))
+                    seen_layers.add(mem.layer)
+                else:
+                    # Gap too large — treat as ordinary candidate, don't force in
+                    remainder.append((m_id, score))
+                    seen_layers.add(mem.layer)  # still mark seen so we don't try again
             else:
                 remainder.append((m_id, score))
 
@@ -1119,6 +1331,87 @@ Only keep memories that help achieve the goal. Flag conflicts where two memories
                             "note":        "potentially contradicting — verify before acting",
                         })
         return conflicts
+
+    def _compress_context(
+        self,
+        final: List[Tuple[str, float]],
+        memories_by_id: Dict[str, "BondedMemory"],
+        conflicts: List[Dict],
+    ) -> Dict[str, Any]:
+        """
+        Compress the activated memory set into a structured context package.
+        Groups by layer, surfaces tensions, identifies anchor memories
+        (those referenced by multiple others in this subgraph).
+
+        The LLM receives this instead of a flat list — it gets a pre-assembled
+        picture: what is fact, what happened, how things are done, and where
+        there are tensions. No archaeology required.
+        """
+        import time as _time
+
+        now = _time.time()
+
+        # Group memories by layer, sorted by score descending
+        by_layer: Dict[str, List[Dict]] = {}
+        for m_id, score in final:
+            mem = memories_by_id.get(m_id)
+            if not mem:
+                continue
+            layer = mem.layer.value
+            if layer not in by_layer:
+                by_layer[layer] = []
+            age_days = round((now - mem.timestamp) / 86400, 1)
+            by_layer[layer].append({
+                "id":         m_id,
+                "content":    mem.content,
+                "score":      round(score, 3),
+                "confidence": round(mem.confidence, 2),
+                "age_days":   age_days,
+                "refs":       mem.cross_layer_refs,
+            })
+        for layer in by_layer:
+            by_layer[layer].sort(key=lambda x: x["score"], reverse=True)
+
+        # Anchor detection: memories referenced by 2+ others in this activated set
+        # A high ref-count = load-bearing memory, even if not highest cosine scorer
+        ref_counts: Dict[str, int] = {}
+        for m_id, _ in final:
+            mem = memories_by_id.get(m_id)
+            if not mem:
+                continue
+            for ref_id in mem.cross_layer_refs:
+                if ref_id in memories_by_id:
+                    ref_counts[ref_id] = ref_counts.get(ref_id, 0) + 1
+
+        anchors = [
+            {
+                "id":            mid,
+                "referenced_by": count,
+                "content":       memories_by_id[mid].content,
+                "layer":         memories_by_id[mid].layer.value,
+            }
+            for mid, count in sorted(ref_counts.items(), key=lambda x: x[1], reverse=True)
+            if count >= 2 and mid in memories_by_id
+        ]
+
+        # Enrich tensions with actual content so the LLM sees what contradicts what
+        tensions = []
+        for c in conflicts:
+            ma = memories_by_id.get(c["memory_a"])
+            mb = memories_by_id.get(c["memory_b"])
+            if ma and mb:
+                tensions.append({
+                    "domain":   c["domain"],
+                    "note":     c["note"],
+                    "memory_a": {"id": c["memory_a"], "content": ma.content},
+                    "memory_b": {"id": c["memory_b"], "content": mb.content},
+                })
+
+        return {
+            "by_layer": by_layer,
+            "anchors":  anchors,
+            "tensions": tensions,
+        }
 
     # ──────────────────────────────────────────
     # WORKING MEMORY MANAGEMENT
