@@ -512,6 +512,7 @@ class CognitiveMemorySystem:
         router_model: str = "claude-haiku-4-5-20251001",
         watchdog=None,            # optional Watchdog reference
         signal_db: Optional[SignalDatabase] = None,
+        resonance_floor: float = RESONANCE_FLOOR,
     ):
         self.tenant_id  = tenant_id
         self.db         = db
@@ -522,6 +523,7 @@ class CognitiveMemorySystem:
         self.router_model = router_model
         self.watchdog   = watchdog
         self.signal_db  = signal_db
+        self.resonance_floor = resonance_floor
 
         self.enabled_layers = set(enabled_layers or list(MemoryLayer))
 
@@ -1005,7 +1007,7 @@ If none qualify: {{"related_ids": [], "reason": "no causal links"}}"""
             except Exception:
                 continue
             combined = (PATTERN_WEIGHT * pattern_score) + (INTENT_WEIGHT * intent_score)
-            if combined >= RESONANCE_FLOOR:
+            if combined >= self.resonance_floor:
                 # Boost by drone keep history
                 combined = min(1.0, combined + (mem.drone_keep_score - 0.5) * 0.1)
                 # Recency bonus: decays exponentially, max +RECENCY_WEIGHT for today's memory

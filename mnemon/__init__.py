@@ -51,6 +51,7 @@ class Mnemon:
         bus_enabled:    bool = True,
         enabled_layers: Optional[List[MemoryLayer]] = None,
         similarity_threshold: float = 0.70,
+        resonance_floor: float = 0.70,
         adapter: Optional[TemplateAdapter] = None,
         cost_budget: Optional[CostBudget] = None,
         llm_client=None,
@@ -106,7 +107,7 @@ class Mnemon:
                 tenant_id=tenant_id, db=self._db, index=self._index,
                 embedder=self._embedder, llm_client=resolved_llm,
                 enabled_layers=enabled_layers, drone_model=drone_model,
-                router_model=router_model,
+                router_model=router_model, resonance_floor=resonance_floor,
             )
         if eme_enabled:
             self._eme = ExecutionMemoryEngine(
