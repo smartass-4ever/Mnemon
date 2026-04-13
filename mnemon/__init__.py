@@ -23,7 +23,6 @@ import asyncio
 import hashlib
 import logging
 import time
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from mnemon.core.models import (
@@ -46,7 +45,7 @@ class Mnemon:
         self,
         tenant_id: str,
         agent_id: str = "default",
-        db_path: str = "mnemon.db",
+        db_dir: str = ".",
         memory_enabled: bool = True,
         eme_enabled:    bool = True,
         bus_enabled:    bool = True,
@@ -74,10 +73,7 @@ class Mnemon:
         self.bus_enabled    = bus_enabled
 
         self._embedder = SimpleEmbedder()
-        # Derive db_dir from db_path so the caller's directory preference is respected.
-        # The actual file becomes: {db_dir}/mnemon_tenant_{tenant_id}.db
-        _db_dir = str(Path(db_path).parent)
-        self._db       = EROSDatabase(tenant_id=tenant_id, db_dir=_db_dir)
+        self._db       = EROSDatabase(tenant_id=tenant_id, db_dir=db_dir)
         self._index    = InvertedIndex()
         # LLM client — explicit > auto-detect from env > None (rule-based)
         if llm_client is not None:
@@ -373,7 +369,7 @@ class Mnemon:
             config = json.load(f)
         kwargs: dict = dict(
             tenant_id=config.get("tenant_id", "default"),
-            db_path=config.get("db_path", "mnemon.db"),
+            db_dir=config.get("db_dir", config.get("db_path", ".")),
             memory_enabled=config.get("memory_enabled", True),
             eme_enabled=config.get("eme_enabled", True),
             bus_enabled=config.get("bus_enabled", True),

@@ -1,0 +1,666 @@
+{
+  "generated_at": "2026-04-12T07:45:46Z",
+  "provider": "groq",
+  "model": "llama-3.1-8b / llama-3.1-70b (free tier)",
+  "n_tasks": 45,
+  "summary": {
+    "baseline": {
+      "llm_calls": 45,
+      "tokens": 9786,
+      "cost_usd": 0.005774,
+      "wall_time_s": 0.03
+    },
+    "mnemon": {
+      "llm_calls": 3,
+      "tokens": 651,
+      "gen_tokens": 651,
+      "internal_tokens": 0,
+      "cost_usd": 0.000384,
+      "wall_time_s": 0.08,
+      "s1_hits": 30,
+      "s2_hits": 12,
+      "misses": 3
+    },
+    "savings": {
+      "tokens_saved": 9135,
+      "tokens_pct": 93.3,
+      "cost_saved_usd": 0.00539,
+      "time_saved_s": 0.0,
+      "time_pct": 0.0
+    }
+  },
+  "per_task_baseline": [
+    {
+      "run": 1,
+      "type": "security_audit",
+      "tokens": 218,
+      "latency_ms": 1
+    },
+    {
+      "run": 2,
+      "type": "invoice_process",
+      "tokens": 220,
+      "latency_ms": 0
+    },
+    {
+      "run": 3,
+      "type": "weekly_report",
+      "tokens": 213,
+      "latency_ms": 1
+    },
+    {
+      "run": 4,
+      "type": "security_audit",
+      "tokens": 220,
+      "latency_ms": 1
+    },
+    {
+      "run": 5,
+      "type": "invoice_process",
+      "tokens": 221,
+      "latency_ms": 0
+    },
+    {
+      "run": 6,
+      "type": "weekly_report",
+      "tokens": 213,
+      "latency_ms": 1
+    },
+    {
+      "run": 7,
+      "type": "security_audit",
+      "tokens": 218,
+      "latency_ms": 1
+    },
+    {
+      "run": 8,
+      "type": "invoice_process",
+      "tokens": 221,
+      "latency_ms": 0
+    },
+    {
+      "run": 9,
+      "type": "weekly_report",
+      "tokens": 212,
+      "latency_ms": 1
+    },
+    {
+      "run": 10,
+      "type": "security_audit",
+      "tokens": 220,
+      "latency_ms": 1
+    },
+    {
+      "run": 11,
+      "type": "invoice_process",
+      "tokens": 220,
+      "latency_ms": 0
+    },
+    {
+      "run": 12,
+      "type": "weekly_report",
+      "tokens": 214,
+      "latency_ms": 1
+    },
+    {
+      "run": 13,
+      "type": "security_audit",
+      "tokens": 218,
+      "latency_ms": 1
+    },
+    {
+      "run": 14,
+      "type": "invoice_process",
+      "tokens": 221,
+      "latency_ms": 0
+    },
+    {
+      "run": 15,
+      "type": "weekly_report",
+      "tokens": 213,
+      "latency_ms": 1
+    },
+    {
+      "run": 16,
+      "type": "security_audit",
+      "tokens": 218,
+      "latency_ms": 0
+    },
+    {
+      "run": 17,
+      "type": "invoice_process",
+      "tokens": 220,
+      "latency_ms": 1
+    },
+    {
+      "run": 18,
+      "type": "weekly_report",
+      "tokens": 213,
+      "latency_ms": 1
+    },
+    {
+      "run": 19,
+      "type": "security_audit",
+      "tokens": 220,
+      "latency_ms": 0
+    },
+    {
+      "run": 20,
+      "type": "invoice_process",
+      "tokens": 221,
+      "latency_ms": 1
+    },
+    {
+      "run": 21,
+      "type": "weekly_report",
+      "tokens": 213,
+      "latency_ms": 1
+    },
+    {
+      "run": 22,
+      "type": "security_audit",
+      "tokens": 218,
+      "latency_ms": 0
+    },
+    {
+      "run": 23,
+      "type": "invoice_process",
+      "tokens": 221,
+      "latency_ms": 1
+    },
+    {
+      "run": 24,
+      "type": "weekly_report",
+      "tokens": 212,
+      "latency_ms": 0
+    },
+    {
+      "run": 25,
+      "type": "security_audit",
+      "tokens": 220,
+      "latency_ms": 1
+    },
+    {
+      "run": 26,
+      "type": "invoice_process",
+      "tokens": 220,
+      "latency_ms": 1
+    },
+    {
+      "run": 27,
+      "type": "weekly_report",
+      "tokens": 214,
+      "latency_ms": 0
+    },
+    {
+      "run": 28,
+      "type": "security_audit",
+      "tokens": 218,
+      "latency_ms": 1
+    },
+    {
+      "run": 29,
+      "type": "invoice_process",
+      "tokens": 221,
+      "latency_ms": 1
+    },
+    {
+      "run": 30,
+      "type": "weekly_report",
+      "tokens": 213,
+      "latency_ms": 1
+    },
+    {
+      "run": 31,
+      "type": "security_audit",
+      "tokens": 218,
+      "latency_ms": 0
+    },
+    {
+      "run": 32,
+      "type": "invoice_process",
+      "tokens": 220,
+      "latency_ms": 1
+    },
+    {
+      "run": 33,
+      "type": "weekly_report",
+      "tokens": 213,
+      "latency_ms": 0
+    },
+    {
+      "run": 34,
+      "type": "security_audit",
+      "tokens": 220,
+      "latency_ms": 1
+    },
+    {
+      "run": 35,
+      "type": "invoice_process",
+      "tokens": 221,
+      "latency_ms": 1
+    },
+    {
+      "run": 36,
+      "type": "weekly_report",
+      "tokens": 213,
+      "latency_ms": 0
+    },
+    {
+      "run": 37,
+      "type": "security_audit",
+      "tokens": 218,
+      "latency_ms": 1
+    },
+    {
+      "run": 38,
+      "type": "invoice_process",
+      "tokens": 221,
+      "latency_ms": 1
+    },
+    {
+      "run": 39,
+      "type": "weekly_report",
+      "tokens": 212,
+      "latency_ms": 0
+    },
+    {
+      "run": 40,
+      "type": "security_audit",
+      "tokens": 220,
+      "latency_ms": 1
+    },
+    {
+      "run": 41,
+      "type": "invoice_process",
+      "tokens": 220,
+      "latency_ms": 1
+    },
+    {
+      "run": 42,
+      "type": "weekly_report",
+      "tokens": 214,
+      "latency_ms": 0
+    },
+    {
+      "run": 43,
+      "type": "security_audit",
+      "tokens": 218,
+      "latency_ms": 1
+    },
+    {
+      "run": 44,
+      "type": "invoice_process",
+      "tokens": 221,
+      "latency_ms": 1
+    },
+    {
+      "run": 45,
+      "type": "weekly_report",
+      "tokens": 213,
+      "latency_ms": 0
+    }
+  ],
+  "per_task_mnemon": [
+    {
+      "run": 1,
+      "type": "security_audit",
+      "cache_level": "miss",
+      "tokens": 218,
+      "latency_ms": 3,
+      "segments_reused": 0
+    },
+    {
+      "run": 2,
+      "type": "invoice_process",
+      "cache_level": "miss",
+      "tokens": 220,
+      "latency_ms": 7,
+      "segments_reused": 0
+    },
+    {
+      "run": 3,
+      "type": "weekly_report",
+      "cache_level": "miss",
+      "tokens": 213,
+      "latency_ms": 2,
+      "segments_reused": 0
+    },
+    {
+      "run": 4,
+      "type": "security_audit",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 4,
+      "segments_reused": 0
+    },
+    {
+      "run": 5,
+      "type": "invoice_process",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 2,
+      "segments_reused": 0
+    },
+    {
+      "run": 6,
+      "type": "weekly_report",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 4,
+      "segments_reused": 0
+    },
+    {
+      "run": 7,
+      "type": "security_audit",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 3,
+      "segments_reused": 0
+    },
+    {
+      "run": 8,
+      "type": "invoice_process",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 5,
+      "segments_reused": 0
+    },
+    {
+      "run": 9,
+      "type": "weekly_report",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 3,
+      "segments_reused": 0
+    },
+    {
+      "run": 10,
+      "type": "security_audit",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 5,
+      "segments_reused": 0
+    },
+    {
+      "run": 11,
+      "type": "invoice_process",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 3,
+      "segments_reused": 0
+    },
+    {
+      "run": 12,
+      "type": "weekly_report",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 5,
+      "segments_reused": 0
+    },
+    {
+      "run": 13,
+      "type": "security_audit",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 4,
+      "segments_reused": 0
+    },
+    {
+      "run": 14,
+      "type": "invoice_process",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 6,
+      "segments_reused": 0
+    },
+    {
+      "run": 15,
+      "type": "weekly_report",
+      "cache_level": "system2",
+      "tokens": 0,
+      "latency_ms": 6,
+      "segments_reused": 0
+    },
+    {
+      "run": 16,
+      "type": "security_audit",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 3,
+      "segments_reused": 5
+    },
+    {
+      "run": 17,
+      "type": "invoice_process",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 0,
+      "segments_reused": 5
+    },
+    {
+      "run": 18,
+      "type": "weekly_report",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 19,
+      "type": "security_audit",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 20,
+      "type": "invoice_process",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 0,
+      "segments_reused": 5
+    },
+    {
+      "run": 21,
+      "type": "weekly_report",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 22,
+      "type": "security_audit",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 23,
+      "type": "invoice_process",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 0,
+      "segments_reused": 5
+    },
+    {
+      "run": 24,
+      "type": "weekly_report",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 25,
+      "type": "security_audit",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 0,
+      "segments_reused": 5
+    },
+    {
+      "run": 26,
+      "type": "invoice_process",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 27,
+      "type": "weekly_report",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 28,
+      "type": "security_audit",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 0,
+      "segments_reused": 5
+    },
+    {
+      "run": 29,
+      "type": "invoice_process",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 30,
+      "type": "weekly_report",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 31,
+      "type": "security_audit",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 32,
+      "type": "invoice_process",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 33,
+      "type": "weekly_report",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 34,
+      "type": "security_audit",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 0,
+      "segments_reused": 5
+    },
+    {
+      "run": 35,
+      "type": "invoice_process",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 36,
+      "type": "weekly_report",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 37,
+      "type": "security_audit",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 38,
+      "type": "invoice_process",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 0,
+      "segments_reused": 5
+    },
+    {
+      "run": 39,
+      "type": "weekly_report",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 40,
+      "type": "security_audit",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 0,
+      "segments_reused": 5
+    },
+    {
+      "run": 41,
+      "type": "invoice_process",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 42,
+      "type": "weekly_report",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 43,
+      "type": "security_audit",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 0,
+      "segments_reused": 5
+    },
+    {
+      "run": 44,
+      "type": "invoice_process",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 1,
+      "segments_reused": 5
+    },
+    {
+      "run": 45,
+      "type": "weekly_report",
+      "cache_level": "system1",
+      "tokens": 0,
+      "latency_ms": 0,
+      "segments_reused": 5
+    }
+  ]
+}

@@ -36,7 +36,7 @@ from mnemon.adapters.letta import LettaAdapter
 from mnemon.llm.client import MockLLMClient
 
 
-DB_PATH = "/tmp/eros_test_suite.db"
+DB_DIR = "/tmp"
 TENANT  = "test_tenant"
 
 # ─────────────────────────────────────────────
@@ -47,11 +47,11 @@ def run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
-async def make_eros(llm=None) -> EROSDatabase:
-    mnemon = Mnemon(
+async def make_eros(llm=None) -> "Mnemon":
+    eros = Mnemon(
         tenant_id=TENANT,
         agent_id="test_agent",
-        db_path=DB_PATH,
+        db_dir=DB_DIR,
         llm_client=llm,
         prewarm_fragments=False,
     )
@@ -295,9 +295,9 @@ async def test_eme_fragment_library():
 
 async def test_eme_cost_budget_fallback():
     budget = CostBudget(max_llm_calls_per_hour=0, overflow_policy="fallback")
-    mnemon = Mnemon(
+    eros = Mnemon(
         tenant_id=TENANT, agent_id="test_budget",
-        db_path=DB_PATH, cost_budget=budget,
+        db_dir=DB_DIR, cost_budget=budget,
         prewarm_fragments=False,
     )
     await eros.start()
@@ -431,9 +431,9 @@ def test_security_encryption():
 
 
 async def test_security_blocked_write():
-    mnemon = Mnemon(
+    eros = Mnemon(
         tenant_id=TENANT, agent_id="secure_agent",
-        db_path=DB_PATH,
+        db_dir=DB_DIR,
         blocked_categories=["pii"],
         prewarm_fragments=False,
     )
@@ -456,9 +456,9 @@ async def test_security_blocked_write():
 # ─────────────────────────────────────────────
 
 async def test_watchdog_health_check():
-    mnemon = Mnemon(
+    eros = Mnemon(
         tenant_id=TENANT, agent_id="watched_agent",
-        db_path=DB_PATH, enable_watchdog=True,
+        db_dir=DB_DIR, enable_watchdog=True,
         prewarm_fragments=False,
     )
     await eros.start()
@@ -473,9 +473,9 @@ async def test_watchdog_health_check():
 
 
 async def test_telemetry_tracking():
-    mnemon = Mnemon(
+    eros = Mnemon(
         tenant_id=TENANT, agent_id="telemetry_agent",
-        db_path=DB_PATH, enable_telemetry=True,
+        db_dir=DB_DIR, enable_telemetry=True,
         prewarm_fragments=False,
     )
     await eros.start()
@@ -512,9 +512,9 @@ def test_fragment_library_loads():
 
 
 async def test_prewarm_on_start():
-    mnemon = Mnemon(
+    eros = Mnemon(
         tenant_id="prewarm_test", agent_id="agent",
-        db_path="/tmp/eros_prewarm_test.db",
+        db_dir="/tmp",
         prewarm_fragments=True,
     )
     await eros.start()
@@ -644,9 +644,9 @@ async def test_mock_llm_router():
 
 async def test_mnemon_with_mock_llm():
     mock = MockLLMClient()
-    mnemon = Mnemon(
+    eros = Mnemon(
         tenant_id=TENANT, agent_id="llm_test_agent",
-        db_path=DB_PATH, llm_client=mock,
+        db_dir=DB_DIR, llm_client=mock,
         prewarm_fragments=False,
     )
     await eros.start()
@@ -672,10 +672,10 @@ async def test_mnemon_with_mock_llm():
 
 async def test_full_pipeline():
     mock = MockLLMClient()
-    mnemon = Mnemon(
+    eros = Mnemon(
         tenant_id="integration_test",
         agent_id="pipeline_agent",
-        db_path="/tmp/eros_integration.db",
+        db_dir="/tmp",
         llm_client=mock,
         enable_watchdog=True,
         enable_telemetry=True,

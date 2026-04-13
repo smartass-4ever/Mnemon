@@ -70,9 +70,9 @@ async def cmd_init(args):
     print("  1. SQLite (local, zero config) — recommended for development")
     print("  2. Redis (production ready)    — recommended for production")
     choice = input("Choose [1]: ").strip() or "1"
-    db_path = "mnemon.db" if choice == "1" else None
-    if db_path:
-        print(f"  Using SQLite: {db_path}")
+    db_dir = "." if choice == "1" else None
+    if db_dir:
+        print(f"  Using SQLite: mnemon_tenant_<tenant_id>.db in current directory")
     else:
         print("  Configure EROS_REDIS_URL environment variable")
 
@@ -87,7 +87,7 @@ async def cmd_init(args):
     # Write config
     config = {
         "tenant_id":          args.tenant_id or "my_company",
-        "db_path":            db_path or "mnemon.db",
+        "db_dir":             db_dir or ".",
         "framework":          framework,
         "version":            "1.0.0",
         "created_at":         time.time(),
@@ -121,21 +121,21 @@ async def cmd_init(args):
         await asyncio.sleep(0.05)
         return [{"id": "step_1", "action": "scan"}, {"id": "step_2", "action": "report"}]
 
-    async with Mnemon(tenant_id=config["tenant_id"], db_path=db_path) as mnemon:
+    async with Mnemon(tenant_id=config["tenant_id"], db_dir=db_dir) as mnemon:
         # Pre-load fragments
         frags = load_fragments(config["tenant_id"])
         for frag in frags[:20]:  # load first 20 for demo
-            await mnemon.db.write_fragment(frag)
+            await mnemon._db.write_fragment(frag)
 
         t0 = time.time()
-        r1 = await eros.run(
+        r1 = await mnemon.run(
             goal="generate weekly security report",
             inputs={"client": "Demo Corp", "week": "this week"},
             generation_fn=dummy_gen,
         )
         t1 = time.time()
 
-        r2 = await eros.run(
+        r2 = await mnemon.run(
             goal="generate weekly security report",
             inputs={"client": "Demo Corp", "week": "next week"},
             generation_fn=dummy_gen,
@@ -159,9 +159,9 @@ Ready. Add to your agent:
   from mnemon import Mnemon
 
   mnemon = Mnemon.from_config("{config_path}")
-  await eros.start()
+  await mnemon.start()
 
-  result = await eros.run(
+  result = await mnemon.run(
       goal="your task description",
       inputs={{...}},
       generation_fn=your_planning_function,
@@ -198,18 +198,18 @@ async def cmd_health(args):
         with open(config_path) as f:
             config = json.load(f)
         tenant_id = config.get("tenant_id", "default")
-        db_path   = config.get("db_path", "mnemon.db")
+        db_dir    = config.get("db_dir", config.get("db_path", "."))
     else:
         tenant_id = "default"
-        db_path   = "mnemon.db"
+        db_dir    = "."
 
-    async with Mnemon(tenant_id=tenant_id, db_path=db_path) as mnemon:
+    async with Mnemon(tenant_id=tenant_id, db_dir=db_dir) as mnemon:
         watchdog = Watchdog(
             tenant_id=tenant_id,
-            db=eros._db,
-            index=eros._index,
-            bus=eros._bus,
-            eme=eros._eme,
+            db=mnemon._db,
+            index=mnemon._index,
+            bus=mnemon._bus,
+            eme=mnemon._eme,
         )
         result = await watchdog.health_check()
 
@@ -234,13 +234,13 @@ async def cmd_stats(args):
         with open(config_path) as f:
             config = json.load(f)
         tenant_id = config.get("tenant_id", "default")
-        db_path   = config.get("db_path", "mnemon.db")
+        db_dir    = config.get("db_dir", config.get("db_path", "."))
     else:
         tenant_id = "default"
-        db_path   = "mnemon.db"
+        db_dir    = "."
 
-    async with Mnemon(tenant_id=tenant_id, db_path=db_path) as mnemon:
-        stats = eros.get_stats()
+    async with Mnemon(tenant_id=tenant_id, db_dir=db_dir) as mnemon:
+        stats = mnemon.get_stats()
 
     print(f"EROS Stats — tenant: {tenant_id}\n")
     db = stats.get("db", {})
