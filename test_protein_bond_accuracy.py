@@ -595,6 +595,7 @@ async def main():
 
     # Teardown
     await memory.stop()
+    await memory.db.disconnect()
 
     # Cleanup
     _new_db_path = f"./mnemon_tenant_{TENANT}.db"

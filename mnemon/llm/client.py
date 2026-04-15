@@ -399,9 +399,8 @@ class MockLLMClient(LLMClient):
                 import re
                 ids = re.findall(r'"id":\s*"([^"]+)"', prompt)
                 if ids:
-                    keep = ids[:max(1, len(ids) // 2)]
-                    drop = ids[len(keep):]
-                    return json.dumps({"keep": keep, "drop": drop, "conflicts": []})
+                    # Keep all candidates — mock has no semantic context to curate with
+                    return json.dumps({"keep": ids, "drop": [], "conflicts": []})
             except Exception:
                 pass
             return '{"keep": [], "drop": [], "conflicts": []}'

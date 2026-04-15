@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # THRESHOLDS AND CONSTANTS
 # ─────────────────────────────────────────────
 
-RESONANCE_FLOOR        = 0.70   # minimum for protein bond activation
+RESONANCE_FLOOR        = 0.25   # minimum for protein bond activation
 INTENT_WEIGHT          = 0.60   # combined score weighting
 PATTERN_WEIGHT         = 0.40
 DRONE_SPARSE_THRESHOLD = 50     # below this — no drone
@@ -44,6 +44,8 @@ EMOTION_DECAY_RATE     = 0.05   # per hour
 IMPORTANCE_DECAY_RATE  = 0.02   # per day (episodic)
 DRONE_CANDIDATE_CAP    = 80     # max candidates sent to drone LLM (was hard-coded 30)
 UNION_FALLBACK_CAP     = 10_000 # max IDs from union fallback to prevent O(n) scan
+SEMANTIC_FALLBACK_THRESHOLD = 0.20  # if tag candidates < 20% of pool, run full semantic scan
+SEMANTIC_FALLBACK_CAP  = 5_000  # max memories to scan in semantic fallback
 RECENCY_WEIGHT         = 0.05   # max recency bonus (decays exponentially by age)
 RECENCY_HALFLIFE_DAYS  = 365    # recency bonus halves every year
 DIVERSITY_SCORE_GAP    = 0.10   # only enforce layer diversity when gap < this
@@ -419,20 +421,39 @@ class RuleClassifier:
         tags: Set[str] = set()
         words = content.split()
 
-        # Proper nouns → entity tags
+        # Proper nouns → entity tags (≥2 chars so Q1, AI, UK are included)
         for word in words:
             clean = word.strip(".,!?;:'\"()").lower()
-            if word[0].isupper() and len(clean) > 2:
+            if word[0].isupper() and len(clean) >= 2:
                 tags.add(clean)
 
         # Domain keywords
         domain_map = {
-            "security":    ["security", "audit", "vulnerability", "scan", "firewall"],
-            "finance":     ["budget", "revenue", "cost", "invoice", "payment"],
-            "code":        ["code", "function", "api", "bug", "deploy", "database"],
-            "report":      ["report", "summary", "document", "pdf", "presentation"],
+            "security":    ["security", "audit", "vulnerability", "scan", "firewall",
+                            "ssl", "tls", "cert", "encrypt", "decrypt", "vault",
+                            "mfa", "cve", "oauth", "penetrat", "incident", "compliance",
+                            "authentication", "authorisation", "authorization", "breach",
+                            "soc", "owasp", "gdpr", "zero-trust", "intrusion"],
+            "finance":     ["budget", "revenue", "cost", "invoice", "payment",
+                            "ebitda", "arr", "fiscal", "payroll", "expense", "profit",
+                            "margin", "quarterly", "forecast", "capex", "opex",
+                            "netsuite", "concur", "churn", "licensing"],
+            "code":        ["code", "function", "api", "bug", "deploy", "database",
+                            "kubernetes", "k8s", "docker", "container", "terraform",
+                            "pipeline", "ci/cd", "github", "staging", "microservice",
+                            "postgresql", "postgres", "redis", "aws", "ec2", "s3",
+                            "canary", "blue-green", "rollback", "test", "coverage"],
+            "vendor":      ["vendor", "contract", "license", "renewal", "sla",
+                            "datadog", "zendesk", "grafana", "snyk", "launchdarkly",
+                            "bamboohr", "checkr", "pagerduty", "cloudflare", "jira"],
+            "hr":          ["hire", "hired", "employee", "headcount", "pto", "leave",
+                            "performance", "onboard", "compensation", "promotion",
+                            "equity", "remote", "office", "review"],
+            "report":      ["report", "summary", "document", "pdf", "presentation",
+                            "dashboard", "confluence", "adr", "postmortem"],
             "email":       ["email", "message", "reply", "send", "communicate"],
-            "meeting":     ["meeting", "call", "schedule", "agenda", "discuss"],
+            "meeting":     ["meeting", "call", "schedule", "agenda", "discuss",
+                            "sprint", "standup", "retro", "okr", "dora"],
         }
         text_lower = content.lower()
         for domain, keywords in domain_map.items():
@@ -656,16 +677,22 @@ class CognitiveMemorySystem:
         else:
             content_str = str(signal.content)
 
-        # Tags from vocab tagger (embedding-based, synchronous numpy)
-        tags, high_confidence = self.vocab_tagger.assign_tags(content_str)
+        # Tags: always union vocab-tagger tags with rule-based tags so the inverted
+        # index contains both semantic concepts (for broad queries) and exact proper
+        # nouns / domain keywords (for narrow queries).  Neither path replaces the other.
+        rule_tags = RuleClassifier.extract_tags(content_str, layer)
+        vocab_tags, high_confidence = self.vocab_tagger.assign_tags(content_str)
         if not self.vocab_tagger._ready:
-            # Vocab tagger not yet initialized (start() not called) — use rule classifier
-            tags = RuleClassifier.extract_tags(content_str, layer)
+            # Vocab tagger not yet initialized (start() not called) — rule tags only
+            tags = rule_tags
             high_confidence = True
         elif not high_confidence:
-            # Tagger ready but below threshold — minimal tags, queue for async LLM
-            domain = self._infer_domain(RuleClassifier.extract_tags(content_str, layer))
-            tags = {domain, layer.value}
+            # Tagger below confidence — minimal vocab tags; still keep all rule tags
+            domain = self._infer_domain(rule_tags)
+            tags = {domain, layer.value} | rule_tags
+        else:
+            # High-confidence vocab tags + all rule tags → richest index entry
+            tags = vocab_tags | rule_tags
 
         # Activation signature — embed the bare text, not a JSON wrapper
         act_sig = self.embedder.embed(content_str[:512])
@@ -973,6 +1000,11 @@ If none qualify: {{"related_ids": [], "reason": "no causal links"}}"""
         Returns: List of (memory_id, score) sorted descending
         """
         signal_tags = RuleClassifier.extract_tags(task_signal, MemoryLayer.EPISODIC)
+        # Strip the layer tag: on the read path we don't want to restrict to a single
+        # layer.  Keeping "episodic" here causes intersection to exclude SEMANTIC
+        # memories whenever episodic memories share another tag — union fallback never
+        # fires and cross-layer recall collapses.
+        signal_tags.discard(MemoryLayer.EPISODIC.value)
         signal_sig  = self.embedder.embed(task_signal)
         signal_intent_sig = self.embedder.embed(f"need to know: {task_signal}")
 
@@ -989,7 +1021,16 @@ If none qualify: {{"related_ids": [], "reason": "no causal links"}}"""
                 [:UNION_FALLBACK_CAP]
             )
 
-        # Fetch signatures for resonance scoring
+        # Fetch signatures for resonance scoring.
+        # Semantic fallback: when tag candidates are sparse (< 20% of pool),
+        # merge in a full embedding scan so narrow subdomain queries don't
+        # miss memories that weren't tagged precisely enough.
+        pool_size = await self._get_pool_size()
+        sparse_threshold = max(10, int(pool_size * SEMANTIC_FALLBACK_THRESHOLD))
+        if len(tag_candidates) < sparse_threshold and pool_size > 0:
+            all_ids = await self.db.fetch_all_memory_ids(self.tenant_id, limit=SEMANTIC_FALLBACK_CAP)
+            tag_candidates = tag_candidates | set(all_ids)
+
         if tag_candidates:
             tag_memories = await self.db.fetch_memories(self.tenant_id, list(tag_candidates))
         else:

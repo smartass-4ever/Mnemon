@@ -1025,6 +1025,7 @@ async def run_benchmark():
         embedder=embedder,
         llm_client=mock_llm,
     )
+    await cms.start()   # initialise vocab tagger + background workers
     print(f"  Embedder backend: {embedder._backend.__class__.__name__} ({embedder.dim}-dim)")
     print(f"  Tenant:           {TENANT}\n")
 
@@ -1081,7 +1082,7 @@ async def run_benchmark():
             task_signal=q.question,
             session_id="locomo_eval",
             task_goal=q.question,
-            top_k=15,
+            top_k=25,
         )
         latency_ms = (time.time() - t0) * 1000
 
@@ -1190,6 +1191,7 @@ async def run_benchmark():
     print(f"\n{DIM}  LLM calls (mock router/tagger): {mock_llm.call_count}{RESET}")
     print()
 
+    await cms.stop()
     await db.disconnect()
     return overall_pct
 

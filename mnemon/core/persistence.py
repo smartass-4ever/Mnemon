@@ -509,6 +509,15 @@ class EROSDatabase:
             ).fetchall()
         return [(r["tenant_id"], r["memory_id"], r["activation_tags"]) for r in rows]
 
+    async def fetch_all_memory_ids(self, tenant_id: str, limit: int = 5000) -> List[str]:
+        """Return up to `limit` active memory IDs for a tenant. Used for semantic fallback scan."""
+        async with self._lock:
+            rows = self._conn.execute(
+                "SELECT memory_id FROM memories WHERE tenant_id=? AND intent_valid=1 LIMIT ?",
+                (tenant_id, limit)
+            ).fetchall()
+        return [r["memory_id"] for r in rows]
+
     async def fetch_sample_embedding_dim(self) -> Optional[int]:
         """Return the vector length of the first stored activation_signature, or None."""
         async with self._lock:
