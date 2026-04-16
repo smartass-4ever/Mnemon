@@ -1,0 +1,156 @@
+{
+  "benchmark": "LoCoMo",
+  "paper": "https://arxiv.org/abs/2309.11998",
+  "dataset": "KimmoZZZ/locomo (public mirror of snap-stanford/locomo)",
+  "generated_at": "2026-04-16T10:12:32Z",
+  "summary": {
+    "n_questions": 10,
+    "embedder": "sentence-transformers",
+    "judge_threshold": 0.6,
+    "mnemon_accuracy": 0.6,
+    "null_baseline_accuracy": 0.0,
+    "random_baseline_accuracy": 0.0,
+    "last_session_accuracy": 0.0,
+    "avg_keyword_coverage": 0.7,
+    "avg_retrieval_latency_ms": 834.3,
+    "by_category": {
+      "temporal": {
+        "n": 6,
+        "mnemon_accuracy": 0.6667,
+        "random_accuracy": 0.0
+      },
+      "multi_hop": {
+        "n": 1,
+        "mnemon_accuracy": 0.0,
+        "random_accuracy": 0.0
+      },
+      "single_hop": {
+        "n": 3,
+        "mnemon_accuracy": 0.6667,
+        "random_accuracy": 0.0
+      }
+    }
+  },
+  "per_question": [
+    {
+      "conv_id": "conv-26",
+      "category": "temporal",
+      "question": "When did Caroline go to the LGBTQ support group?",
+      "answer": "7 May 2023",
+      "mnemon_yes": true,
+      "mnemon_coverage": 1.0,
+      "null_yes": false,
+      "random_yes": false,
+      "last_yes": false,
+      "latency_ms": 873
+    },
+    {
+      "conv_id": "conv-26",
+      "category": "temporal",
+      "question": "When did Melanie paint a sunrise?",
+      "answer": "2022",
+      "mnemon_yes": false,
+      "mnemon_coverage": 0.0,
+      "null_yes": false,
+      "random_yes": false,
+      "last_yes": false,
+      "latency_ms": 1031
+    },
+    {
+      "conv_id": "conv-26",
+      "category": "multi_hop",
+      "question": "What fields would Caroline be likely to pursue in her educaton?",
+      "answer": "Psychology, counseling certification",
+      "mnemon_yes": false,
+      "mnemon_coverage": 0.3333,
+      "null_yes": false,
+      "random_yes": false,
+      "last_yes": false,
+      "latency_ms": 907
+    },
+    {
+      "conv_id": "conv-26",
+      "category": "single_hop",
+      "question": "What did Caroline research?",
+      "answer": "Adoption agencies",
+      "mnemon_yes": false,
+      "mnemon_coverage": 0.5,
+      "null_yes": false,
+      "random_yes": false,
+      "last_yes": false,
+      "latency_ms": 713
+    },
+    {
+      "conv_id": "conv-26",
+      "category": "single_hop",
+      "question": "What is Caroline's identity?",
+      "answer": "Transgender woman",
+      "mnemon_yes": true,
+      "mnemon_coverage": 1.0,
+      "null_yes": false,
+      "random_yes": false,
+      "last_yes": false,
+      "latency_ms": 765
+    },
+    {
+      "conv_id": "conv-26",
+      "category": "temporal",
+      "question": "When did Melanie run a charity race?",
+      "answer": "The sunday before 25 May 2023",
+      "mnemon_yes": true,
+      "mnemon_coverage": 0.6667,
+      "null_yes": false,
+      "random_yes": false,
+      "last_yes": false,
+      "latency_ms": 786
+    },
+    {
+      "conv_id": "conv-26",
+      "category": "temporal",
+      "question": "When is Melanie planning on going camping?",
+      "answer": "June 2023",
+      "mnemon_yes": false,
+      "mnemon_coverage": 0.5,
+      "null_yes": false,
+      "random_yes": false,
+      "last_yes": false,
+      "latency_ms": 792
+    },
+    {
+      "conv_id": "conv-26",
+      "category": "single_hop",
+      "question": "What is Caroline's relationship status?",
+      "answer": "Single",
+      "mnemon_yes": true,
+      "mnemon_coverage": 1.0,
+      "null_yes": false,
+      "random_yes": false,
+      "last_yes": false,
+      "latency_ms": 738
+    },
+    {
+      "conv_id": "conv-26",
+      "category": "temporal",
+      "question": "When did Caroline give a speech at a school?",
+      "answer": "The week before 9 June 2023",
+      "mnemon_yes": true,
+      "mnemon_coverage": 1.0,
+      "null_yes": false,
+      "random_yes": false,
+      "last_yes": false,
+      "latency_ms": 846
+    },
+    {
+      "conv_id": "conv-26",
+      "category": "temporal",
+      "question": "When did Caroline meet up with her friends, family, and mentors?",
+      "answer": "The week before 9 June 2023",
+      "mnemon_yes": true,
+      "mnemon_coverage": 1.0,
+      "null_yes": false,
+      "random_yes": false,
+      "last_yes": false,
+      "latency_ms": 891
+    }
+  ]
+}

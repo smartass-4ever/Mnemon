@@ -1,5 +1,12 @@
-venv/ 
-__pycache__/ 
+venv/
+__pycache__/
 /*.db
-*.pyc 
-.env 
+*.pyc
+.env
+data/locomo/
+data/longmemeval/
+debug_out.txt
+fix_test.txt
+lme_test.txt
+lme_full.txt
+locomo_fixed_full.txt
