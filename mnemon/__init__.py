@@ -261,14 +261,15 @@ class Mnemon:
             self._watchdog.record_eme_run(eme_result.cache_level)
 
         return {
-            "template":        eme_result.template if eme_result else None,
-            "cache_level":     eme_result.cache_level if eme_result else "error",
-            "segments_reused": eme_result.segments_reused if eme_result else 0,
-            "tokens_saved":    eme_result.tokens_saved if eme_result else 0,
-            "latency_ms":      latency_ms,
-            "memory_context":  memory_context,
-            "task_id":         task_id,
-            "session_id":      session_id,
+            "template":         eme_result.template if eme_result else None,
+            "cache_level":      eme_result.cache_level if eme_result else "error",
+            "segments_reused":  eme_result.segments_reused if eme_result else 0,
+            "tokens_saved":     eme_result.tokens_saved if eme_result else 0,
+            "latency_saved_ms": eme_result.latency_saved_ms if eme_result else 0,
+            "latency_ms":       latency_ms,
+            "memory_context":   memory_context,
+            "task_id":          task_id,
+            "session_id":       session_id,
         }
 
     async def remember(self, content: Any, layer: Optional[MemoryLayer] = None,

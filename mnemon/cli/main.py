@@ -57,35 +57,35 @@ async def cmd_demo(args):
     """Instant demo — no API key, no config, no user input required."""
     import tempfile
     print_banner()
-    print("Running demo — no API key needed.\n")
+    print("No API key. No config. Just run it.\n")
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from mnemon import Mnemon
     from mnemon.fragments.library import load_fragments
 
     async def mock_gen(goal, inputs, context, caps, constraints):
-        """Simulates what an LLM would generate — used only on cache miss."""
-        await asyncio.sleep(0.08)  # simulate ~80ms LLM call
+        """Simulates an LLM planning call — only runs on cache miss."""
+        await asyncio.sleep(0.25)  # realistic ~250ms LLM planning latency
         return [
-            {"id": "step_1", "action": "authenticate",   "tool": "auth_service"},
-            {"id": "step_2", "action": "fetch_data",      "tool": "data_api",    "depends_on": ["step_1"]},
-            {"id": "step_3", "action": "analyse",         "tool": "analysis_fn", "depends_on": ["step_2"]},
-            {"id": "step_4", "action": "generate_report", "tool": "report_fn",   "depends_on": ["step_3"]},
-            {"id": "step_5", "action": "send_output",     "tool": "notify_fn",   "depends_on": ["step_4"]},
+            {"id": "step_1", "action": "authenticate",    "tool": "auth_service"},
+            {"id": "step_2", "action": "fetch_data",       "tool": "data_api",    "depends_on": ["step_1"]},
+            {"id": "step_3", "action": "analyse",          "tool": "analysis_fn", "depends_on": ["step_2"]},
+            {"id": "step_4", "action": "generate_report",  "tool": "report_fn",   "depends_on": ["step_3"]},
+            {"id": "step_5", "action": "send_output",      "tool": "notify_fn",   "depends_on": ["step_4"]},
         ]
 
     with tempfile.TemporaryDirectory() as tmp:
         async with Mnemon(tenant_id="demo", db_dir=tmp, enable_telemetry=False) as m:
-            # Pre-load fragments so System 1 can fire immediately
             frags = load_fragments("demo")
             for frag in frags:
                 await m._db.write_fragment(frag)
             if m._eme:
                 m._eme._fragments = frags
 
-            print("  Task: generate weekly security report for Acme Corp\n")
+            print("  Scenario: your agent runs the same class of task repeatedly.")
+            print("  Goal: 'generate weekly security report'\n")
 
-            # Run 1 — cold miss
+            # Run 1 — cold miss, LLM is called
             t0 = time.time()
             r1 = await m.run(
                 goal="generate weekly security report",
@@ -94,7 +94,7 @@ async def cmd_demo(args):
             )
             ms1 = (time.time() - t0) * 1000
 
-            # Run 2 — same goal, different week → System 1 or System 2 hit
+            # Run 2 — same goal, different week → System 1 hit (served from cache)
             t1 = time.time()
             r2 = await m.run(
                 goal="generate weekly security report",
@@ -103,33 +103,39 @@ async def cmd_demo(args):
             )
             ms2 = (time.time() - t1) * 1000
 
-            # Run 3 — different client → may partial hit
+            # Run 3 — different client, same goal → System 1 hit
             t2 = time.time()
             r3 = await m.run(
                 goal="generate weekly security report",
-                inputs={"client": "Beta LLC", "week": "2026-W16"},
+                inputs={"client": "Beta LLC", "week": "2026-W17"},
                 generation_fn=mock_gen,
             )
             ms3 = (time.time() - t2) * 1000
 
-    def cache_label(level):
-        if level == "system1": return "CACHE HIT  (System 1 — exact)"
-        if level == "system2": return "CACHE HIT  (System 2 — partial)"
-        return "cache miss (cold)"
+    def cache_label(r):
+        level = r.get("cache_level", "miss")
+        if level == "system1": return "CACHE HIT   (exact match — LLM skipped)"
+        if level == "system2": return "CACHE HIT   (partial match — LLM skipped)"
+        return "cache miss  (LLM called)"
 
-    total_saved  = r1.get("tokens_saved", 0) + r2.get("tokens_saved", 0) + r3.get("tokens_saved", 0)
-    latency_saved = r1.get("latency_saved_ms", 0) + r2.get("latency_saved_ms", 0) + r3.get("latency_saved_ms", 0)
+    total_tokens  = r1.get("tokens_saved", 0) + r2.get("tokens_saved", 0) + r3.get("tokens_saved", 0)
+    total_lat_saved = r1.get("latency_saved_ms", 0) + r2.get("latency_saved_ms", 0) + r3.get("latency_saved_ms", 0)
 
-    print(f"  Run 1  {ms1:6.0f}ms   {cache_label(r1.get('cache_level', 'miss'))}")
-    print(f"  Run 2  {ms2:6.0f}ms   {cache_label(r2.get('cache_level', 'miss'))}")
-    print(f"  Run 3  {ms3:6.0f}ms   {cache_label(r3.get('cache_level', 'miss'))}")
+    print(f"  Run 1  {ms1:5.0f}ms   {cache_label(r1)}")
+    print(f"  Run 2  {ms2:5.0f}ms   {cache_label(r2)}")
+    print(f"  Run 3  {ms3:5.0f}ms   {cache_label(r3)}")
     print()
-    print(f"  Tokens saved   : {total_saved}")
-    print(f"  Latency saved  : {latency_saved:.0f}ms")
+
+    if total_tokens > 0:
+        lat_s = total_lat_saved / 1000
+        print(f"  Tokens saved       : {total_tokens:,}")
+        print(f"  LLM calls avoided  : {sum(1 for r in [r1,r2,r3] if r.get('cache_level') != 'miss')}")
+        print(f"  Simulated time saved: {lat_s:.0f}s of LLM latency")
     print()
-    print("  Next steps:")
-    print("    pip install mnemon-ai[anthropic]   # add your LLM")
-    print("    mnemon init                        # configure for your project")
+    print("  Your agent learns. Every repeated task gets faster.")
+    print()
+    print("  Get started:")
+    print("    pip install mnemon-ai")
     print("    https://github.com/smartass-4ever/Mnemon")
     print()
 
@@ -346,6 +352,9 @@ async def cmd_stats(args):
 
 
 def main():
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(
         prog="mnemon",
         description="Mnemon — The intelligence layer between your agents and oblivion"
