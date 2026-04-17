@@ -5,32 +5,62 @@
 
 ---
 
-## Try it now — no API key, no config
+## Install
 
 ```bash
 pip install mnemon-ai
-mnemon demo
 ```
 
-Or with [uv](https://github.com/astral-sh/uv):
+Connect your LLM — set **one** environment variable:
 
 ```bash
-uvx mnemon-ai demo
+export ANTHROPIC_API_KEY=sk-ant-...   # pip install mnemon-ai[anthropic]
+export OPENAI_API_KEY=sk-...          # pip install mnemon-ai[openai]
+export GOOGLE_API_KEY=AIza...         # pip install mnemon-ai[google]
+export GROQ_API_KEY=gsk_...           # pip install mnemon-ai[groq]  ← free tier
 ```
 
-Output:
+Mnemon detects the key automatically. No config file needed.
 
+---
+
+## One line to add memory to any agent
+
+```python
+import mnemon
+
+m = mnemon.init()
 ```
-Run 1    503ms   cache miss  (LLM called)
-Run 2     56ms   CACHE HIT   (exact match — LLM skipped)
-Run 3     42ms   CACHE HIT   (exact match — LLM skipped)
 
-Tokens saved       : 2,500
-LLM calls avoided  : 2
-Simulated time saved: 40s of LLM latency
+That's it. Mnemon auto-detects your project, connects your LLM, and is ready to use anywhere in your codebase:
 
-Your agent learns. Every repeated task gets faster.
+```python
+# Remember things
+m.remember("Acme Corp prefers formal PDF reports")
+m.learn_fact("acme_contact", "Sarah K")
+
+# Recall relevant context
+context = m.recall("weekly security audit for Acme Corp")
+
+# Run with execution caching — LLM skipped on repeat tasks
+result = m.run(
+    goal="weekly security audit for Acme Corp",
+    inputs={"client": "Acme Corp", "week": "March 17-21"},
+    generation_fn=my_planning_function,
+)
+
+print(f"Cache:        {result['cache_level']}")
+print(f"Tokens saved: {result['tokens_saved']}")
+print(f"Time saved:   {result['latency_saved_ms']:.0f}ms")
 ```
+
+Access the same instance from anywhere:
+
+```python
+m = mnemon.get()
+```
+
+No context manager required. Cleans up automatically when your process exits.
 
 ---
 
@@ -56,61 +86,6 @@ Mnemon fixes this. Drop it in and your agents stop being amnesiac.
 | EME (execution cache) | System 1 hit rate | varies by workload |
 
 Retrieval improved from 0.273 → 0.619 recall after the v1.0 overhaul. Full benchmark runs are in [`reports/`](reports/).
-
----
-
-## Quick Start
-
-```python
-from mnemon import MnemonSync
-
-with MnemonSync(tenant_id="my_company") as m:
-    # Remember something
-    m.remember("Acme Corp prefers formal PDF reports")
-    m.learn_fact("acme_contact", "Sarah K")
-
-    # Recall relevant memories
-    context = m.recall("weekly security audit for Acme Corp")
-
-    # Run with execution caching — LLM skipped on repeat tasks
-    result = m.run(
-        goal="weekly security audit for Acme Corp",
-        inputs={"client": "Acme Corp", "week": "March 17-21"},
-        generation_fn=my_planning_function,
-    )
-
-    print(f"Cache:  {result['cache_level']}")
-    print(f"Tokens saved: {result['tokens_saved']}")
-    print(f"Latency: {result['latency_ms']:.0f}ms")
-```
-
-Async API also available via `Mnemon` (see below).
-
----
-
-## Connect Your LLM
-
-Set **one** environment variable. Mnemon detects it automatically.
-
-```bash
-# Anthropic
-pip install mnemon-ai[anthropic]
-export ANTHROPIC_API_KEY=sk-ant-...
-
-# OpenAI
-pip install mnemon-ai[openai]
-export OPENAI_API_KEY=sk-...
-
-# Google
-pip install mnemon-ai[google]
-export GOOGLE_API_KEY=AIza...
-
-# Groq — free tier available
-pip install mnemon-ai[groq]
-export GROQ_API_KEY=gsk_...
-```
-
-No code changes needed — Mnemon picks up the key automatically.
 
 ---
 
@@ -223,6 +198,8 @@ All failures are logged, never raised.
 ---
 
 ## Framework Adapters
+
+`mnemon.init()` auto-detects CrewAI if it's installed. For manual control:
 
 ```python
 from mnemon.adapters.crewai import CrewAIAdapter

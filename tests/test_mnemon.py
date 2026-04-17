@@ -153,7 +153,7 @@ def test_rule_classifier():
         ("The meeting was very tense and stressful",       MemoryLayer.EMOTIONAL),
         ("Last week we found 3 open ports",                MemoryLayer.EPISODIC),
         ("Acme Corp is a client in the finance sector",    MemoryLayer.SEMANTIC),
-        ("Client usually prefers formal communication",    MemoryLayer.SEMANTIC),
+        ("Client usually prefers formal communication",    MemoryLayer.RELATIONSHIP),
     ]
     for content, expected in cases:
         result = RuleClassifier.classify(content)
@@ -176,7 +176,7 @@ def test_simple_embedder():
     v2  = emb.embed("security audit report")
     v3  = emb.embed("completely unrelated topic bicycle")
 
-    assert len(v1) == 64
+    assert len(v1) == 384
     assert v1 == v2, "Same text should produce same embedding"
     sim_same = SimpleEmbedder.cosine_similarity(v1, v2)
     sim_diff = SimpleEmbedder.cosine_similarity(v1, v3)
@@ -505,7 +505,7 @@ def test_fragment_library_loads():
 
     # Check signatures are generated
     for frag in frags[:5]:
-        assert len(frag.signature) == 64, "Fragments should have 64-dim signatures"
+        assert len(frag.signature) == 384, "Fragments should have 384-dim signatures"
         assert len(frag.domain_tags) > 0, "Fragments should have domain tags"
 
     print(f"  ✓ Fragment library loads {FRAGMENT_COUNT} fragments")

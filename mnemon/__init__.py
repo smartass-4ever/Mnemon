@@ -20,8 +20,10 @@ Architecture by Mahika Jadhav (smartass-4ever).
 """
 
 import asyncio
+import atexit
 import hashlib
 import logging
+import os
 import time
 from typing import Any, Callable, Dict, List, Optional
 
@@ -471,9 +473,77 @@ class MnemonSync:
     def get_stats(self) -> dict:
         return self._m.get_stats()
 
+    def close(self):
+        if self._m is not None:
+            self._loop.run_until_complete(self._m.stop())
+            self._loop.close()
+            self._m = None
+
+
+# --- Global instance (set by init()) ---
+_instance: Optional[MnemonSync] = None
+
+
+def _detect_tenant_id() -> str:
+    env = os.environ.get("MNEMON_TENANT")
+    if env:
+        return env
+    return os.path.basename(os.getcwd()) or "default"
+
+
+def _detect_adapter() -> Optional[TemplateAdapter]:
+    try:
+        import crewai  # noqa: F401
+        from mnemon.adapters.crewai import CrewAIAdapter
+        return CrewAIAdapter()
+    except ImportError:
+        pass
+    return None
+
+
+def init(
+    tenant_id: Optional[str] = None,
+    *,
+    llm_client=None,
+    adapter: Optional[TemplateAdapter] = None,
+    **kwargs,
+) -> MnemonSync:
+    """One-line setup. Auto-detects tenant and framework adapter.
+
+    Usage:
+        import mnemon
+        m = mnemon.init()
+        m.remember("Acme Corp prefers PDF reports")
+        context = m.recall("Acme Corp")
+    """
+    global _instance
+    if _instance is not None:
+        return _instance
+
+    resolved_tenant = tenant_id or _detect_tenant_id()
+    resolved_adapter = adapter or _detect_adapter()
+
+    m = MnemonSync(
+        tenant_id=resolved_tenant,
+        llm_client=llm_client,
+        adapter=resolved_adapter,
+        **kwargs,
+    )
+    m.__enter__()
+
+    atexit.register(m.close)
+    _instance = m
+    return m
+
+
+def get() -> Optional[MnemonSync]:
+    """Return the global Mnemon instance created by init(), or None."""
+    return _instance
+
 
 __all__ = [
     "Mnemon", "MnemonSync", "MemoryLayer", "SignalType", "RiskLevel",
     "ExperienceSignal", "CostBudget", "TemplateAdapter",
-    "TenantSecurityConfig", "MNEMON_VERSION"
+    "TenantSecurityConfig", "MNEMON_VERSION",
+    "init", "get",
 ]

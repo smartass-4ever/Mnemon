@@ -418,4 +418,4 @@ class DecisionTrace:
     timestamp:            float
 
 
-MNEMON_VERSION = "1.0.2"
+MNEMON_VERSION = "1.0.5"
