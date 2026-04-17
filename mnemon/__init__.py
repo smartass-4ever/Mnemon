@@ -423,8 +423,56 @@ class Mnemon:
         return stats
 
 
+class MnemonSync:
+    """
+    Synchronous wrapper around Mnemon for quick experimentation.
+
+    Usage:
+        with MnemonSync(tenant_id="my_company") as m:
+            m.remember("Acme Corp prefers PDF reports")
+            result = m.run(goal="weekly report", inputs={...}, generation_fn=fn)
+            print(result["tokens_saved"])
+    """
+
+    def __init__(self, **kwargs):
+        self._kwargs = kwargs
+        self._m: Optional[Mnemon] = None
+        self._loop = asyncio.new_event_loop()
+
+    def __enter__(self):
+        self._m = Mnemon(**self._kwargs)
+        self._loop.run_until_complete(self._m.start())
+        return self
+
+    def __exit__(self, *args):
+        self._loop.run_until_complete(self._m.stop())
+        self._loop.close()
+
+    def _run(self, coro):
+        return self._loop.run_until_complete(coro)
+
+    def run(self, goal: str, inputs: dict, generation_fn, **kwargs) -> dict:
+        return self._run(self._m.run(goal=goal, inputs=inputs, generation_fn=generation_fn, **kwargs))
+
+    def remember(self, text: str, layer=None, importance: float = 0.80):
+        from mnemon.core.models import MemoryLayer as ML
+        return self._run(self._m.remember(text, layer=layer or ML.EPISODIC, importance=importance))
+
+    def recall(self, query: str, top_k: int = 5) -> dict:
+        return self._run(self._m.recall(query, top_k=top_k))
+
+    def learn_fact(self, key: str, value: str):
+        return self._run(self._m.learn_fact(key, value))
+
+    def recall_fact(self, key: str) -> Optional[str]:
+        return self._run(self._m.recall_fact(key))
+
+    def get_stats(self) -> dict:
+        return self._m.get_stats()
+
+
 __all__ = [
-    "Mnemon", "MemoryLayer", "SignalType", "RiskLevel",
+    "Mnemon", "MnemonSync", "MemoryLayer", "SignalType", "RiskLevel",
     "ExperienceSignal", "CostBudget", "TemplateAdapter",
     "TenantSecurityConfig", "MNEMON_VERSION"
 ]

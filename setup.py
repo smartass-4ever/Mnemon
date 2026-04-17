@@ -14,7 +14,7 @@ setup(
     url="https://github.com/smartass-4ever/Mnemon",
     packages=find_packages(),
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3.10",
@@ -25,15 +25,22 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "numpy>=1.24.0",
-        "sentence-transformers>=2.2.0",
         "cryptography>=41.0.0",
     ],
     extras_require={
+        "embeddings": ["sentence-transformers>=2.2.0"],
         "anthropic": ["anthropic>=0.20.0"],
         "openai":    ["openai>=1.0.0"],
         "google":    ["google-generativeai>=0.7.0"],
         "groq":      ["groq>=0.9.0"],
         "all-llm": [
+            "anthropic>=0.20.0",
+            "openai>=1.0.0",
+            "google-generativeai>=0.7.0",
+            "groq>=0.9.0",
+        ],
+        "full": [
+            "sentence-transformers>=2.2.0",
             "anthropic>=0.20.0",
             "openai>=1.0.0",
             "google-generativeai>=0.7.0",

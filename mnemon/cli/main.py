@@ -1,15 +1,16 @@
 """
-EROS CLI
+Mnemon CLI
 Interactive setup and tooling.
 
 Commands:
+  mnemon demo     — instant demo, no API key needed
   mnemon init     — guided setup, installs adapter, loads fragments, runs benchmark
   mnemon eval     — run eval suite
   mnemon health   — check system health
   mnemon stats    — show telemetry report
-  eros explore  — interactive documentation
 
 Usage:
+  mnemon demo
   python -m mnemon.cli.main init
   python -m mnemon.cli.main eval --suite standard
   python -m mnemon.cli.main health
@@ -46,22 +47,103 @@ def detect_framework() -> str:
 def print_banner():
     print("""
 ╔═══════════════════════════════════════════════════════╗
-║          EROS — Intelligence Infrastructure           ║
+║        Mnemon — Intelligence Layer for Agents         ║
 ║          Memory · Execution Cache · Learning          ║
 ╚═══════════════════════════════════════════════════════╝
 """)
 
 
+async def cmd_demo(args):
+    """Instant demo — no API key, no config, no user input required."""
+    import tempfile
+    print_banner()
+    print("Running demo — no API key needed.\n")
+
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    from mnemon import Mnemon
+    from mnemon.fragments.library import load_fragments
+
+    async def mock_gen(goal, inputs, context, caps, constraints):
+        """Simulates what an LLM would generate — used only on cache miss."""
+        await asyncio.sleep(0.08)  # simulate ~80ms LLM call
+        return [
+            {"id": "step_1", "action": "authenticate",   "tool": "auth_service"},
+            {"id": "step_2", "action": "fetch_data",      "tool": "data_api",    "depends_on": ["step_1"]},
+            {"id": "step_3", "action": "analyse",         "tool": "analysis_fn", "depends_on": ["step_2"]},
+            {"id": "step_4", "action": "generate_report", "tool": "report_fn",   "depends_on": ["step_3"]},
+            {"id": "step_5", "action": "send_output",     "tool": "notify_fn",   "depends_on": ["step_4"]},
+        ]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        async with Mnemon(tenant_id="demo", db_dir=tmp, enable_telemetry=False) as m:
+            # Pre-load fragments so System 1 can fire immediately
+            frags = load_fragments("demo")
+            for frag in frags:
+                await m._db.write_fragment(frag)
+            if m._eme:
+                m._eme._fragments = frags
+
+            print("  Task: generate weekly security report for Acme Corp\n")
+
+            # Run 1 — cold miss
+            t0 = time.time()
+            r1 = await m.run(
+                goal="generate weekly security report",
+                inputs={"client": "Acme Corp", "week": "2026-W15"},
+                generation_fn=mock_gen,
+            )
+            ms1 = (time.time() - t0) * 1000
+
+            # Run 2 — same goal, different week → System 1 or System 2 hit
+            t1 = time.time()
+            r2 = await m.run(
+                goal="generate weekly security report",
+                inputs={"client": "Acme Corp", "week": "2026-W16"},
+                generation_fn=mock_gen,
+            )
+            ms2 = (time.time() - t1) * 1000
+
+            # Run 3 — different client → may partial hit
+            t2 = time.time()
+            r3 = await m.run(
+                goal="generate weekly security report",
+                inputs={"client": "Beta LLC", "week": "2026-W16"},
+                generation_fn=mock_gen,
+            )
+            ms3 = (time.time() - t2) * 1000
+
+    def cache_label(level):
+        if level == "system1": return "CACHE HIT  (System 1 — exact)"
+        if level == "system2": return "CACHE HIT  (System 2 — partial)"
+        return "cache miss (cold)"
+
+    total_saved  = r1.get("tokens_saved", 0) + r2.get("tokens_saved", 0) + r3.get("tokens_saved", 0)
+    latency_saved = r1.get("latency_saved_ms", 0) + r2.get("latency_saved_ms", 0) + r3.get("latency_saved_ms", 0)
+
+    print(f"  Run 1  {ms1:6.0f}ms   {cache_label(r1.get('cache_level', 'miss'))}")
+    print(f"  Run 2  {ms2:6.0f}ms   {cache_label(r2.get('cache_level', 'miss'))}")
+    print(f"  Run 3  {ms3:6.0f}ms   {cache_label(r3.get('cache_level', 'miss'))}")
+    print()
+    print(f"  Tokens saved   : {total_saved}")
+    print(f"  Latency saved  : {latency_saved:.0f}ms")
+    print()
+    print("  Next steps:")
+    print("    pip install mnemon-ai[anthropic]   # add your LLM")
+    print("    mnemon init                        # configure for your project")
+    print("    https://github.com/smartass-4ever/Mnemon")
+    print()
+
+
 async def cmd_init(args):
     """Interactive setup."""
     print_banner()
-    print("Setting up EROS...\n")
+    print("Setting up Mnemon...\n")
 
     # Detect framework
     framework = detect_framework()
     if framework != "generic":
         print(f"  Detected framework: {framework}")
-        print(f"  Recommended adapter: eros-{framework}")
+        print(f"  Recommended adapter: mnemon-{framework}")
     else:
         print("  No known framework detected — using generic adapter")
 
@@ -74,7 +156,7 @@ async def cmd_init(args):
     if db_dir:
         print(f"  Using SQLite: mnemon_tenant_<tenant_id>.db in current directory")
     else:
-        print("  Configure EROS_REDIS_URL environment variable")
+        print("  Configure MNEMON_REDIS_URL environment variable")
 
     # Load pre-warmed fragments
     print("\nLoading pre-warmed fragment library...")
@@ -150,7 +232,7 @@ async def cmd_init(args):
     if r2["cache_level"] in ("system1", "system2"):
         saved = r2.get("tokens_saved", 0)
         print(f"  Tokens saved on second run: {saved}")
-        print(f"  ✓ EROS is working correctly")
+        print(f"  Mnemon is working correctly")
 
     print(f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -242,7 +324,7 @@ async def cmd_stats(args):
     async with Mnemon(tenant_id=tenant_id, db_dir=db_dir) as mnemon:
         stats = mnemon.get_stats()
 
-    print(f"EROS Stats — tenant: {tenant_id}\n")
+    print(f"Mnemon Stats — tenant: {tenant_id}\n")
     db = stats.get("db", {})
     print(f"  Memories:   {db.get('memories', 0)}")
     print(f"  Facts:      {db.get('facts', 0)}")
@@ -271,6 +353,7 @@ def main():
     parser.add_argument("--config", help="Path to mnemon.config.json")
     subparsers = parser.add_subparsers(dest="command")
 
+    subparsers.add_parser("demo", help="Instant demo — no API key needed")
     init_p = subparsers.add_parser("init", help="Interactive setup")
     init_p.add_argument("--tenant-id", dest="tenant_id", default="my_company")
 
@@ -282,7 +365,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "init":
+    if args.command == "demo":
+        asyncio.run(cmd_demo(args))
+    elif args.command == "init":
         asyncio.run(cmd_init(args))
     elif args.command == "eval":
         asyncio.run(cmd_eval(args))
