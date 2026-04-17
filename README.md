@@ -3,6 +3,34 @@
 
 **The intelligence layer between your agents and oblivion.**
 
+---
+
+## Try it now — no API key, no config
+
+```bash
+pip install mnemon-ai
+mnemon demo
+```
+
+Or with [uv](https://github.com/astral-sh/uv):
+
+```bash
+uvx mnemon-ai demo
+```
+
+Output:
+
+```
+Run 1    503ms   cache miss  (LLM called)
+Run 2     56ms   CACHE HIT   (exact match — LLM skipped)
+Run 3     42ms   CACHE HIT   (exact match — LLM skipped)
+
+Tokens saved       : 2,500
+LLM calls avoided  : 2
+Simulated time saved: 40s of LLM latency
+
+Your agent learns. Every repeated task gets faster.
+```
 
 ---
 
@@ -18,10 +46,78 @@ Mnemon fixes this. Drop it in and your agents stop being amnesiac.
 
 ---
 
+## Benchmarks
+
+| Benchmark | Metric | Score |
+|-----------|--------|-------|
+| LongMemEval | Retrieval accuracy | 64.6% |
+| LoCoMo | Recall | 0.619 |
+| LoCoMo | F1 | 0.636 |
+| EME (execution cache) | System 1 hit rate | varies by workload |
+
+Retrieval improved from 0.273 → 0.619 recall after the v1.0 overhaul. Full benchmark runs are in [`reports/`](reports/).
+
+---
+
+## Quick Start
+
+```python
+from mnemon import MnemonSync
+
+with MnemonSync(tenant_id="my_company") as m:
+    # Remember something
+    m.remember("Acme Corp prefers formal PDF reports")
+    m.learn_fact("acme_contact", "Sarah K")
+
+    # Recall relevant memories
+    context = m.recall("weekly security audit for Acme Corp")
+
+    # Run with execution caching — LLM skipped on repeat tasks
+    result = m.run(
+        goal="weekly security audit for Acme Corp",
+        inputs={"client": "Acme Corp", "week": "March 17-21"},
+        generation_fn=my_planning_function,
+    )
+
+    print(f"Cache:  {result['cache_level']}")
+    print(f"Tokens saved: {result['tokens_saved']}")
+    print(f"Latency: {result['latency_ms']:.0f}ms")
+```
+
+Async API also available via `Mnemon` (see below).
+
+---
+
+## Connect Your LLM
+
+Set **one** environment variable. Mnemon detects it automatically.
+
+```bash
+# Anthropic
+pip install mnemon-ai[anthropic]
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# OpenAI
+pip install mnemon-ai[openai]
+export OPENAI_API_KEY=sk-...
+
+# Google
+pip install mnemon-ai[google]
+export GOOGLE_API_KEY=AIza...
+
+# Groq — free tier available
+pip install mnemon-ai[groq]
+export GROQ_API_KEY=gsk_...
+```
+
+No code changes needed — Mnemon picks up the key automatically.
+
+---
+
 ## Three Components
 
 ### `mnemon.memory` — Cognitive Memory System
-Five-layer stratified memory with protein bond activation retrieval and conditional intent drone curation.
+Five-layer stratified memory with protein bond activation retrieval.
 
 - **Working** — ephemeral scratchpad, flushes at task end (no context bleed)
 - **Episodic** — chronological experiences, importance-scored
@@ -29,102 +125,45 @@ Five-layer stratified memory with protein bond activation retrieval and conditio
 - **Relationship** — per-user interaction patterns
 - **Emotional** — emotional context, time-decayed
 
-Retrieval: two-part — protein bond pattern assembly (zero LLM, ~15ms) followed by conditional intent drone (only above memory pool threshold).
+Retrieval: protein bond pattern assembly (~15ms, zero LLM) followed by conditional intent drone (only when needed).
 
 ### `mnemon.cache` — Execution Memory Engine (EME)
-Generalised execution template cache for any expensive recurring computation.
+Template cache for expensive recurring agent computations.
 
-- **System 1** — exact fingerprint match → zero LLM, sub-millisecond
+- **System 1** — exact fingerprint match → sub-millisecond, zero LLM
 - **System 2** — partial segment match → gap fill with windowed context
-- **Fragment library** — 49 pre-warmed proven segments, grows with use
+- **Fragment library** — 49 pre-warmed segments from real enterprise runs
 
-> Ships with pre-warmed fragment library from 42 real enterprise workflow runs
-- Works for agent plans, RAG pipelines, data pipelines, any structured workflow
+Works for agent plans, RAG pipelines, data pipelines, any structured workflow.
 
 ### `mnemon.bus` — Two-Tier Experience Bus
-**Tier 1** — system learning loop, always on, no agents needed. Records outcomes, detects patterns, feeds EME and memory.
+**Tier 1** — always-on learning loop. Records outcomes, detects patterns, feeds EME and memory.
 
-**Tier 2** — agent intelligence layer. PAD health monitoring (Pleasure/Arousal/Dominance), knowledge propagation (collective immunity), atomic belief registry (shared truth for swarms).
+**Tier 2** — agent swarm layer. PAD health monitoring (Pleasure/Arousal/Dominance), collective immunity, atomic belief registry for shared state.
 
 ---
 
-## Quick Start
-
-```bash
-pip install mnemon-ai
-```
-
-Includes out of the box:
-- `sentence-transformers` — real 384-dim semantic embeddings (~85%+ retrieval precision)
-- `cryptography` — Fernet AES-128 encryption for sensitive memory
-- `anthropic` — LLM routing, auto-activated when `ANTHROPIC_API_KEY` is set
+## Async API
 
 ```python
 import asyncio
 from mnemon import Mnemon
 
 async def main():
-    async with Mnemon(tenant_id="my_company", agent_id="agent_01") as m:
-
-        # Remember something
+    async with Mnemon(tenant_id="my_company") as m:
         await m.remember("Acme Corp prefers formal PDF reports")
-        await m.learn_fact("acme_contact", "Sarah K")
 
-        # Recall relevant memories
-        context = await m.recall("weekly security audit for Acme Corp")
-
-        # Run with full execution caching
         result = await m.run(
             goal="weekly security audit for Acme Corp",
             inputs={"client": "Acme Corp", "week": "March 17-21"},
-            generation_fn=my_expensive_planning_function,
+            generation_fn=my_planning_function,
         )
 
         print(f"Cache level:  {result['cache_level']}")
         print(f"Tokens saved: {result['tokens_saved']}")
-        print(f"Latency:      {result['latency_ms']:.0f}ms")
+        print(f"Latency saved: {result['latency_saved_ms']:.0f}ms")
 
 asyncio.run(main())
-```
-
----
-
-## Connect Your LLM
-
-Set **one** environment variable. Mnemon detects it automatically — no code changes needed.
-
-```bash
-# Anthropic — Claude (claude-haiku for routing, claude-sonnet for generation)
-pip install mnemon-ai[anthropic]
-export ANTHROPIC_API_KEY=sk-ant-...
-
-# OpenAI — GPT (gpt-4o-mini for routing, gpt-4o for generation)
-pip install mnemon-ai[openai]
-export OPENAI_API_KEY=sk-...
-
-# Google — Gemini (gemini-flash for routing, gemini-pro for generation)
-pip install mnemon-ai[google]
-export GOOGLE_API_KEY=AIza...
-
-# Groq — Llama3 (free tier available — no credit card needed)
-pip install mnemon-ai[groq]
-export GROQ_API_KEY=gsk_...
-```
-
-Mnemon checks keys in that order and picks the first one it finds. No configuration beyond setting the key.
-
-```python
-# No llm_client= argument needed — auto-detected from environment
-async with Mnemon(tenant_id="my_company", agent_id="agent_01") as m:
-    ...
-```
-
-Or pass explicitly if you prefer:
-
-```python
-from mnemon.llm.client import AnthropicClient, OpenAIClient, GoogleClient, GroqClient
-
-m = Mnemon(tenant_id="x", llm_client=GroqClient())  # free tier
 ```
 
 ---
@@ -150,12 +189,43 @@ m = Mnemon(
 
 ---
 
+## Production Features
+
+```python
+from mnemon import Mnemon
+from mnemon.security.manager import TenantSecurityConfig
+
+m = Mnemon(
+    tenant_id="my_company",
+    security_config=TenantSecurityConfig(
+        tenant_id="my_company",
+        blocked_categories=["pii", "medical_records"],
+        encrypt_privileged=True,
+    ),
+    enable_watchdog=True,
+    enable_telemetry=True,
+)
+```
+
+---
+
+## Fail-Safe Design
+
+Mnemon **never crashes the system it serves**.
+
+- Memory retrieval fails → agent runs without context
+- EME fails → `generation_fn` called directly
+- Bus fails → agent continues unmonitored
+- Database unavailable → in-memory fallback mode
+
+All failures are logged, never raised.
+
+---
+
 ## Framework Adapters
 
 ```python
 from mnemon.adapters.crewai import CrewAIAdapter
-from mnemon.adapters.letta import LettaAdapter
-
 m = Mnemon(tenant_id="my_company", adapter=CrewAIAdapter())
 ```
 
@@ -172,86 +242,6 @@ class MyAdapter(TemplateAdapter):
 
 ---
 
-## Production Features
-
-```python
-from mnemon import Mnemon
-from mnemon.security.manager import TenantSecurityConfig
-
-m = Mnemon(
-    tenant_id="my_company",
-    # Security — blocks PII, encrypts privileged content
-    security_config=TenantSecurityConfig(
-        tenant_id="my_company",
-        blocked_categories=["pii", "medical_records"],
-        encrypt_privileged=True,
-    ),
-    # Observability — health checks, self-healing, metrics
-    enable_watchdog=True,
-    enable_telemetry=True,
-)
-```
-
----
-
-## Fail-Safe Design
-
-Mnemon **never crashes the system it serves**.
-
-- Memory retrieval fails → agent runs without context
-- EME fails → `generation_fn` called directly
-- Bus fails → agent continues unmonitored
-- Database unavailable → in-memory fallback mode
-- All failures logged, never raised
-
----
-
-## Architecture
-
-```
-Any AI system
-      ↓ adapter translates
-┌──────────────────────────────────────────┐
-│  EME      Execution Memory Engine        │  S1 → S2 → generation
-│  Memory   Five-layer cognitive memory    │  protein bonds → intent drone
-│  Bus      Two-tier experience bus        │  Tier 1 always / Tier 2 for agents
-└──────────────────────────────────────────┘
-           ↓
-    SQLite (local) / Redis (scale)
-```
-
----
-
-## Package Structure
-
-```
-mnemon/
-├── core/
-│   ├── models.py        ← all shared dataclasses and enums
-│   ├── persistence.py   ← SQLite + inverted index + migrations
-│   ├── memory.py        ← five-layer memory + protein bonds + drone
-│   ├── eme.py           ← execution memory engine S1/S2
-│   └── bus.py           ← two-tier experience bus + PAD
-├── adapters/
-│   ├── crewai.py        ← CrewAI adapter
-│   └── letta.py         ← Letta/MemGPT adapter
-├── llm/
-│   └── client.py        ← Anthropic, OpenAI, Mock clients + auto_client()
-├── security/
-│   └── manager.py       ← content filtering, encryption, isolation
-├── observability/
-│   ├── watchdog.py      ← health checks, self-healing, alerts
-│   └── telemetry.py     ← structured metrics
-├── eval/
-│   └── harness.py       ← eval suite with scoring
-├── fragments/
-│   └── library.py       ← 49 pre-warmed execution fragments
-└── cli/
-    └── main.py          ← mnemon init/eval/health/stats
-```
-
----
-
 ## Issues Filed — Problems Mnemon Solves
 
 Documented on the frameworks themselves:
@@ -260,7 +250,6 @@ Documented on the frameworks themselves:
 - [Dify #32306](https://github.com/langgenius/dify/issues/32306) — redundant reasoning tax in agent nodes
 - [Kimi CLI #1058](https://github.com/MoonshotAI/kimi-cli/issues/1058) — context saturation in 100-agent swarms
 - [E2B #1207](https://github.com/e2b-dev/E2B/issues/1207) — environmental amnesia in sandboxes
-- [Letta RFC](https://github.com/letta-ai/letta) — heartbeat contention and sleep-time compute integration
 
 ---
 
