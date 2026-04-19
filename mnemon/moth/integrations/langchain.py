@@ -1,47 +1,49 @@
 """
 Mnemon moth — LangChain integration.
 
-LangChain has a first-class callback system built specifically for tools
-like Mnemon. This integration:
+System 2 EME via per-step patching:
+  RunnableSequence.invoke is patched to iterate each step individually.
+  Each step is a segment. If a step's output is cached (same input hash),
+  it is returned directly and the LLM is not called for that step.
+  Only changed steps call the LLM — identical to LangGraph per-node cache.
 
-  1. Registers MnemonCallbackHandler globally so every chain/agent/LLM
-     call is observed — bus feedback is automatic.
-  2. Provides MnemonMemory for explicit memory injection into chains
-     (requires one line from the user — LangChain's architecture requires
-     memory to be declared at chain construction time).
+  Memory recall fires once per chain invocation (first step) so the
+  context is available to guide the chain without per-step noise.
 
-System 2 EME:
-  Each chain run is treated as a segment. Mnemon caches chain outputs
-  keyed by (chain_type + input_hash). On a cache hit, the chain is
-  bypassed entirely.
+  Falls back to whole-chain invocation if per-step execution errors.
 
-Auto-activated by the moth when langchain or langchain-core is detected.
+Legacy Chain.__call__ (LangChain v0.1) gets chain-level System 1 cache.
+
+MnemonMemory:
+  Factory for a LangChain BaseMemory backed by Mnemon. One line to add
+  persistent memory to any ConversationChain.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from mnemon.moth import MnemonIntegration
 from ._utils import extract_query, prompt_hash, recall_as_context, record_outcome
 
 logger = logging.getLogger(__name__)
 
-_chain_cache: Dict[str, Any] = {}
+_step_cache:  Dict[str, Any] = {}   # per-step System 2
+_chain_cache: Dict[str, Any] = {}   # chain-level System 1 (legacy)
 
 
 class LangChainIntegration(MnemonIntegration):
     """
-    Instruments LangChain via its callback system and chain-level patching.
+    Instruments LangChain at the per-step level for true System 2 EME.
     """
 
     name = "langchain"
 
     def __init__(self) -> None:
-        self._original_chain_call: Optional[Any] = None
         self._original_runnable_invoke: Optional[Any] = None
+        self._original_chain_call: Optional[Any] = None
         self._mnemon: Optional[Any] = None
 
     def is_available(self) -> bool:
@@ -54,43 +56,69 @@ class LangChainIntegration(MnemonIntegration):
         self._mnemon = mnemon
         m = mnemon
 
-        # Patch 1: LCEL RunnableSequence.invoke (modern LangChain)
+        # Patch 1: LCEL RunnableSequence — per-step System 2
         try:
             from langchain_core.runnables.base import RunnableSequence
             self._original_runnable_invoke = RunnableSequence.invoke
-
             orig_invoke = self._original_runnable_invoke
 
             def patched_invoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
                 query = _extract_lc_query(input)
                 context = recall_as_context(m, query) if query else ""
 
-                # Inject context into input if it's a dict
-                if context and isinstance(input, dict):
-                    input = {**input, "_mnemon_context": context}
+                # Inject context into the input for the first step only
+                first_input = (
+                    {**input, "_mnemon_context": context}
+                    if context and isinstance(input, dict)
+                    else input
+                )
 
-                # System 2 EME: cache keyed by chain type + input hash
-                cache_key = _chain_cache_key(_self, input)
-                if cache_key in _chain_cache:
-                    logger.debug("Mnemon: LangChain RunnableSequence cache hit")
-                    return _chain_cache[cache_key]
+                steps = getattr(_self, "steps", None)
+                if not steps:
+                    # No steps exposed — fall through to original
+                    result = orig_invoke(_self, first_input, config, **kwargs)
+                    record_outcome(m, query, str(result)[:400])
+                    return result
 
-                result = orig_invoke(_self, input, config, **kwargs)
+                # Per-step execution with System 2 cache
+                current = first_input
+                try:
+                    for i, step in enumerate(steps):
+                        step_key = _step_cache_key(step, current)
+                        if step_key in _step_cache:
+                            logger.debug(
+                                f"Mnemon: LangChain step {i} "
+                                f"({type(step).__name__}) System 2 cache hit"
+                            )
+                            current = _step_cache[step_key]
+                            continue
 
-                _chain_cache[cache_key] = result
-                record_outcome(m, query, str(result)[:400])
-                return result
+                        if config is not None:
+                            current = step.invoke(current, config)
+                        else:
+                            current = step.invoke(current)
+
+                        _step_cache[step_key] = current
+
+                except Exception as e:
+                    logger.debug(
+                        f"Mnemon: LangChain per-step failed at step {i} — {e}, "
+                        f"falling back to whole-chain"
+                    )
+                    current = orig_invoke(_self, first_input, config, **kwargs)
+
+                record_outcome(m, query, str(current)[:400])
+                return current
 
             RunnableSequence.invoke = patched_invoke
 
         except Exception as e:
             logger.debug(f"Mnemon: LangChain RunnableSequence patch failed — {e}")
 
-        # Patch 2: Legacy Chain.__call__ (LangChain v0.1)
+        # Patch 2: Legacy Chain.__call__ — chain-level System 1
         try:
             from langchain.chains.base import Chain
             self._original_chain_call = Chain.__call__
-
             orig_call = self._original_chain_call
 
             def patched_chain_call(_self: Any, inputs: Any, *args: Any, **kwargs: Any) -> Any:
@@ -106,7 +134,6 @@ class LangChainIntegration(MnemonIntegration):
                     return _chain_cache[cache_key]
 
                 result = orig_call(_self, inputs, *args, **kwargs)
-
                 _chain_cache[cache_key] = result
                 record_outcome(m, query, str(result)[:400])
                 return result
@@ -147,6 +174,14 @@ def _extract_lc_query(input: Any) -> str:
     return str(input)[:200]
 
 
+def _step_cache_key(step: Any, input: Any) -> str:
+    step_type = type(step).__name__
+    input_hash = prompt_hash(
+        [{"role": "user", "content": str(input)}], None, step_type
+    )
+    return f"step:{step_type}:{input_hash}"
+
+
 def _chain_cache_key(chain: Any, input: Any) -> str:
     chain_type = type(chain).__name__
     input_hash = prompt_hash(
@@ -161,22 +196,17 @@ def make_mnemon_memory(mnemon: Any, memory_key: str = "history", top_k: int = 5)
     """
     Return a LangChain-compatible BaseMemory backed by Mnemon.
 
-    Usage (user adds this one line to their chain):
+    Usage:
         from mnemon.moth.integrations.langchain import make_mnemon_memory
         chain = ConversationChain(llm=llm, memory=make_mnemon_memory(m))
     """
     try:
         from langchain_core.memory import BaseMemory
-        _lc_available = True
     except ImportError:
         try:
             from langchain.schema import BaseMemory
-            _lc_available = True
         except ImportError:
-            _lc_available = False
-
-    if not _lc_available:
-        raise ImportError("langchain-core is required: pip install langchain-core")
+            raise ImportError("langchain-core is required: pip install langchain-core")
 
     class _MnemonMemory(BaseMemory):  # type: ignore[misc]
         mnemon_inst: Any = mnemon

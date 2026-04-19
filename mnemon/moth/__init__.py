@@ -10,9 +10,10 @@ without the user writing a single line of integration code.
 Frameworks patched automatically:
   anthropic     → messages.create (memory inject + System 1 cache + bus)
   openai        → chat.completions.create (same)
-  langchain     → chain execution + callback system (memory + bus)
+  langchain     → per-step RunnableSequence.invoke (System 2 EME + memory)
   langgraph     → CompiledGraph.invoke (per-node EME + memory + bus)
   autogen       → generate_reply (memory inject + EME + bus)
+  crewai        → event bus (AgentExecutionStarted/Completed) + Task cache
 
 Each integration is fail-safe: if patching fails for any reason, the
 original framework behavior is preserved and Mnemon logs a debug message.
@@ -43,6 +44,7 @@ _INTEGRATION_CLASSES = [
     ("mnemon.moth.integrations.langchain",  "LangChainIntegration"),
     ("mnemon.moth.integrations.langgraph",  "LangGraphIntegration"),
     ("mnemon.moth.integrations.autogen",    "AutoGenIntegration"),
+    ("mnemon.moth.integrations.crewai",     "CrewAIIntegration"),
 ]
 
 
