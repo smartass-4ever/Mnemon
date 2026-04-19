@@ -4,21 +4,23 @@ Mnemon moth — LangGraph integration.
 Patches at two levels:
 
 Level 1 — CompiledGraph.invoke / ainvoke  (graph-level, System 1)
-  On every graph invocation: inject recalled memory into initial state,
-  record outcome to bus. Graph-level System 1 cache skips full re-runs.
+  On every graph invocation: cache the full result keyed by (graph_id +
+  state hash). Cache hit returns immediately — zero LLM calls.
 
 Level 2 — Per-node wrapping  (node-level, System 2)
   After compile(), wraps each node function individually. Each node
-  becomes a Mnemon segment. If 4 of 5 nodes have cached outputs for
-  the current state, only 1 node calls the LLM. This is full System 2.
+  becomes a segment. If 4 of 5 nodes have cached outputs for the
+  current state, only 1 node calls the LLM — full System 2.
 
-  Per-node recall also fires — each node gets only the memories relevant
-  to its specific task, not the whole graph's context blob.
+Memory injection:
+  Not done at the state/graph level. The Anthropic and OpenAI intercepts
+  already inject recalled memory directly into every LLM call. Injecting
+  _mnemon_context into state would silently pollute state dicts that
+  nothing reads — removed.
 
 Version detection:
-  Tested against langgraph 0.1.x–0.2.x. If the internal structure
-  changes and node wrapping fails, falls back to graph-level only.
-  Original behavior is always preserved on any error.
+  Tested against langgraph 0.1.x–0.2.x. If per-node wrapping fails,
+  falls back to graph-level only. Original behavior always preserved.
 """
 
 from __future__ import annotations
@@ -28,18 +30,20 @@ import logging
 from typing import Any, Callable, Dict, Optional
 
 from mnemon.moth import MnemonIntegration
-from ._utils import prompt_hash, recall_as_context, record_outcome, extract_query
+from ._utils import prompt_hash, record_outcome
+from ._cache import BoundedTTLCache
 
 logger = logging.getLogger(__name__)
 
-_graph_cache: Dict[str, Any] = {}   # graph-level System 1
-_node_cache:  Dict[str, Any] = {}   # per-node System 2
+_graph_cache = BoundedTTLCache(maxsize=500, ttl=3600)
+_node_cache  = BoundedTTLCache(maxsize=500, ttl=3600)
 
 
 class LangGraphIntegration(MnemonIntegration):
     """
     Instruments LangGraph at both graph and node level.
     Node-level patching gives full System 2 EME.
+    Memory injection delegated to Anthropic/OpenAI intercepts.
     """
 
     name = "langgraph"
@@ -70,43 +74,31 @@ class LangGraphIntegration(MnemonIntegration):
         orig_ainvoke = self._original_ainvoke
 
         def patched_invoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
-            goal = _extract_graph_goal(input)
-            context = recall_as_context(m, goal) if goal else ""
-            patched_input = _inject_into_state(input, context)
-
             cache_key = _graph_cache_key(_self, input)
             if cache_key in _graph_cache:
                 logger.debug("Mnemon: LangGraph graph-level cache hit")
                 return _graph_cache[cache_key]
 
-            result = orig_invoke(_self, patched_input, config, **kwargs)
+            result = orig_invoke(_self, input, config, **kwargs)
             _graph_cache[cache_key] = result
-            record_outcome(m, goal, _extract_graph_outcome(result))
+            record_outcome(m, _extract_graph_goal(input), _extract_graph_outcome(result))
             return result
 
         async def patched_ainvoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
-            goal = _extract_graph_goal(input)
-            context = recall_as_context(m, goal) if goal else ""
-            patched_input = _inject_into_state(input, context)
-
             cache_key = _graph_cache_key(_self, input)
             if cache_key in _graph_cache:
                 logger.debug("Mnemon: LangGraph async graph-level cache hit")
                 return _graph_cache[cache_key]
 
-            result = await orig_ainvoke(_self, patched_input, config, **kwargs)
+            result = await orig_ainvoke(_self, input, config, **kwargs)
             _graph_cache[cache_key] = result
-            record_outcome(m, goal, _extract_graph_outcome(result))
+            record_outcome(m, _extract_graph_goal(input), _extract_graph_outcome(result))
             return result
 
         CompiledGraph.invoke  = patched_invoke
         CompiledGraph.ainvoke = patched_ainvoke
 
     def _patch_compile(self, StateGraph: Any, mnemon: Any) -> None:
-        """
-        Wrap StateGraph.compile() so every compiled graph gets
-        per-node Mnemon wrappers automatically — System 2 EME.
-        """
         self._original_compile = StateGraph.compile
         m = mnemon
         orig_compile = self._original_compile
@@ -142,18 +134,9 @@ class LangGraphIntegration(MnemonIntegration):
 # ── Per-node System 2 ─────────────────────────────────────────────────────────
 
 def _wrap_nodes(compiled: Any, m: Any) -> None:
-    """
-    Wrap each node in a compiled LangGraph with Mnemon hooks.
-
-    Each node becomes a segment:
-      - Recalls memories relevant to this specific node's task
-      - Checks node-level cache (System 2 — skip if seen before)
-      - Records outcome to bus after execution
-    """
     nodes = getattr(compiled, "nodes", {})
     if not nodes:
         return
-
     for node_name, node_runnable in list(nodes.items()):
         if node_name in ("__start__", "__end__"):
             continue
@@ -161,49 +144,42 @@ def _wrap_nodes(compiled: Any, m: Any) -> None:
 
 
 def _make_node_wrapper(node_name: str, original: Any, m: Any) -> Any:
-    """Return a wrapped version of a LangGraph node runnable."""
-
     def wrapped_invoke(state: Any, config: Any = None, **kwargs: Any) -> Any:
-        goal = f"{node_name}: {_extract_graph_goal(state)}"
-        context = recall_as_context(m, goal)
-
-        # Inject per-node context into state
-        patched_state = _inject_into_state(state, context) if context else state
-
-        # System 2: check node-level cache
         cache_key = f"{node_name}:{prompt_hash([{'content': str(state)}], None, node_name)}"
         if cache_key in _node_cache:
             logger.debug(f"Mnemon: LangGraph node '{node_name}' System 2 cache hit")
             return _node_cache[cache_key]
 
-        result = _safe_node_invoke(original, patched_state, config, **kwargs)
-
+        result = _safe_node_invoke(original, state, config, **kwargs)
         _node_cache[cache_key] = result
-        record_outcome(m, goal, _extract_graph_outcome(result), importance=0.6)
+        record_outcome(
+            m,
+            f"{node_name}: {_extract_graph_goal(state)}",
+            _extract_graph_outcome(result),
+            importance=0.6,
+        )
         return result
 
     async def wrapped_ainvoke(state: Any, config: Any = None, **kwargs: Any) -> Any:
-        goal = f"{node_name}: {_extract_graph_goal(state)}"
-        context = recall_as_context(m, goal)
-        patched_state = _inject_into_state(state, context) if context else state
-
         cache_key = f"{node_name}:{prompt_hash([{'content': str(state)}], None, node_name)}"
         if cache_key in _node_cache:
             logger.debug(f"Mnemon: LangGraph node '{node_name}' async System 2 cache hit")
             return _node_cache[cache_key]
 
-        result = await _safe_node_ainvoke(original, patched_state, config, **kwargs)
-
+        result = await _safe_node_ainvoke(original, state, config, **kwargs)
         _node_cache[cache_key] = result
-        record_outcome(m, goal, _extract_graph_outcome(result), importance=0.6)
+        record_outcome(
+            m,
+            f"{node_name}: {_extract_graph_goal(state)}",
+            _extract_graph_outcome(result),
+            importance=0.6,
+        )
         return result
 
-    # Preserve the runnable interface
     try:
         original.invoke  = wrapped_invoke
         original.ainvoke = wrapped_ainvoke
     except (AttributeError, TypeError):
-        # Node is a plain function — return wrapper directly
         return wrapped_invoke
 
     return original
@@ -244,12 +220,6 @@ def _extract_graph_goal(state: Any) -> str:
                 )
                 return str(content)[:300]
     return str(state)[:200]
-
-
-def _inject_into_state(state: Any, context: str) -> Any:
-    if not context or not isinstance(state, dict):
-        return state
-    return {**state, "_mnemon_context": context}
 
 
 def _graph_cache_key(graph: Any, state: Any) -> str:

@@ -26,12 +26,13 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from mnemon.moth import MnemonIntegration
-from ._utils import extract_query, prompt_hash, recall_as_context, record_outcome
+from ._utils import extract_query, prompt_hash, record_outcome
+from ._cache import BoundedTTLCache
 
 logger = logging.getLogger(__name__)
 
-_step_cache:  Dict[str, Any] = {}   # per-step System 2
-_chain_cache: Dict[str, Any] = {}   # chain-level System 1 (legacy)
+_step_cache  = BoundedTTLCache(maxsize=500, ttl=3600)
+_chain_cache = BoundedTTLCache(maxsize=500, ttl=3600)
 
 
 class LangChainIntegration(MnemonIntegration):
@@ -64,24 +65,16 @@ class LangChainIntegration(MnemonIntegration):
 
             def patched_invoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
                 query = _extract_lc_query(input)
-                context = recall_as_context(m, query) if query else ""
-
-                # Inject context into the input for the first step only
-                first_input = (
-                    {**input, "_mnemon_context": context}
-                    if context and isinstance(input, dict)
-                    else input
-                )
+                # No state injection — memory reaches LLM via Anthropic/OpenAI intercepts
 
                 steps = getattr(_self, "steps", None)
                 if not steps:
-                    # No steps exposed — fall through to original
-                    result = orig_invoke(_self, first_input, config, **kwargs)
+                    result = orig_invoke(_self, input, config, **kwargs)
                     record_outcome(m, query, str(result)[:400])
                     return result
 
                 # Per-step execution with System 2 cache
-                current = first_input
+                current = input
                 try:
                     for i, step in enumerate(steps):
                         step_key = _step_cache_key(step, current)
@@ -105,7 +98,7 @@ class LangChainIntegration(MnemonIntegration):
                         f"Mnemon: LangChain per-step failed at step {i} — {e}, "
                         f"falling back to whole-chain"
                     )
-                    current = orig_invoke(_self, first_input, config, **kwargs)
+                    current = orig_invoke(_self, input, config, **kwargs)
 
                 record_outcome(m, query, str(current)[:400])
                 return current
@@ -123,10 +116,7 @@ class LangChainIntegration(MnemonIntegration):
 
             def patched_chain_call(_self: Any, inputs: Any, *args: Any, **kwargs: Any) -> Any:
                 query = _extract_lc_query(inputs)
-                context = recall_as_context(m, query) if query else ""
-
-                if context and isinstance(inputs, dict):
-                    inputs = {**inputs, "_mnemon_context": context}
+                # No state injection — memory reaches LLM via Anthropic/OpenAI intercepts
 
                 cache_key = _chain_cache_key(_self, inputs)
                 if cache_key in _chain_cache:

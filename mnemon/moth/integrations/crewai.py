@@ -30,11 +30,11 @@ from typing import Any, Dict, Optional
 
 from mnemon.moth import MnemonIntegration
 from ._utils import recall_as_context, record_outcome, prompt_hash
+from ._cache import BoundedTTLCache
 
 logger = logging.getLogger(__name__)
 
-# System 2 task-level cache: hash → task output string
-_task_cache: Dict[str, Any] = {}
+_task_cache = BoundedTTLCache(maxsize=500, ttl=3600)
 
 # Temporary storage: agent id → original backstory (restored after execution)
 _backstory_originals: Dict[int, str] = {}

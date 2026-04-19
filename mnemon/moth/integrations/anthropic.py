@@ -20,11 +20,11 @@ from mnemon.moth import MnemonIntegration
 from ._utils import (
     extract_query, inject_into_system, prompt_hash, recall_as_context, record_outcome
 )
+from ._cache import BoundedTTLCache
 
 logger = logging.getLogger(__name__)
 
-# Module-level cache: hash → raw response object (System 1 only at client level)
-_response_cache: Dict[str, Any] = {}
+_response_cache = BoundedTTLCache(maxsize=500, ttl=3600)
 
 
 class AnthropicIntegration(MnemonIntegration):

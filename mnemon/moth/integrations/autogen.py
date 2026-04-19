@@ -27,10 +27,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from mnemon.moth import MnemonIntegration
 from ._utils import prompt_hash, recall_as_context, record_outcome
+from ._cache import BoundedTTLCache
 
 logger = logging.getLogger(__name__)
 
-_reply_cache: Dict[str, Any] = {}
+_reply_cache = BoundedTTLCache(maxsize=500, ttl=3600)
 
 
 class AutoGenIntegration(MnemonIntegration):

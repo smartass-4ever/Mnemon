@@ -21,10 +21,11 @@ from ._utils import (
     extract_query, inject_into_openai_messages, prompt_hash,
     recall_as_context, record_outcome,
 )
+from ._cache import BoundedTTLCache
 
 logger = logging.getLogger(__name__)
 
-_response_cache: Dict[str, Any] = {}
+_response_cache = BoundedTTLCache(maxsize=500, ttl=3600)
 
 
 class OpenAIIntegration(MnemonIntegration):
