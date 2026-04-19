@@ -441,15 +441,37 @@ class MnemonSync:
         self._kwargs = kwargs
         self._m: Optional[Mnemon] = None
         self._loop = asyncio.new_event_loop()
+        self._moth = None
 
     def __enter__(self):
         self._m = Mnemon(**self._kwargs)
         self._loop.run_until_complete(self._m.start())
+        # Activate moth — auto-instrument installed frameworks
+        try:
+            from mnemon.moth import Moth
+            self._moth = Moth()
+            activated = self._moth.activate(self)
+            if activated:
+                logger.info(f"Mnemon moth activated: {', '.join(activated)}")
+        except Exception as e:
+            logger.debug(f"Mnemon moth failed to start: {e}")
         return self
 
     def __exit__(self, *args):
+        if self._moth is not None:
+            try:
+                self._moth.deactivate()
+            except Exception:
+                pass
         self._loop.run_until_complete(self._m.stop())
         self._loop.close()
+
+    @property
+    def active_integrations(self) -> List[str]:
+        """Names of frameworks currently instrumented by the moth."""
+        if self._moth is None:
+            return []
+        return self._moth.active
 
     def _run(self, coro):
         return self._loop.run_until_complete(coro)
@@ -474,6 +496,12 @@ class MnemonSync:
         return self._m.get_stats()
 
     def close(self):
+        if self._moth is not None:
+            try:
+                self._moth.deactivate()
+            except Exception:
+                pass
+            self._moth = None
         if self._m is not None:
             self._loop.run_until_complete(self._m.stop())
             self._loop.close()
@@ -501,18 +529,48 @@ def _detect_adapter() -> Optional[TemplateAdapter]:
     return None
 
 
+_USE_FLAGS: Dict[str, tuple] = {
+    "all":    ("memory_enabled", "eme_enabled", "bus_enabled"),
+    "memory": ("memory_enabled",),
+    "cache":  ("eme_enabled",),
+    "bus":    ("bus_enabled",),
+}
+
+
+def _resolve_use(use) -> Dict[str, bool]:
+    """Map the `use` shorthand to memory_enabled / eme_enabled / bus_enabled flags."""
+    defaults = {"memory_enabled": False, "eme_enabled": False, "bus_enabled": False}
+    if use == "all" or use is None:
+        return {"memory_enabled": True, "eme_enabled": True, "bus_enabled": True}
+    tokens = [use] if isinstance(use, str) else list(use)
+    for token in tokens:
+        for flag in _USE_FLAGS.get(token, []):
+            defaults[flag] = True
+    return defaults
+
+
 def init(
     tenant_id: Optional[str] = None,
     *,
+    use: Any = "all",
     llm_client=None,
     adapter: Optional[TemplateAdapter] = None,
     **kwargs,
 ) -> MnemonSync:
     """One-line setup. Auto-detects tenant and framework adapter.
 
+    use — controls which subsystems are active:
+        "all"              all three (default)
+        "memory"           memory only — no EME caching, no bus
+        "cache"            EME caching only — no memory, no bus
+        "bus"              experience bus only
+        ["memory","cache"] any combination
+
     Usage:
         import mnemon
-        m = mnemon.init()
+        m = mnemon.init()                      # all systems
+        m = mnemon.init(use="memory")          # memory only
+        m = mnemon.init(use=["memory","cache"])# memory + EME
         m.remember("Acme Corp prefers PDF reports")
         context = m.recall("Acme Corp")
     """
@@ -522,6 +580,11 @@ def init(
 
     resolved_tenant = tenant_id or _detect_tenant_id()
     resolved_adapter = adapter or _detect_adapter()
+
+    # use= flags take effect only when not explicitly overridden in kwargs
+    use_flags = _resolve_use(use)
+    for flag, val in use_flags.items():
+        kwargs.setdefault(flag, val)
 
     m = MnemonSync(
         tenant_id=resolved_tenant,
@@ -546,4 +609,5 @@ __all__ = [
     "ExperienceSignal", "CostBudget", "TemplateAdapter",
     "TenantSecurityConfig", "MNEMON_VERSION",
     "init", "get",
+    "moth",
 ]
