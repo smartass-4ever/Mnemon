@@ -74,23 +74,46 @@ def prompt_hash(messages: List[Dict], system: Optional[str], model: str) -> str:
         return hashlib.md5(str(messages).encode()).hexdigest()
 
 
-def extract_query(messages: List[Dict]) -> str:
-    """Extract the most recent human/user message as the recall query."""
+def extract_query(messages: List[Dict], system: Optional[str] = None) -> str:
+    """
+    Extract the intent signal for protein bond recall.
+
+    Uses system prompt + last user message together — the system prompt
+    describes what the agent is trying to do (the real intent), while the
+    last user message is the specific task. Together they give protein bond
+    the full picture so only genuinely relevant memories bond.
+
+    Returns "" if no meaningful signal can be extracted — which means
+    recall returns nothing and nothing gets injected. No context rot.
+    """
+    parts: List[str] = []
+
+    # System prompt carries the agent's intent — highest signal
+    if system and isinstance(system, str):
+        parts.append(system[:200])
+
+    # Last user message is the specific task
     try:
         for msg in reversed(messages):
             if isinstance(msg, dict):
                 role = msg.get("role", "")
                 if role in ("user", "human"):
                     content = msg.get("content", "")
-                    if isinstance(content, str):
-                        return content[:300]
+                    if isinstance(content, str) and content.strip():
+                        parts.append(content[:200])
+                        break
                     if isinstance(content, list):
                         for block in content:
                             if isinstance(block, dict) and block.get("type") == "text":
-                                return block.get("text", "")[:300]
+                                text = block.get("text", "").strip()
+                                if text:
+                                    parts.append(text[:200])
+                                    break
+                        break
     except Exception:
         pass
-    return ""
+
+    return " ".join(parts).strip()[:350]
 
 
 def inject_into_system(existing_system: Optional[str], context: str) -> str:

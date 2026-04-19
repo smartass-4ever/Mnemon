@@ -65,7 +65,7 @@ class AnthropicIntegration(MnemonIntegration):
             system: Optional[str] = None,
             **kwargs: Any,
         ) -> Any:
-            query = extract_query(messages)
+            query = extract_query(messages, system)
             context = recall_as_context(m, query) if query else ""
             patched_system = inject_into_system(system, context)
 
@@ -95,7 +95,7 @@ class AnthropicIntegration(MnemonIntegration):
             system: Optional[str] = None,
             **kwargs: Any,
         ) -> Any:
-            query = extract_query(messages)
+            query = extract_query(messages, system)
             context = recall_as_context(m, query) if query else ""
             patched_system = inject_into_system(system, context)
 

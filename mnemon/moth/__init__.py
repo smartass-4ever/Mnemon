@@ -86,6 +86,15 @@ def _active_names() -> List[str]:
     return []  # placeholder, real tracking is in Moth
 
 
+def _framework_version(name: str) -> Optional[str]:
+    """Return installed version of a framework, or None."""
+    try:
+        import importlib.metadata
+        return importlib.metadata.version(name)
+    except Exception:
+        return None
+
+
 class Moth:
     """
     Scans the environment on init and activates all available integrations.
@@ -117,13 +126,24 @@ class Moth:
         for integration in self._registered:
             if not integration.is_available():
                 continue
+            version = _framework_version(integration.name)
             try:
                 integration.patch(mnemon)
                 self._active.append(integration)
                 activated.append(integration.name)
-                logger.info(f"Mnemon moth: {integration.name} activated")
+                logger.info(
+                    f"Mnemon moth: {integration.name}"
+                    + (f" {version}" if version else "")
+                    + " activated"
+                )
             except Exception as e:
-                logger.debug(f"Mnemon moth: {integration.name} failed — {e}")
+                logger.warning(
+                    f"Mnemon moth: {integration.name}"
+                    + (f" {version}" if version else "")
+                    + f" could not be instrumented — {e}. "
+                    f"Original behavior preserved. "
+                    f"Check github.com/smartass-4ever/Mnemon for version compatibility."
+                )
         return activated
 
     def deactivate(self) -> None:
