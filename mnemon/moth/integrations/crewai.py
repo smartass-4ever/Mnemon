@@ -29,7 +29,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from mnemon.moth import MnemonIntegration
-from ._utils import recall_as_context, record_outcome, prompt_hash
+from ._utils import recall_as_context, record_outcome, prompt_hash, track_cache_hit
 from ._cache import BoundedTTLCache
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class CrewAIIntegration(MnemonIntegration):
                         agent = event.agent
                         task_text = getattr(event.task, "description", "") or event.task_prompt
                         query = f"{getattr(agent, 'role', '')} {task_text}"[:300]
-                        context = recall_as_context(m, query)
+                        context = recall_as_context(m, query, source="crewai")
                         if context:
                             original = getattr(agent, "backstory", "") or ""
                             _backstory_originals[id(agent)] = original
@@ -139,6 +139,7 @@ class CrewAIIntegration(MnemonIntegration):
             ) -> Any:
                 cache_key = _task_cache_key(_self, agent, context)
                 if cache_key in _task_cache:
+                    track_cache_hit(mnemon, "crewai")
                     logger.debug(
                         f"Mnemon: CrewAI Task '{getattr(_self, 'description', '')[:40]}' "
                         f"System 2 cache hit"

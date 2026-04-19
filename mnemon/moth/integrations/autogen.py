@@ -26,7 +26,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from mnemon.moth import MnemonIntegration
-from ._utils import prompt_hash, recall_as_context, record_outcome
+from ._utils import prompt_hash, recall_as_context, record_outcome, track_cache_hit
 from ._cache import BoundedTTLCache
 
 logger = logging.getLogger(__name__)
@@ -76,14 +76,14 @@ class AutoGenIntegration(MnemonIntegration):
                 _self: Any, messages: Any, cancellation_token: Any = None
             ) -> Any:
                 query = _extract_autogen_query(messages)
-                context = recall_as_context(m, query) if query else ""
+                context = recall_as_context(m, query, source="autogen") if query else ""
 
-                # Inject context into agent system message
                 if context:
                     _inject_autogen_context(_self, context)
 
                 cache_key = _autogen_cache_key(_self, messages)
                 if cache_key in _reply_cache:
+                    track_cache_hit(m, "autogen")
                     logger.debug("Mnemon: AutoGen v4 cache hit")
                     return _reply_cache[cache_key]
 
@@ -116,13 +116,14 @@ class AutoGenIntegration(MnemonIntegration):
                 **kwargs: Any,
             ) -> Union[str, Dict, None]:
                 query = _extract_autogen_query(messages or [])
-                context = recall_as_context(m, query) if query else ""
+                context = recall_as_context(m, query, source="autogen") if query else ""
 
                 if context:
                     _inject_autogen_context(_self, context)
 
                 cache_key = _autogen_cache_key(_self, messages or [])
                 if cache_key in _reply_cache:
+                    track_cache_hit(m, "autogen")
                     logger.debug("Mnemon: AutoGen v2 cache hit")
                     return _reply_cache[cache_key]
 

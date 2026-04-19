@@ -1412,6 +1412,78 @@ class ExecutionMemoryEngine:
 
         return {k: _type(v) for k, v in inputs.items()}
 
+    async def semantic_lookup(
+        self, goal: str, capabilities: List[str]
+    ) -> Optional[Tuple[str, str]]:
+        """
+        Check for a semantically similar cached result.
+        Returns (template_id, cached_text) on hit, None on miss.
+        Public API for the moth bridge — avoids private method access.
+        """
+        if not goal:
+            return None
+        try:
+            fp = ComputationFingerprint.build(
+                goal=goal, input_schema={}, context={},
+                capabilities=capabilities, constraints={},
+            )
+            # System 1: exact fingerprint
+            tid = self._system1_cache.get(fp.full_hash)
+            if tid:
+                template = await self.db.fetch_template_by_fingerprint(
+                    self.tenant_id, fp.full_hash
+                )
+                if template and not template.should_evict:
+                    text = str(template.segments[0].content) if template.segments else ""
+                    await self.db.update_template_outcome(self.tenant_id, tid, True)
+                    return (tid, text)
+
+            # System 2: semantic similarity
+            goal_emb = await self._embed(goal, full=True)
+            candidates = await self._template_index.top_k(self.tenant_id, goal_emb, k=1)
+            if candidates:
+                tid, score = candidates[0]
+                if score >= SYSTEM2_THRESHOLD_DEFAULT:
+                    reverse = self._system1_reverse()
+                    fp_hash = reverse.get(tid)
+                    if fp_hash:
+                        template = await self.db.fetch_template_by_fingerprint(
+                            self.tenant_id, fp_hash
+                        )
+                        if template and not template.should_evict:
+                            text = (
+                                str(template.segments[0].content)
+                                if template.segments else ""
+                            )
+                            await self.db.update_template_outcome(self.tenant_id, tid, True)
+                            return (tid, text)
+        except Exception as e:
+            logger.debug(f"EME semantic_lookup failed: {e}")
+        return None
+
+    async def cache_result(
+        self, goal: str, result_text: str, capabilities: List[str]
+    ) -> Optional[str]:
+        """
+        Cache an LLM result for future semantic retrieval.
+        Returns template_id on success, None on failure.
+        Public API for the moth bridge.
+        """
+        if not goal or not result_text:
+            return None
+        try:
+            fp = ComputationFingerprint.build(
+                goal=goal, input_schema={}, context={},
+                capabilities=capabilities, constraints={},
+            )
+            if fp.full_hash in self._system1_cache:
+                return self._system1_cache[fp.full_hash]
+            await self._cache_template(goal, result_text, fp, capabilities)
+            return self._system1_cache.get(fp.full_hash)
+        except Exception as e:
+            logger.debug(f"EME cache_result failed: {e}")
+            return None
+
     async def shutdown(self):
         """Flush write-behind queue before process exit."""
         await self._write_behind.flush_now()

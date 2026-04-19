@@ -26,13 +26,11 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from mnemon.moth import MnemonIntegration
-from ._utils import extract_query, prompt_hash, record_outcome
+from ._utils import extract_query, prompt_hash, record_outcome, track_cache_hit
 from ._cache import BoundedTTLCache
+from ._eme_bridge import MothCache
 
 logger = logging.getLogger(__name__)
-
-_step_cache  = BoundedTTLCache(maxsize=500, ttl=3600)
-_chain_cache = BoundedTTLCache(maxsize=500, ttl=3600)
 
 
 class LangChainIntegration(MnemonIntegration):
@@ -44,8 +42,8 @@ class LangChainIntegration(MnemonIntegration):
 
     def __init__(self) -> None:
         self._original_runnable_invoke: Optional[Any] = None
-        self._original_chain_call: Optional[Any] = None
-        self._mnemon: Optional[Any] = None
+        self._original_chain_call:      Optional[Any] = None
+        self._mnemon:                   Optional[Any] = None
 
     def is_available(self) -> bool:
         return (
@@ -61,7 +59,9 @@ class LangChainIntegration(MnemonIntegration):
         try:
             from langchain_core.runnables.base import RunnableSequence
             self._original_runnable_invoke = RunnableSequence.invoke
-            orig_invoke = self._original_runnable_invoke
+            orig_invoke  = self._original_runnable_invoke
+            step_cache   = MothCache(m, "langchain")
+            chain_cache  = BoundedTTLCache(maxsize=500, ttl=3600)  # legacy fallback
 
             def patched_invoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
                 query = _extract_lc_query(input)
@@ -77,13 +77,13 @@ class LangChainIntegration(MnemonIntegration):
                 current = input
                 try:
                     for i, step in enumerate(steps):
-                        step_key = _step_cache_key(step, current)
-                        if step_key in _step_cache:
-                            logger.debug(
-                                f"Mnemon: LangChain step {i} "
-                                f"({type(step).__name__}) System 2 cache hit"
-                            )
-                            current = _step_cache[step_key]
+                        step_goal = f"step_{i}:{type(step).__name__}:{query}"
+                        step_key  = _step_cache_key(step, current)
+
+                        cached = step_cache.check(step_goal, [type(step).__name__], step_key)
+                        if cached is not None:
+                            track_cache_hit(m, f"langchain:step_{i}")
+                            current = cached
                             continue
 
                         if config is not None:
@@ -91,7 +91,10 @@ class LangChainIntegration(MnemonIntegration):
                         else:
                             current = step.invoke(current)
 
-                        _step_cache[step_key] = current
+                        step_cache.store(
+                            step_goal, [type(step).__name__], step_key,
+                            current, str(current)[:400]
+                        )
 
                 except Exception as e:
                     logger.debug(
@@ -112,19 +115,20 @@ class LangChainIntegration(MnemonIntegration):
         try:
             from langchain.chains.base import Chain
             self._original_chain_call = Chain.__call__
-            orig_call = self._original_chain_call
+            orig_call   = self._original_chain_call
+            legacy_cache = MothCache(m, "langchain")
 
             def patched_chain_call(_self: Any, inputs: Any, *args: Any, **kwargs: Any) -> Any:
-                query = _extract_lc_query(inputs)
-                # No state injection — memory reaches LLM via Anthropic/OpenAI intercepts
+                query    = _extract_lc_query(inputs)
+                hash_key = _chain_cache_key(_self, inputs)
 
-                cache_key = _chain_cache_key(_self, inputs)
-                if cache_key in _chain_cache:
-                    logger.debug("Mnemon: LangChain Chain cache hit")
-                    return _chain_cache[cache_key]
+                cached = legacy_cache.check(query, [type(_self).__name__], hash_key)
+                if cached is not None:
+                    track_cache_hit(m, "langchain")
+                    return cached
 
                 result = orig_call(_self, inputs, *args, **kwargs)
-                _chain_cache[cache_key] = result
+                legacy_cache.store(query, [type(_self).__name__], hash_key, result, str(result)[:400])
                 record_outcome(m, query, str(result)[:400])
                 return result
 

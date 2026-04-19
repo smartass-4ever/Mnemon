@@ -442,6 +442,8 @@ class MnemonSync:
         self._m: Optional[Mnemon] = None
         self._loop = asyncio.new_event_loop()
         self._moth = None
+        from mnemon.moth.stats import MothStats
+        self._stats = MothStats()
 
     def __enter__(self):
         self._m = Mnemon(**self._kwargs)
@@ -472,6 +474,25 @@ class MnemonSync:
         if self._moth is None:
             return []
         return self._moth.active
+
+    @property
+    def stats(self) -> dict:
+        """Cache hits, tokens saved, memory injections, protein bond gates."""
+        return self._stats.summary
+
+    @property
+    def last_recall(self):
+        """Most recent RecallTrace — what was injected or gated and why."""
+        return self._stats.last_recall
+
+    @property
+    def recall_history(self):
+        """Last 20 RecallTrace entries."""
+        return self._stats.recall_history
+
+    def show_stats(self) -> None:
+        """Print a formatted stats summary."""
+        print(repr(self._stats))
 
     def _run(self, coro):
         return self._loop.run_until_complete(coro)

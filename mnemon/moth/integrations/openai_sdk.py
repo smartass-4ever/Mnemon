@@ -1,14 +1,8 @@
 """
 Mnemon moth — OpenAI SDK integration.
 
-Patches openai.resources.chat.completions.Completions.create (sync) and
-AsyncCompletions.create (async) to:
-  1. Inject recalled memory as a system message
-  2. Return a cached response on System 1 EME hit
-  3. Cache the response after a real API call
-  4. Record the outcome to the experience bus
-
-Zero user code changes required.
+Same pattern as Anthropic: MothCache (hash + EME semantic), memory injection,
+outcome recording. Cache key hashes original messages — not patched.
 """
 
 from __future__ import annotations
@@ -19,29 +13,20 @@ from typing import Any, Dict, List, Optional
 from mnemon.moth import MnemonIntegration
 from ._utils import (
     extract_query, inject_into_openai_messages, prompt_hash,
-    recall_as_context, record_outcome,
+    recall_as_context, record_outcome, track_cache_hit,
 )
-from ._cache import BoundedTTLCache
+from ._eme_bridge import MothCache
 
 logger = logging.getLogger(__name__)
 
-_response_cache = BoundedTTLCache(maxsize=500, ttl=3600)
-
 
 class OpenAIIntegration(MnemonIntegration):
-    """
-    Instruments the OpenAI Python SDK.
-
-    Hooks into Completions.create and AsyncCompletions.create so every
-    OpenAI chat call gets Mnemon intelligence.
-    """
-
     name = "openai"
 
     def __init__(self) -> None:
-        self._original_sync: Optional[Any] = None
+        self._original_sync:  Optional[Any] = None
         self._original_async: Optional[Any] = None
-        self._mnemon: Optional[Any] = None
+        self._mnemon:         Optional[Any] = None
 
     def is_available(self) -> bool:
         import importlib.util
@@ -51,12 +36,13 @@ class OpenAIIntegration(MnemonIntegration):
         import openai.resources.chat.completions as _mod
 
         self._mnemon = mnemon
-        self._original_sync = _mod.Completions.create
+        self._original_sync  = _mod.Completions.create
         self._original_async = _mod.AsyncCompletions.create
 
-        m = mnemon
-        orig_sync = self._original_sync
+        m         = mnemon
+        orig_sync  = self._original_sync
         orig_async = self._original_async
+        cache      = MothCache(m, "openai")
 
         def patched_create(
             _self: Any,
@@ -65,19 +51,22 @@ class OpenAIIntegration(MnemonIntegration):
             model: str,
             **kwargs: Any,
         ) -> Any:
-            query = extract_query(messages)
-            context = recall_as_context(m, query) if query else ""
-            patched_messages = inject_into_openai_messages(messages, context)
+            query    = extract_query(messages)
+            hash_key = prompt_hash(messages, None, model)  # original, not patched
 
-            key = prompt_hash(patched_messages, None, model)
-            if key in _response_cache:
-                logger.debug("Mnemon: OpenAI System 1 cache hit")
-                return _response_cache[key]
+            cached = cache.check(query, [model], hash_key)
+            if cached is not None:
+                track_cache_hit(m, "openai", _openai_tokens(cached))
+                return cached
+
+            context         = recall_as_context(m, query, source="openai") if query else ""
+            patched_messages = inject_into_openai_messages(messages, context)
 
             response = orig_sync(_self, messages=patched_messages, model=model, **kwargs)
 
-            _response_cache[key] = response
-            _record_openai_outcome(m, query, response)
+            text = _openai_text(response)
+            cache.store(query, [model], hash_key, response, text)
+            record_outcome(m, query, text)
             return response
 
         async def patched_async_create(
@@ -87,22 +76,25 @@ class OpenAIIntegration(MnemonIntegration):
             model: str,
             **kwargs: Any,
         ) -> Any:
-            query = extract_query(messages)
-            context = recall_as_context(m, query) if query else ""
-            patched_messages = inject_into_openai_messages(messages, context)
+            query    = extract_query(messages)
+            hash_key = prompt_hash(messages, None, model)
 
-            key = prompt_hash(patched_messages, None, model)
-            if key in _response_cache:
-                logger.debug("Mnemon: OpenAI async System 1 cache hit")
-                return _response_cache[key]
+            cached = await cache.async_check(query, [model], hash_key)
+            if cached is not None:
+                track_cache_hit(m, "openai", _openai_tokens(cached))
+                return cached
+
+            context         = recall_as_context(m, query, source="openai") if query else ""
+            patched_messages = inject_into_openai_messages(messages, context)
 
             response = await orig_async(_self, messages=patched_messages, model=model, **kwargs)
 
-            _response_cache[key] = response
-            _record_openai_outcome(m, query, response)
+            text = _openai_text(response)
+            await cache.async_store(query, [model], hash_key, response, text)
+            record_outcome(m, query, text)
             return response
 
-        _mod.Completions.create = patched_create
+        _mod.Completions.create      = patched_create
         _mod.AsyncCompletions.create = patched_async_create
 
     def unpatch(self) -> None:
@@ -110,22 +102,31 @@ class OpenAIIntegration(MnemonIntegration):
             return
         try:
             import openai.resources.chat.completions as _mod
-            _mod.Completions.create = self._original_sync
+            _mod.Completions.create      = self._original_sync
             _mod.AsyncCompletions.create = self._original_async
         except Exception as e:
             logger.debug(f"Mnemon: OpenAI unpatch failed — {e}")
         finally:
-            self._original_sync = None
+            self._original_sync  = None
             self._original_async = None
 
 
-def _record_openai_outcome(m: Any, query: str, response: Any) -> None:
+def _openai_text(response: Any) -> str:
     try:
-        text = ""
         choices = getattr(response, "choices", [])
         if choices:
             msg = getattr(choices[0], "message", None)
-            text = getattr(msg, "content", "") or ""
-        record_outcome(m, query, text)
-    except Exception as e:
-        logger.debug(f"Mnemon: OpenAI outcome record failed — {e}")
+            return getattr(msg, "content", "") or ""
+    except Exception:
+        pass
+    return str(response)[:400]
+
+
+def _openai_tokens(response: Any) -> Optional[int]:
+    try:
+        usage = getattr(response, "usage", None)
+        if usage:
+            return getattr(usage, "total_tokens", None)
+    except Exception:
+        pass
+    return None

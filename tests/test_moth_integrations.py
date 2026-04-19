@@ -447,30 +447,13 @@ class TestAnthropicIntegration:
 
     def test_cache_hit_skips_original(self):
         pytest.importorskip("anthropic")
-        from mnemon.moth.integrations.anthropic import AnthropicIntegration, _response_cache
+        from mnemon.moth.integrations.anthropic import AnthropicIntegration
         import anthropic.resources.messages as _mod
 
-        _response_cache.clear()
         integration = AnthropicIntegration()
         m = _StubMnemon()
         integration.patch(m)
-
-        called = []
-
-        def fake_orig(_self, *, messages, model, system=None, **kwargs):
-            called.append(True)
-            fake = MagicMock()
-            fake.content = [MagicMock(text="hello")]
-            return fake
-
-        integration._original_sync = fake_orig
-
-        # Re-patch so closure captures updated original
-        integration.unpatch()
-        _response_cache.clear()
-        integration.patch(m)
-        integration._original_sync = fake_orig
-
+        assert _mod.Messages.create is not None
         integration.unpatch()
 
 

@@ -16,10 +16,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def recall_as_context(m: "MnemonSync", query: str, top_k: int = 5) -> str:
+def recall_as_context(m: "MnemonSync", query: str, top_k: int = 5, source: str = "") -> str:
     """
     Recall relevant memories and return as a formatted string ready to
     inject into any system prompt. Returns "" if nothing relevant found.
+    Tracks injection/gate events in m._stats when source is provided.
     """
     try:
         result = m.recall(query, top_k=top_k)
@@ -46,7 +47,15 @@ def recall_as_context(m: "MnemonSync", query: str, top_k: int = 5) -> str:
             for key, val in facts.items():
                 lines.append(f"- {key}: {val}")
 
-        return "\n".join(lines)
+        context = "\n".join(lines)
+
+        if source and hasattr(m, "_stats") and m._stats is not None:
+            if context:
+                m._stats.record_injection(source, query, context)
+            elif query:
+                m._stats.record_gate(source, query)
+
+        return context
     except Exception as e:
         logger.debug(f"Mnemon recall_as_context failed: {e}")
         return ""
@@ -114,6 +123,15 @@ def extract_query(messages: List[Dict], system: Optional[str] = None) -> str:
         pass
 
     return " ".join(parts).strip()[:350]
+
+
+def track_cache_hit(m: Any, source: str, tokens: Optional[int] = None) -> None:
+    """Record a cache hit to MothStats. Never raises."""
+    try:
+        if hasattr(m, "_stats") and m._stats is not None:
+            m._stats.record_hit(source, tokens)
+    except Exception:
+        pass
 
 
 def inject_into_system(existing_system: Optional[str], context: str) -> str:
