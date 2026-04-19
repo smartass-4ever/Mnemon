@@ -443,7 +443,10 @@ class MnemonSync:
         self._loop = asyncio.new_event_loop()
         self._moth = None
         from mnemon.moth.stats import MothStats
-        self._stats = MothStats()
+        _db_dir    = kwargs.get("db_dir", ".")
+        _tenant    = kwargs.get("tenant_id", "default")
+        _stats_path = os.path.join(_db_dir, f"mnemon_stats_{_tenant}.json")
+        self._stats = MothStats(persist_path=_stats_path)
 
     def __enter__(self):
         self._m = Mnemon(**self._kwargs)

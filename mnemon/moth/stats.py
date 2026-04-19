@@ -1,10 +1,13 @@
 """
-Session statistics for the Mnemon moth.
+Persistent statistics for the Mnemon moth.
 Tracks cache hits, memory injections, and protein bond gates per integration.
+Stats survive process restarts — loaded from JSON on init, saved on every write.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -32,19 +35,62 @@ class RecallTrace:
 class MothStats:
     _EST_TOKENS_PER_HIT = 500
 
-    def __init__(self) -> None:
+    def __init__(self, persist_path: Optional[str] = None) -> None:
+        self._persist_path       = persist_path
         self._hits:              Dict[str, int] = defaultdict(int)
         self._injections:        Dict[str, int] = defaultdict(int)
         self._gates:             Dict[str, int] = defaultdict(int)
         self._tokens:            int = 0
         self._tokens_known_hits: int = 0
         self._history:           deque = deque(maxlen=20)
+        if persist_path:
+            self._load()
+
+    def _load(self) -> None:
+        try:
+            with open(self._persist_path) as f:
+                data = json.load(f)
+            self._hits              = defaultdict(int, data.get("hits", {}))
+            self._injections        = defaultdict(int, data.get("injections", {}))
+            self._gates             = defaultdict(int, data.get("gates", {}))
+            self._tokens            = data.get("tokens", 0)
+            self._tokens_known_hits = data.get("tokens_known_hits", 0)
+            for h in data.get("history", []):
+                try:
+                    self._history.append(RecallTrace(**h))
+                except Exception:
+                    pass
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            pass
+
+    def _save(self) -> None:
+        if not self._persist_path:
+            return
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(self._persist_path)), exist_ok=True)
+            data = {
+                "hits":               dict(self._hits),
+                "injections":         dict(self._injections),
+                "gates":              dict(self._gates),
+                "tokens":             self._tokens,
+                "tokens_known_hits":  self._tokens_known_hits,
+                "history": [
+                    {"source": h.source, "query": h.query, "injected": h.injected,
+                     "preview": h.preview, "ts": h.ts}
+                    for h in self._history
+                ],
+            }
+            with open(self._persist_path, "w") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
 
     def record_hit(self, source: str, tokens: Optional[int] = None) -> None:
         self._hits[source] += 1
         if tokens is not None:
             self._tokens += tokens
             self._tokens_known_hits += 1
+        self._save()
 
     def record_injection(self, source: str, query: str, context: str) -> None:
         self._injections[source] += 1
@@ -52,6 +98,7 @@ class MothStats:
             RecallTrace(source=source, query=query, injected=True,
                         preview=context[:150], ts=time.time())
         )
+        self._save()
 
     def record_gate(self, source: str, query: str) -> None:
         self._gates[source] += 1
@@ -59,6 +106,7 @@ class MothStats:
             RecallTrace(source=source, query=query, injected=False,
                         preview="", ts=time.time())
         )
+        self._save()
 
     @property
     def total_hits(self) -> int:

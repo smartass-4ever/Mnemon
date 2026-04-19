@@ -456,6 +456,41 @@ class TestAnthropicIntegration:
         assert _mod.Messages.create is not None
         integration.unpatch()
 
+    def test_synthetic_stream_yields_events(self):
+        from mnemon.moth.integrations.anthropic import _SyntheticAnthropicStream
+        stream = _SyntheticAnthropicStream("hello world", "claude-3")
+        events = list(stream)
+        types_ = [e.type for e in events]
+        assert "content_block_delta" in types_
+        delta_events = [e for e in events if e.type == "content_block_delta"]
+        assert delta_events[0].delta.text == "hello world"
+
+    def test_synthetic_stream_text_stream(self):
+        from mnemon.moth.integrations.anthropic import _SyntheticAnthropicStream
+        stream = _SyntheticAnthropicStream("test text", "claude-3")
+        texts = list(stream.text_stream)
+        assert texts == ["test text"]
+
+    def test_capturing_stream_collects_and_stores(self):
+        from mnemon.moth.integrations.anthropic import _CapturingAnthropicStream, _make_event
+        import types as T
+        from mnemon.moth.integrations._cache import BoundedTTLCache
+
+        cache = BoundedTTLCache(maxsize=10, ttl=60)
+        m = _StubMnemon()
+
+        fake_events = [
+            _make_event("content_block_delta", index=0,
+                        delta=T.SimpleNamespace(type="text_delta", text="foo")),
+            _make_event("content_block_delta", index=0,
+                        delta=T.SimpleNamespace(type="text_delta", text="bar")),
+            _make_event("message_stop"),
+        ]
+        capturing = _CapturingAnthropicStream(iter(fake_events), cache, "key1", m, "query")
+        collected = list(capturing)
+        assert len(collected) == 3
+        assert cache.get("key1") == "foobar"
+
 
 # ── OpenAI integration shape ──────────────────────────────────────────────────
 
@@ -472,6 +507,78 @@ class TestOpenAIIntegration:
         assert _mod.Completions.create is not original
         integration.unpatch()
         assert _mod.Completions.create is original
+
+    def test_synthetic_stream_yields_chunks(self):
+        from mnemon.moth.integrations.openai_sdk import _SyntheticOpenAIStream
+        stream = _SyntheticOpenAIStream("hello", "gpt-4")
+        chunks = list(stream)
+        assert len(chunks) == 2
+        assert chunks[0].choices[0].delta.content == "hello"
+        assert chunks[1].choices[0].finish_reason == "stop"
+
+    def test_capturing_stream_collects_and_stores(self):
+        from mnemon.moth.integrations.openai_sdk import _CapturingOpenAIStream, _chunk
+        from mnemon.moth.integrations._cache import BoundedTTLCache
+
+        cache = BoundedTTLCache(maxsize=10, ttl=60)
+        m = _StubMnemon()
+
+        fake_chunks = [
+            _chunk("foo", None, "gpt-4"),
+            _chunk("bar", None, "gpt-4"),
+            _chunk(None, "stop", "gpt-4"),
+        ]
+        capturing = _CapturingOpenAIStream(iter(fake_chunks), cache, "key2", m, "query")
+        collected = list(capturing)
+        assert len(collected) == 3
+        assert cache.get("key2") == "foobar"
+
+
+# ── Persistent stats ─────────────────────────────────────────────────────────
+
+class TestPersistentStats:
+    def test_stats_persist_across_instances(self, tmp_path):
+        from mnemon.moth.stats import MothStats
+        path = str(tmp_path / "stats.json")
+
+        s1 = MothStats(persist_path=path)
+        s1.record_hit("anthropic", tokens=200)
+        s1.record_injection("anthropic", "query", "some context")
+        s1.record_gate("openai", "empty query")
+
+        s2 = MothStats(persist_path=path)
+        assert s2._hits["anthropic"] == 1
+        assert s2._injections["anthropic"] == 1
+        assert s2._gates["openai"] == 1
+        assert s2._tokens == 200
+
+    def test_history_persists(self, tmp_path):
+        from mnemon.moth.stats import MothStats
+        path = str(tmp_path / "stats.json")
+
+        s1 = MothStats(persist_path=path)
+        s1.record_injection("crewai", "do the thing", "past context")
+
+        s2 = MothStats(persist_path=path)
+        assert len(s2.recall_history) == 1
+        assert s2.recall_history[0].source == "crewai"
+        assert s2.recall_history[0].injected is True
+
+    def test_no_persist_path_never_raises(self):
+        from mnemon.moth.stats import MothStats
+        s = MothStats()
+        s.record_hit("x", tokens=100)
+        s.record_injection("x", "q", "ctx")
+        s.record_gate("x", "q")
+        assert s.total_hits == 1
+
+    def test_corrupt_file_is_ignored(self, tmp_path):
+        from mnemon.moth.stats import MothStats
+        path = str(tmp_path / "stats.json")
+        with open(path, "w") as f:
+            f.write("not json {{{")
+        s = MothStats(persist_path=path)
+        assert s.total_hits == 0
 
 
 # ── AutoGen integration shape ─────────────────────────────────────────────────
