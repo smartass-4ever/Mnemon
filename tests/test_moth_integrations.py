@@ -179,7 +179,7 @@ class TestLangChainIntegration:
         assert RunnableSequence.invoke is original
 
     def test_per_step_cache_hit_skips_step(self):
-        from mnemon.moth.integrations.langchain import LangChainIntegration, _step_cache
+        from mnemon.moth.integrations.langchain import LangChainIntegration
         from langchain_core.runnables.base import RunnableSequence
 
         integration = LangChainIntegration()
@@ -194,7 +194,6 @@ class TestLangChainIntegration:
                 call_count += 1
                 return f"out:{input}"
 
-        # Build a minimal RunnableSequence stub with two steps
         step1 = _StubStep()
         step2 = _StubStep()
 
@@ -202,8 +201,6 @@ class TestLangChainIntegration:
         stub_seq.steps = [step1, step2]
 
         # First call — both steps execute
-        from mnemon.moth.integrations.langchain import patched_invoke  # type: ignore  # noqa
-        # Call via the patched class method directly
         result = RunnableSequence.invoke(stub_seq, "hello")
         assert call_count == 2
 
@@ -217,11 +214,8 @@ class TestLangChainIntegration:
 
     def test_fallback_on_step_error(self):
         """If a step raises, falls back to whole-chain invocation."""
-        from mnemon.moth.integrations.langchain import LangChainIntegration, _step_cache
+        from mnemon.moth.integrations.langchain import LangChainIntegration
         from langchain_core.runnables.base import RunnableSequence
-
-        # Clear cache so we get fresh execution
-        _step_cache.clear()
 
         integration = LangChainIntegration()
         m = _StubMnemon()
@@ -236,19 +230,21 @@ class TestLangChainIntegration:
         stub_seq = MagicMock(spec=RunnableSequence)
         stub_seq.steps = [_ErrorStep()]
 
-        original_orig = integration._original_runnable_invoke
-        def mock_orig(_self, input, config=None, **kwargs):
+        # Intercept the original (fallback) invoke
+        real_orig = integration._original_runnable_invoke
+        def mock_fallback(_self, input, config=None, **kwargs):
             fallback_called.append(True)
             return "fallback_result"
+        integration._original_runnable_invoke = mock_fallback
 
-        integration._original_runnable_invoke = mock_orig
-        # Patch uses orig_invoke captured at patch time, so re-patch
+        # Re-patch so the closure captures mock_fallback
         integration.unpatch()
-        integration._original_runnable_invoke = None
         integration.patch(m)
-        # Override the captured orig inside the closure by re-patching with mock
-        from langchain_core.runnables.base import RunnableSequence as RS
-        _orig = RS.invoke
+        integration._original_runnable_invoke = mock_fallback
+
+        result = RunnableSequence.invoke(stub_seq, "error_input")
+        assert len(fallback_called) == 1, "Fallback should have been called once"
+        assert result == "fallback_result"
 
         integration.unpatch()
 
@@ -261,21 +257,22 @@ class TestLangGraphIntegration:
 
     def test_patch_and_unpatch(self):
         from mnemon.moth.integrations.langgraph import LangGraphIntegration
-        from langgraph.graph.graph import CompiledGraph
+        try:
+            from langgraph.pregel.main import Pregel as GraphBase
+        except ImportError:
+            from langgraph.graph.graph import CompiledGraph as GraphBase  # type: ignore
 
-        original_invoke = CompiledGraph.invoke
+        original_invoke = GraphBase.invoke
         integration = LangGraphIntegration()
         m = _StubMnemon()
         integration.patch(m)
-        assert CompiledGraph.invoke is not original_invoke
+        assert GraphBase.invoke is not original_invoke
         integration.unpatch()
-        assert CompiledGraph.invoke is original_invoke
+        assert GraphBase.invoke is original_invoke
 
     def test_node_cache_hit(self):
-        from mnemon.moth.integrations.langgraph import (
-            _make_node_wrapper, _node_cache
-        )
-        _node_cache.clear()
+        from mnemon.moth.integrations.langgraph import LangGraphIntegration, _make_node_wrapper
+        from mnemon.moth.integrations._eme_bridge import MothCache
 
         call_count = 0
 
@@ -286,8 +283,9 @@ class TestLangGraphIntegration:
                 return {"result": "done"}
 
         m = _StubMnemon()
+        node_cache = MothCache(m, "langgraph_test")
         original = _FakeRunnable()
-        wrapped = _make_node_wrapper("my_node", original, m)
+        wrapped = _make_node_wrapper("my_node", original, m, node_cache)
 
         state = {"messages": "process this"}
 

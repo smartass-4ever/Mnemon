@@ -43,21 +43,32 @@ class LangGraphIntegration(MnemonIntegration):
         return importlib.util.find_spec("langgraph") is not None
 
     def patch(self, mnemon: Any) -> None:
-        from langgraph.graph.graph import CompiledGraph
+        # langgraph 1.x: CompiledGraph removed, Pregel is the common base
+        try:
+            from langgraph.pregel.main import Pregel as _GraphBase
+        except ImportError:
+            try:
+                from langgraph.graph.graph import CompiledGraph as _GraphBase  # type: ignore
+            except ImportError:
+                logger.debug("Mnemon: LangGraph — cannot find graph base class")
+                return
+
         try:
             from langgraph.graph.state import StateGraph
             self._patch_compile(StateGraph, mnemon)
         except Exception as e:
             logger.debug(f"Mnemon: LangGraph compile patch failed — {e}")
 
-        self._mnemon       = mnemon
-        self._original_invoke  = CompiledGraph.invoke
-        self._original_ainvoke = CompiledGraph.ainvoke
+        self._mnemon           = mnemon
+        self._original_invoke  = _GraphBase.invoke
+        self._original_ainvoke = _GraphBase.ainvoke
+        self._graph_base       = _GraphBase
 
         m           = mnemon
         orig_invoke  = self._original_invoke
         orig_ainvoke = self._original_ainvoke
         graph_cache  = MothCache(m, "langgraph")
+        self._graph_cache = graph_cache
 
         def patched_invoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
             goal      = _extract_graph_goal(input)
@@ -89,8 +100,8 @@ class LangGraphIntegration(MnemonIntegration):
             record_outcome(m, goal, text)
             return result
 
-        CompiledGraph.invoke  = patched_invoke
-        CompiledGraph.ainvoke = patched_ainvoke
+        _GraphBase.invoke  = patched_invoke
+        _GraphBase.ainvoke = patched_ainvoke
 
     def _patch_compile(self, StateGraph: Any, mnemon: Any) -> None:
         self._original_compile = StateGraph.compile
@@ -100,6 +111,7 @@ class LangGraphIntegration(MnemonIntegration):
         def patched_compile(_self: Any, *args: Any, **kwargs: Any) -> Any:
             compiled   = orig_compile(_self, *args, **kwargs)
             node_cache = MothCache(m, "langgraph")
+            self._node_cache = node_cache
             try:
                 _wrap_nodes(compiled, m, node_cache)
                 logger.debug(f"Mnemon: LangGraph wrapped {len(compiled.nodes)} nodes")
@@ -111,10 +123,10 @@ class LangGraphIntegration(MnemonIntegration):
 
     def unpatch(self) -> None:
         try:
-            from langgraph.graph.graph import CompiledGraph
-            if self._original_invoke is not None:
-                CompiledGraph.invoke  = self._original_invoke
-                CompiledGraph.ainvoke = self._original_ainvoke
+            base = getattr(self, "_graph_base", None)
+            if base and self._original_invoke is not None:
+                base.invoke  = self._original_invoke
+                base.ainvoke = self._original_ainvoke
             if self._original_compile is not None:
                 from langgraph.graph.state import StateGraph
                 StateGraph.compile = self._original_compile
@@ -139,6 +151,10 @@ def _wrap_nodes(compiled: Any, m: Any, node_cache: MothCache) -> None:
 
 
 def _make_node_wrapper(node_name: str, original: Any, m: Any, node_cache: MothCache) -> Any:
+    # Capture real invoke/ainvoke before we replace them
+    _real_invoke  = getattr(original, "invoke",  None)
+    _real_ainvoke = getattr(original, "ainvoke", None)
+
     def wrapped_invoke(state: Any, config: Any = None, **kwargs: Any) -> Any:
         goal     = f"{node_name}: {_extract_graph_goal(state)}"
         hash_key = f"{node_name}:{prompt_hash([{'content': str(state)}], None, node_name)}"
@@ -148,8 +164,14 @@ def _make_node_wrapper(node_name: str, original: Any, m: Any, node_cache: MothCa
             track_cache_hit(m, f"langgraph:{node_name}")
             return cached
 
-        result = _safe_node_invoke(original, state, config, **kwargs)
-        text   = _extract_graph_outcome(result)
+        if _real_invoke is not None:
+            result = _real_invoke(state, config, **kwargs) if config is not None else _real_invoke(state)
+        elif callable(original):
+            result = original(state)
+        else:
+            raise RuntimeError(f"Mnemon: node {node_name!r} has no invoke method")
+
+        text = _extract_graph_outcome(result)
         node_cache.store(goal, [node_name], hash_key, result, text)
         record_outcome(m, goal, text, importance=0.6)
         return result
@@ -163,8 +185,18 @@ def _make_node_wrapper(node_name: str, original: Any, m: Any, node_cache: MothCa
             track_cache_hit(m, f"langgraph:{node_name}")
             return cached
 
-        result = await _safe_node_ainvoke(original, state, config, **kwargs)
-        text   = _extract_graph_outcome(result)
+        if _real_ainvoke is not None:
+            import inspect
+            r = _real_ainvoke(state, config, **kwargs) if config is not None else _real_ainvoke(state)
+            result = await r if inspect.isawaitable(r) else r
+        elif _real_invoke is not None:
+            result = _real_invoke(state, config, **kwargs) if config is not None else _real_invoke(state)
+        elif callable(original):
+            result = original(state)
+        else:
+            raise RuntimeError(f"Mnemon: node {node_name!r} has no invoke method")
+
+        text = _extract_graph_outcome(result)
         await node_cache.async_store(goal, [node_name], hash_key, result, text)
         record_outcome(m, goal, text, importance=0.6)
         return result
