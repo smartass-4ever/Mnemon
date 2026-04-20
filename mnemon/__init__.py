@@ -217,7 +217,12 @@ class Mnemon:
 
         async def _run_eme():
             if not self._eme:
-                return None
+                try:
+                    template = await generation_fn(goal, inputs, context, caps, constraints)
+                    return EMEResult(status="miss", template=template, template_id=None)
+                except Exception as e:
+                    logger.error(f"Generation failed (eme disabled): {e}")
+                    return None
             try:
                 # memory_context=None: EME handles this gracefully (optional hint only).
                 # Memory retrieval runs concurrently and the result is included in the

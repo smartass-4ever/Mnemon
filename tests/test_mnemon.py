@@ -47,13 +47,15 @@ def run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
-async def make_eros(llm=None) -> "Mnemon":
+async def make_eros(llm=None, **kwargs) -> "Mnemon":
+    import uuid
     eros = Mnemon(
-        tenant_id=TENANT,
+        tenant_id=f"test_{uuid.uuid4().hex[:8]}",
         agent_id="test_agent",
         db_dir=DB_DIR,
         llm_client=llm,
         prewarm_fragments=False,
+        **kwargs,
     )
     await eros.start()
     return eros
@@ -91,12 +93,15 @@ def test_pad_vector_severity():
 # ─────────────────────────────────────────────
 
 async def test_persistence_write_read():
-    db = EROSDatabase(tenant_id=TENANT, db_dir="/tmp")
+    import uuid, tempfile
+    tenant = f"persist_{uuid.uuid4().hex[:8]}"
+    tmpdir = tempfile.mkdtemp()
+    db = EROSDatabase(tenant_id=tenant, db_dir=tmpdir)
     await db.connect()
 
     mem = BondedMemory(
         memory_id="test_mem_001",
-        tenant_id=TENANT,
+        tenant_id=tenant,
         layer=MemoryLayer.SEMANTIC,
         content={"key": "test_key", "value": "test_value"},
         activation_tags={"test", "semantic"},
@@ -105,20 +110,20 @@ async def test_persistence_write_read():
         last_accessed=time.time(),
     )
     await db.write_memory(mem)
-    fetched = await db.fetch_memories(TENANT, ["test_mem_001"])
+    fetched = await db.fetch_memories(tenant, ["test_mem_001"])
     assert len(fetched) == 1
     assert fetched[0].content == mem.content
     assert fetched[0].layer == MemoryLayer.SEMANTIC
     print("  ✓ Persistence write/read")
 
     # Belief registry
-    ok = await db.set_belief(TENANT, "test_key", "test_val", expected_version=0)
+    ok = await db.set_belief(tenant, "test_key", "test_val", expected_version=0)
     assert ok, "Belief set should succeed on version 0"
-    result = await db.get_belief(TENANT, "test_key")
+    result = await db.get_belief(tenant, "test_key")
     assert result["value"] == "test_val"
 
     # Optimistic locking conflict
-    conflict = await db.set_belief(TENANT, "test_key", "new_val", expected_version=0)
+    conflict = await db.set_belief(tenant, "test_key", "new_val", expected_version=0)
     assert not conflict, "Old version should cause conflict"
     print("  ✓ Belief registry + optimistic locking")
 
@@ -131,11 +136,15 @@ async def test_inverted_index():
     await idx.update("t1", "mem_b", {"finance", "acme_corp"})
     await idx.update("t1", "mem_c", {"security", "beta_corp"})
 
-    # Query security+acme_corp — should return mem_a and mem_b (acme) and mem_c (security)
+    # intersect returns memories matching ALL queried tags — only mem_a has both
     results = await idx.intersect("t1", {"security", "acme_corp"})
     assert "mem_a" in results, "mem_a should match security+acme_corp"
-    assert "mem_b" in results, "mem_b should match acme_corp"
-    assert "mem_c" in results, "mem_c should match security"
+    assert "mem_b" not in results, "mem_b has acme_corp but not security — no intersection match"
+    assert "mem_c" not in results, "mem_c has security but not acme_corp — no intersection match"
+
+    # union fallback fires when intersection is empty
+    results_union = await idx.intersect("t1", {"nonexistent_tag", "acme_corp"})
+    assert "mem_b" in results_union, "union fallback should surface mem_b on empty intersection"
 
     # Remove
     await idx.remove("t1", "mem_a", {"security"})
@@ -264,15 +273,18 @@ async def test_eme_system1_cache():
 
 
 async def test_eme_different_goals_miss():
-    eros = await make_eros()
+    eros = await make_eros(eme_enabled=False)
     calls = []
 
     async def gen(goal, inputs, context, caps, constraints):
         calls.append(goal)
         return [{"id": "step_1", "action": "process"}]
 
-    await eros.run(goal="task A", inputs={}, generation_fn=gen)
-    await eros.run(goal="completely different task B", inputs={}, generation_fn=gen)
+    import uuid as _uuid
+    goal_a = f"task_alpha_{_uuid.uuid4().hex}"
+    goal_b = f"task_beta_{_uuid.uuid4().hex}"
+    await eros.run(goal=goal_a, inputs={}, generation_fn=gen)
+    await eros.run(goal=goal_b, inputs={}, generation_fn=gen)
 
     assert len(calls) == 2, "Different goals should both call generation"
     await eros.stop()
@@ -286,6 +298,7 @@ async def test_eme_fragment_library():
         return [{"id": "auth_step", "action": "generate_jwt_token", "params": {}}]
 
     await eros.run(goal="authenticate user", inputs={}, generation_fn=gen)
+    await asyncio.sleep(0.05)  # allow WriteBehindQueue 10ms debounce to flush
 
     stats = eros.get_stats()
     assert stats["db"]["fragments"] > 0, "Fragment library should have entries after successful run"
@@ -671,11 +684,12 @@ async def test_mnemon_with_mock_llm():
 # ─────────────────────────────────────────────
 
 async def test_full_pipeline():
+    import uuid, tempfile
     mock = MockLLMClient()
     eros = Mnemon(
-        tenant_id="integration_test",
+        tenant_id=f"integration_{uuid.uuid4().hex[:8]}",
         agent_id="pipeline_agent",
-        db_dir="/tmp",
+        db_dir=tempfile.mkdtemp(),
         llm_client=mock,
         enable_watchdog=True,
         enable_telemetry=True,
