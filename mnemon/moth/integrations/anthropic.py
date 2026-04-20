@@ -26,7 +26,7 @@ from typing import Any, List, Optional
 from mnemon.moth import MnemonIntegration
 from ._utils import (
     extract_query, inject_into_system, prompt_hash,
-    recall_as_context, record_outcome, track_cache_hit,
+    recall_as_context, recall_as_context_async, record_outcome, track_cache_hit,
 )
 from ._eme_bridge import MothCache
 from ._cache import BoundedTTLCache
@@ -93,6 +93,8 @@ class AnthropicIntegration(MnemonIntegration):
             # ── non-streaming path ────────────────────────────────────────────
             cached = cache.check(query, [model], hash_key)
             if cached is not None:
+                if isinstance(cached, str):
+                    cached = _synthetic_anthropic_response(cached, model)
                 track_cache_hit(m, "anthropic", _anthropic_tokens(cached))
                 return cached
 
@@ -129,7 +131,7 @@ class AnthropicIntegration(MnemonIntegration):
                     track_cache_hit(m, "anthropic")
                     return _SyntheticAnthropicStream(cached_text, model)
 
-                context       = recall_as_context(m, query, source="anthropic") if query else ""
+                context       = await recall_as_context_async(m, query, source="anthropic") if query else ""
                 patched_system = inject_into_system(system, context)
 
                 real_stream = await orig_async(
@@ -144,10 +146,12 @@ class AnthropicIntegration(MnemonIntegration):
             # ── non-streaming path ────────────────────────────────────────────
             cached = await cache.async_check(query, [model], hash_key)
             if cached is not None:
+                if isinstance(cached, str):
+                    cached = _synthetic_anthropic_response(cached, model)
                 track_cache_hit(m, "anthropic", _anthropic_tokens(cached))
                 return cached
 
-            context       = recall_as_context(m, query, source="anthropic") if query else ""
+            context       = await recall_as_context_async(m, query, source="anthropic") if query else ""
             patched_system = inject_into_system(system, context)
 
             response = await orig_async(
@@ -355,6 +359,17 @@ def _anthropic_text(response: Any) -> str:
     except Exception:
         pass
     return str(response)[:400]
+
+
+def _synthetic_anthropic_response(text: str, model: str) -> Any:
+    """Reconstruct a minimal Anthropic response from cached text (cold-start path)."""
+    return types.SimpleNamespace(
+        role="assistant",
+        model=model,
+        content=[types.SimpleNamespace(type="text", text=text)],
+        stop_reason="end_turn",
+        usage=types.SimpleNamespace(input_tokens=0, output_tokens=0),
+    )
 
 
 def _anthropic_tokens(response: Any) -> Optional[int]:

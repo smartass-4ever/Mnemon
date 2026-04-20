@@ -56,11 +56,16 @@ class MothCache:
             try:
                 result = self._m._run(eme.semantic_lookup(query, capabilities))
                 if result:
-                    tid, _ = result
+                    tid, text = result
                     obj = self._obj_store.get(tid)
                     if obj is not None:
                         logger.debug(f"Mnemon: {self._source} EME semantic hit")
                         return obj
+                    if text:
+                        # Cold start: process restarted, obj_store is empty but
+                        # EME still has the text. Return text so caller can synthesize.
+                        logger.debug(f"Mnemon: {self._source} EME cold-start text hit")
+                        return text
             except Exception as e:
                 logger.debug(f"Mnemon: {self._source} EME sync check failed — {e}")
 
@@ -96,11 +101,14 @@ class MothCache:
             try:
                 result = await eme.semantic_lookup(query, capabilities)
                 if result:
-                    tid, _ = result
+                    tid, text = result
                     obj = self._obj_store.get(tid)
                     if obj is not None:
                         logger.debug(f"Mnemon: {self._source} EME async semantic hit")
                         return obj
+                    if text:
+                        logger.debug(f"Mnemon: {self._source} EME async cold-start text hit")
+                        return text
             except Exception as e:
                 logger.debug(f"Mnemon: {self._source} EME async check failed — {e}")
 

@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from mnemon.moth import MnemonIntegration
 from ._utils import (
     extract_query, inject_into_openai_messages, prompt_hash,
-    recall_as_context, record_outcome, track_cache_hit,
+    recall_as_context, recall_as_context_async, record_outcome, track_cache_hit,
 )
 from ._eme_bridge import MothCache
 from ._cache import BoundedTTLCache
@@ -82,6 +82,8 @@ class OpenAIIntegration(MnemonIntegration):
             # ── non-streaming path ────────────────────────────────────────────
             cached = cache.check(query, [model], hash_key)
             if cached is not None:
+                if isinstance(cached, str):
+                    cached = _synthetic_openai_response(cached, model)
                 track_cache_hit(m, "openai", _openai_tokens(cached))
                 return cached
 
@@ -113,7 +115,7 @@ class OpenAIIntegration(MnemonIntegration):
                     track_cache_hit(m, "openai")
                     return _SyntheticOpenAIStream(cached_text, model)
 
-                context         = recall_as_context(m, query, source="openai") if query else ""
+                context         = await recall_as_context_async(m, query, source="openai") if query else ""
                 patched_messages = inject_into_openai_messages(messages, context)
 
                 real_stream = await orig_async(
@@ -126,10 +128,12 @@ class OpenAIIntegration(MnemonIntegration):
             # ── non-streaming path ────────────────────────────────────────────
             cached = await cache.async_check(query, [model], hash_key)
             if cached is not None:
+                if isinstance(cached, str):
+                    cached = _synthetic_openai_response(cached, model)
                 track_cache_hit(m, "openai", _openai_tokens(cached))
                 return cached
 
-            context         = recall_as_context(m, query, source="openai") if query else ""
+            context         = await recall_as_context_async(m, query, source="openai") if query else ""
             patched_messages = inject_into_openai_messages(messages, context)
 
             response = await orig_async(_self, messages=patched_messages, model=model, **kwargs)
@@ -292,6 +296,21 @@ class _AsyncCapturingOpenAIStream:
 
 
 # ── Non-streaming helpers ─────────────────────────────────────────────────────
+
+def _synthetic_openai_response(text: str, model: str) -> Any:
+    """Reconstruct a minimal OpenAI response from cached text (cold-start path)."""
+    return types.SimpleNamespace(
+        id="cached-cold-0",
+        object="chat.completion",
+        model=model,
+        choices=[types.SimpleNamespace(
+            index=0,
+            message=types.SimpleNamespace(role="assistant", content=text),
+            finish_reason="stop",
+        )],
+        usage=types.SimpleNamespace(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+    )
+
 
 def _openai_text(response: Any) -> str:
     try:

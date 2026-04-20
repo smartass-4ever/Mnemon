@@ -24,41 +24,59 @@ def recall_as_context(m: "MnemonSync", query: str, top_k: int = 5, source: str =
     """
     try:
         result = m.recall(query, top_k=top_k)
-        memories: List[Dict] = result.get("memories", [])
-        facts: Dict = result.get("facts", {})
-
-        lines: List[str] = []
-
-        if memories:
-            lines.append("[Mnemon — context from previous sessions]")
-            for mem in memories:
-                content = mem.get("content", {})
-                text = (
-                    content.get("text")
-                    or content.get("value")
-                    or (str(content) if content and content != {} else None)
-                )
-                if text and text != "{}":
-                    lines.append(f"- {text.strip()}")
-
-        if facts:
-            if not lines:
-                lines.append("[Mnemon — known facts]")
-            for key, val in facts.items():
-                lines.append(f"- {key}: {val}")
-
-        context = "\n".join(lines)
-
-        if source and hasattr(m, "_stats") and m._stats is not None:
-            if context:
-                m._stats.record_injection(source, query, context)
-            elif query:
-                m._stats.record_gate(source, query)
-
-        return context
+        return _format_recall_result(result, m, query, source)
     except Exception as e:
         logger.debug(f"Mnemon recall_as_context failed: {e}")
         return ""
+
+
+async def recall_as_context_async(m: Any, query: str, top_k: int = 5, source: str = "") -> str:
+    """
+    Async variant — awaits m._m.recall() directly so it never calls
+    run_until_complete() inside an already-running event loop.
+    Drop-in replacement for recall_as_context in all async patch paths.
+    """
+    try:
+        result = await m._m.recall(query, top_k=top_k)
+        return _format_recall_result(result, m, query, source)
+    except Exception as e:
+        logger.debug(f"Mnemon recall_as_context_async failed: {e}")
+        return ""
+
+
+def _format_recall_result(result: Dict, m: Any, query: str, source: str) -> str:
+    memories: List[Dict] = result.get("memories", [])
+    facts: Dict = result.get("facts", {})
+
+    lines: List[str] = []
+
+    if memories:
+        lines.append("[Mnemon — context from previous sessions]")
+        for mem in memories:
+            content = mem.get("content", {})
+            text = (
+                content.get("text")
+                or content.get("value")
+                or (str(content) if content and content != {} else None)
+            )
+            if text and text != "{}":
+                lines.append(f"- {text.strip()}")
+
+    if facts:
+        if not lines:
+            lines.append("[Mnemon — known facts]")
+        for key, val in facts.items():
+            lines.append(f"- {key}: {val}")
+
+    context = "\n".join(lines)
+
+    if source and hasattr(m, "_stats") and m._stats is not None:
+        if context:
+            m._stats.record_injection(source, query, context)
+        elif query:
+            m._stats.record_gate(source, query)
+
+    return context
 
 
 def record_outcome(m: "MnemonSync", goal: str, outcome: str, importance: float = 0.65) -> None:
