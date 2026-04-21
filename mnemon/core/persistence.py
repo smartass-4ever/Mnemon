@@ -294,7 +294,30 @@ class EROSDatabase:
         }
 
         for v in range(current, CURRENT_SCHEMA_VERSION):
-            if v in migrations:
+            if v not in migrations:
+                continue
+            if v >= 2:
+                # execute()-based migrations: commit schema change + version atomically
+                try:
+                    await migrations[v]()
+                    self._conn.execute(
+                        "INSERT OR REPLACE INTO eros_schema_version(id, version) VALUES(1, ?)",
+                        (v + 1,)
+                    )
+                    self._conn.commit()
+                    logger.info(f"Schema migrated to v{v + 1}")
+                except Exception as e:
+                    try:
+                        self._conn.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    raise SchemaError(
+                        f"Migration v{v}→v{v + 1} failed — DB may require manual recovery. "
+                        f"Error: {e}"
+                    ) from e
+            else:
+                # executescript()-based migrations (v0→v1, v1→v2): DDL is all IF NOT EXISTS
+                # so re-running on crash is safe; accept two-step commit as low-risk.
                 await migrations[v]()
                 await self._set_schema_version(v + 1)
                 logger.info(f"Schema migrated to v{v + 1}")
@@ -438,7 +461,7 @@ class EROSDatabase:
 
     async def _migration_v3_to_v4(self):
         """Add session_health table for cross-session drift detection."""
-        self._conn.executescript("""
+        self._conn.execute("""
             CREATE TABLE IF NOT EXISTS session_health (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 tenant_id       TEXT NOT NULL,
@@ -449,11 +472,12 @@ class EROSDatabase:
                 total_calls     INTEGER DEFAULT 0,
                 avg_latency_ms  REAL DEFAULT 0.0,
                 notes           TEXT DEFAULT ''
-            );
-            CREATE INDEX IF NOT EXISTS idx_session_health_tenant
-                ON session_health(tenant_id, timestamp DESC);
+            )
         """)
-        self._conn.commit()
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_health_tenant "
+            "ON session_health(tenant_id, timestamp DESC)"
+        )
 
     async def _migration_v2_to_v3(self):
         """Add is_prewarmed column to execution_templates."""
@@ -534,6 +558,24 @@ class EROSDatabase:
                 rows = self._conn.execute(
                     f"SELECT * FROM memories WHERE tenant_id=? AND memory_id IN ({placeholders})",
                     params
+                ).fetchall()
+        return [self._row_to_memory(r) for r in rows]
+
+    async def fetch_all_memories(
+        self, tenant_id: str, include_superseded: bool = False, limit: int = 50_000
+    ) -> List[BondedMemory]:
+        """Fetch all memories for a tenant — used by export_memory()."""
+        async with self._lock:
+            if include_superseded:
+                rows = self._conn.execute(
+                    "SELECT * FROM memories WHERE tenant_id=? ORDER BY timestamp ASC LIMIT ?",
+                    (tenant_id, limit),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT * FROM memories WHERE tenant_id=? AND superseded_at IS NULL "
+                    "ORDER BY timestamp ASC LIMIT ?",
+                    (tenant_id, limit),
                 ).fetchall()
         return [self._row_to_memory(r) for r in rows]
 

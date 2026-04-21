@@ -371,10 +371,13 @@ def _anthropic_text(response: Any) -> str:
 def _synthetic_anthropic_response(text: str, model: str) -> Any:
     """Reconstruct a minimal Anthropic response from cached text (cold-start path)."""
     return types.SimpleNamespace(
+        id="mnemon-cached-0",
+        type="message",
         role="assistant",
         model=model,
         content=[types.SimpleNamespace(type="text", text=text)],
         stop_reason="end_turn",
+        stop_sequence=None,
         usage=types.SimpleNamespace(input_tokens=0, output_tokens=0),
     )
 

@@ -169,8 +169,9 @@ async def cmd_init(args):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from mnemon.fragments.library import load_fragments, FRAGMENT_COUNT
     print(f"  {FRAGMENT_COUNT} curated fragments loaded")
-    print(f"  Covers: auth, API, data, reports, error handling, file processing,")
-    print(f"          web scraping, database, notifications, scheduling, security")
+    print(f"  Covers: RAG, reasoning, multi-agent, tool use, memory,")
+    print(f"          structured extraction, error handling, streaming,")
+    print(f"          human-in-the-loop, optimization")
 
     # Write config
     config = {
@@ -311,6 +312,82 @@ async def cmd_health(args):
     print(f"\nUptime: {stats['uptime_hours']:.1f}h | Checks: {stats['checks_run']} | Alerts: {stats['alerts_fired']}")
 
 
+async def cmd_doctor(args):
+    """Check Mnemon installation health — DB, embedder, schema, fragment/template counts."""
+    print_banner()
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+    checks = []
+
+    # 1. Schema version
+    try:
+        from mnemon.core.persistence import CURRENT_SCHEMA_VERSION
+        checks.append(("Schema version", True, f"v{CURRENT_SCHEMA_VERSION} (current)"))
+    except Exception as e:
+        checks.append(("Schema version", False, str(e)))
+
+    # 2. Embedder quality
+    try:
+        from mnemon.core.memory import SimpleEmbedder
+        emb = SimpleEmbedder()
+        name = emb.backend_name
+        dim  = emb.dim
+        ok   = name == "sentence-transformers"
+        msg  = f"{name} ({dim}-dim)"
+        if not ok:
+            msg += " — run: pip install mnemon-ai[full] for production quality"
+        checks.append(("Embedder", ok, msg))
+    except Exception as e:
+        checks.append(("Embedder", False, str(e)))
+
+    # 3. DB connectivity + fragment / template counts
+    config_path = args.config or "./mnemon.config.json"
+    tenant_id   = "default"
+    db_dir      = "."
+    if os.path.exists(config_path):
+        try:
+            import json as _json
+            with open(config_path) as f:
+                cfg = _json.load(f)
+            tenant_id = cfg.get("tenant_id", "default")
+            db_dir    = cfg.get("db_dir", ".")
+        except Exception:
+            pass
+
+    try:
+        from mnemon import Mnemon
+        async with Mnemon(tenant_id=tenant_id, db_dir=db_dir, enable_telemetry=False) as m:
+            stats    = m.get_stats()
+            db_stats = stats.get("db", {})
+            fragments = db_stats.get("fragments", 0)
+            templates = db_stats.get("templates", 0)
+            memories  = db_stats.get("memories", 0)
+            checks.append(("DB connectivity",    True, f"ok — tenant: {tenant_id}"))
+            checks.append(("Memories",           True, str(memories)))
+            checks.append(("Fragment library",   fragments >= 50, f"{fragments} fragments {'✓' if fragments >= 50 else '(run mnemon init)'}"))
+            checks.append(("Template library",   templates >= 10, f"{templates} templates {'✓' if templates >= 10 else '(run mnemon init)'}"))
+
+            drift = await m.drift_report()
+            sev = drift.severity
+            ok  = sev == "healthy"
+            checks.append(("Drift status", ok, sev))
+    except Exception as e:
+        checks.append(("DB connectivity", False, str(e)))
+
+    # Print results
+    all_ok = all(c[1] for c in checks)
+    print(f"Mnemon doctor — {'all checks passed' if all_ok else 'issues found'}\n")
+    for name, passed, msg in checks:
+        sym = "✓" if passed else "✗"
+        print(f"  {sym} {name:<24} {msg}")
+
+    if not all_ok:
+        print("\n  Fix issues above, then re-run: mnemon doctor")
+        sys.exit(1)
+    else:
+        print("\n  Mnemon is healthy and ready to use.")
+
+
 async def cmd_stats(args):
     """Show telemetry report."""
     print_banner()
@@ -371,6 +448,7 @@ def main():
 
     subparsers.add_parser("health", help="Check system health")
     subparsers.add_parser("stats", help="Show telemetry report")
+    subparsers.add_parser("doctor", help="Check DB, embedder, schema, and library health")
 
     args = parser.parse_args()
 
@@ -384,6 +462,8 @@ def main():
         asyncio.run(cmd_health(args))
     elif args.command == "stats":
         asyncio.run(cmd_stats(args))
+    elif args.command == "doctor":
+        asyncio.run(cmd_doctor(args))
     else:
         parser.print_help()
 

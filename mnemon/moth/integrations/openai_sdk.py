@@ -303,14 +303,18 @@ class _AsyncCapturingOpenAIStream:
 
 def _synthetic_openai_response(text: str, model: str) -> Any:
     """Reconstruct a minimal OpenAI response from cached text (cold-start path)."""
+    import time as _time
     return types.SimpleNamespace(
-        id="cached-cold-0",
+        id="mnemon-cached-0",
         object="chat.completion",
+        created=int(_time.time()),
         model=model,
+        system_fingerprint=None,
         choices=[types.SimpleNamespace(
             index=0,
             message=types.SimpleNamespace(role="assistant", content=text),
             finish_reason="stop",
+            logprobs=None,
         )],
         usage=types.SimpleNamespace(prompt_tokens=0, completion_tokens=0, total_tokens=0),
     )

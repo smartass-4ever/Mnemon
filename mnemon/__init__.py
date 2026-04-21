@@ -322,7 +322,7 @@ class Mnemon:
             self._drift.record_memory_write()
             return result
         except Exception as e:
-            logger.warning(f"remember() failed: {e}")
+            logger.warning(f"Mnemon: remember() failed — content was NOT saved. Reason: {e}")
             return None
 
     async def recall(self, query: str, session_id: str = "", top_k: int = 10) -> Dict[str, Any]:
@@ -336,6 +336,76 @@ class Mnemon:
         except Exception as e:
             logger.warning(f"recall() failed: {e}")
             return {"memories": [], "working": {}, "conflicts": []}
+
+    async def forget(self, topic: str, top_k: int = 10) -> int:
+        """Semantically find memories matching topic and supersede them. Returns count removed."""
+        if not self._memory:
+            return 0
+        try:
+            result = await self.recall(topic, top_k=top_k)
+            memory_ids = result.get("memory_ids", [])
+            for mid in memory_ids:
+                await self._db.supersede_memory(self.tenant_id, mid, "forgotten_by_user")
+            return len(memory_ids)
+        except Exception as e:
+            logger.warning(f"Mnemon: forget() failed: {e}")
+            return 0
+
+    async def export_memory(self, path: str) -> int:
+        """Export all active memories to a JSON file. Returns count exported."""
+        import json as _json
+        memories = await self._db.fetch_all_memories(self.tenant_id)
+        data = {
+            "tenant_id":  self.tenant_id,
+            "version":    MNEMON_VERSION,
+            "exported_at": time.time(),
+            "memories": [
+                {
+                    "memory_id":         m.memory_id,
+                    "layer":             m.layer.value,
+                    "content":           m.content,
+                    "importance":        m.importance,
+                    "confidence":        m.confidence,
+                    "timestamp":         m.timestamp,
+                    "activation_tags":   list(m.activation_tags),
+                    "activation_domain": m.activation_domain,
+                    "session_id":        m.session_id,
+                }
+                for m in memories
+            ],
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            _json.dump(data, f, indent=2)
+        logger.info(f"Mnemon: exported {len(memories)} memories to {path}")
+        return len(memories)
+
+    async def import_memory(self, path: str) -> int:
+        """Import memories from a JSON file created by export_memory(). Returns count imported."""
+        import json as _json
+        with open(path, encoding="utf-8") as f:
+            data = _json.load(f)
+        memories = data.get("memories", [])
+        imported = 0
+        for entry in memories:
+            try:
+                layer = None
+                raw_layer = entry.get("layer")
+                if raw_layer:
+                    from mnemon.core.models import MemoryLayer as _ML
+                    try:
+                        layer = _ML(raw_layer)
+                    except ValueError:
+                        layer = MemoryLayer.EPISODIC
+                await self.remember(
+                    content=entry.get("content", {}),
+                    layer=layer or MemoryLayer.EPISODIC,
+                    importance=entry.get("importance", 0.5),
+                )
+                imported += 1
+            except Exception as e:
+                logger.debug(f"Mnemon: import_memory skipped entry: {e}")
+        logger.info(f"Mnemon: imported {imported}/{len(memories)} memories from {path}")
+        return imported
 
     async def learn_fact(self, key: str, value: Any, confidence: float = 1.0):
         if self._memory:
@@ -469,11 +539,15 @@ class Mnemon:
             try:
                 memories = await self._db.fetch_memories(self.tenant_id, memory_ids)
                 conflicts = self._memory._detect_conflicts(memories)
+                memories_by_id = {m.memory_id: m for m in memories}
                 for conflict in conflicts:
-                    if len(conflict) >= 2:
-                        # Supersede the memory with the lower importance score
-                        weaker = min(conflict, key=lambda m: m.importance)
-                        stronger = max(conflict, key=lambda m: m.importance)
+                    id_a = conflict.get("memory_a")
+                    id_b = conflict.get("memory_b")
+                    m1 = memories_by_id.get(id_a)
+                    m2 = memories_by_id.get(id_b)
+                    if m1 and m2:
+                        weaker   = m1 if m1.importance <= m2.importance else m2
+                        stronger = m2 if m1.importance <= m2.importance else m1
                         await self._db.supersede_memory(
                             self.tenant_id, weaker.memory_id, stronger.memory_id
                         )
@@ -622,6 +696,18 @@ class MnemonSync:
 
     def recall(self, query: str, top_k: int = 5) -> dict:
         return self._run(self._m.recall(query, top_k=top_k))
+
+    def forget(self, topic: str, top_k: int = 10) -> int:
+        """Supersede memories matching topic. Returns count removed."""
+        return self._run(self._m.forget(topic, top_k=top_k))
+
+    def export_memory(self, path: str) -> int:
+        """Export all active memories to a JSON file. Returns count exported."""
+        return self._run(self._m.export_memory(path))
+
+    def import_memory(self, path: str) -> int:
+        """Import memories from a JSON file created by export_memory(). Returns count imported."""
+        return self._run(self._m.import_memory(path))
 
     def learn_fact(self, key: str, value: str):
         return self._run(self._m.learn_fact(key, value))

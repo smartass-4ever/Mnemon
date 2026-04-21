@@ -180,7 +180,7 @@ class MothStats:
     def recall_history(self) -> List[RecallTrace]:
         return list(self._history)
 
-    def waste_report(self) -> str:
+    def waste_report(self, cost_per_call: float = _COST_PER_CALL_USD) -> str:
         """
         Personal waste summary — shows repeated LLM calls across sessions
         and their estimated dollar cost. Designed to be visceral and specific.
@@ -200,11 +200,11 @@ class MothStats:
             return (
                 f"Mnemon waste report — {hits} LLM call(s) served from cache.\n"
                 f"No repeated queries detected yet across sessions. Good signal.\n"
-                f"Estimated saved: ~${hits * _COST_PER_CALL_USD:.3f}"
+                f"Estimated saved: ~${hits * cost_per_call:.3f}"
             )
 
         total_repeated_calls = sum(e["count"] - 1 for e in repeated.values())
-        total_wasted_usd     = total_repeated_calls * _COST_PER_CALL_USD
+        total_wasted_usd     = total_repeated_calls * cost_per_call
         days_tracked = 0
         if repeated:
             earliest = min(e["first_seen"] for e in repeated.values())
@@ -221,7 +221,7 @@ class MothStats:
         sorted_repeated = sorted(repeated.items(), key=lambda x: x[1]["count"], reverse=True)
         for _, entry in sorted_repeated[:10]:
             count     = entry["count"]
-            wasted    = (count - 1) * _COST_PER_CALL_USD
+            wasted    = (count - 1) * cost_per_call
             preview   = entry["preview"]
             if len(preview) > 72:
                 preview = preview[:69] + "..."
@@ -240,7 +240,7 @@ class MothStats:
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             f"  Total redundant calls: {total_repeated_calls}",
             f"  Estimated wasted:      ~${total_wasted_usd:.3f}",
-            f"  Mnemon saved:          ~${self.total_hits * _COST_PER_CALL_USD:.3f} (cache hits)",
+            f"  Mnemon saved:          ~${self.total_hits * cost_per_call:.3f} (cache hits)",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         ]
         return "\n".join(lines)

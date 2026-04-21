@@ -62,6 +62,8 @@ class CrewAIIntegration(MnemonIntegration):
         return "crewai" in sys.modules
 
     def patch(self, mnemon: Any) -> None:
+        if self._listener is not None:
+            return  # already patched — prevents duplicate listeners on re-init
         from crewai.events.event_bus import crewai_event_bus
         from crewai.events.base_event_listener import BaseEventListener
         from crewai.events.types.agent_events import (
