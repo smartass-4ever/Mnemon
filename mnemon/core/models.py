@@ -342,6 +342,7 @@ class ExecutionTemplate:
     tool_versions:     Dict[str, str] = field(default_factory=dict)   # tool → version hash
     api_schemas:       Dict[str, str] = field(default_factory=dict)   # endpoint → schema hash
     needs_reverification: bool = False
+    is_prewarmed:      bool = False  # True = ships with Mnemon, never returned as LLM response
 
     @property
     def success_rate(self) -> float:

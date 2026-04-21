@@ -86,6 +86,11 @@ def record_outcome(m: "MnemonSync", goal: str, outcome: str, importance: float =
         m.remember(text, importance=importance)
     except Exception as e:
         logger.debug(f"Mnemon record_outcome failed: {e}")
+    try:
+        if goal and hasattr(m, "_stats") and m._stats is not None:
+            m._stats.record_query(goal)
+    except Exception:
+        pass
 
 
 def prompt_hash(messages: List[Dict], system: Optional[str], model: str) -> str:

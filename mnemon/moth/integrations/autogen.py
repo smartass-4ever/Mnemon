@@ -26,7 +26,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from mnemon.moth import MnemonIntegration
-from ._utils import prompt_hash, recall_as_context, record_outcome, track_cache_hit
+from ._utils import prompt_hash, recall_as_context, recall_as_context_async, record_outcome, track_cache_hit
 from ._cache import BoundedTTLCache
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class AutoGenIntegration(MnemonIntegration):
                 _self: Any, messages: Any, cancellation_token: Any = None
             ) -> Any:
                 query = _extract_autogen_query(messages)
-                context = recall_as_context(m, query, source="autogen") if query else ""
+                context = await recall_as_context_async(m, query, source="autogen") if query else ""
 
                 if context:
                     _inject_autogen_context(_self, context)

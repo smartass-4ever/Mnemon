@@ -195,6 +195,10 @@ class _SyntheticOpenAIStream:
     def __iter__(self):
         return self._chunks()
 
+    async def __aiter__(self):
+        for chunk in self._chunks():
+            yield chunk
+
     def __enter__(self):
         return self
 

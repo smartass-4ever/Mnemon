@@ -26,7 +26,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from mnemon.moth import MnemonIntegration
-from ._utils import extract_query, prompt_hash, record_outcome, track_cache_hit, recall_as_context
+from ._utils import extract_query, prompt_hash, record_outcome, track_cache_hit, recall_as_context, recall_as_context_async
 from ._cache import BoundedTTLCache
 from ._eme_bridge import MothCache
 
@@ -44,6 +44,7 @@ class LangChainIntegration(MnemonIntegration):
         self._original_runnable_invoke: Optional[Any] = None
         self._original_chain_call:      Optional[Any] = None
         self._original_chat_invoke:     Optional[Any] = None
+        self._original_chat_ainvoke:    Optional[Any] = None
         self._mnemon:                   Optional[Any] = None
 
     def is_available(self) -> bool:
@@ -171,6 +172,51 @@ class LangChainIntegration(MnemonIntegration):
 
             BaseChatModel.invoke = patched_chat_invoke
 
+            # Patch 2b: BaseChatModel.ainvoke — async chains (same logic, awaited)
+            self._original_chat_ainvoke = BaseChatModel.ainvoke
+            orig_chat_ainvoke = self._original_chat_ainvoke
+            ainvoke_cache = BoundedTTLCache(maxsize=500, ttl=3600)
+
+            async def patched_chat_ainvoke(
+                _self: Any, input: Any, config: Any = None, **kwargs: Any
+            ) -> Any:
+                query = ""
+                recall_query = ""
+                hash_key = None
+                try:
+                    messages     = _messages_from_prompt_value(input)
+                    recall_query = _query_from_messages(messages)
+                    query        = _human_query_from_messages(messages) or recall_query
+                    hash_key     = _step_cache_key(_self, input)
+
+                    cached = ainvoke_cache.get(hash_key)
+                    if cached is not None:
+                        track_cache_hit(m, "langchain:llm_async")
+                        return cached
+
+                    context = await recall_as_context_async(m, recall_query, source="langchain") if recall_query else ""
+                    if context:
+                        input = _inject_context_into_prompt_value(input, messages, context)
+                except Exception:
+                    pass
+
+                result = await orig_chat_ainvoke(_self, input, config, **kwargs)
+
+                try:
+                    if hash_key is not None:
+                        ainvoke_cache[hash_key] = result
+                    if query:
+                        text = getattr(result, "content", None) or str(result)
+                        if isinstance(text, list):
+                            text = " ".join(str(b) for b in text)
+                        record_outcome(m, query, str(text)[:400])
+                except Exception:
+                    pass
+
+                return result
+
+            BaseChatModel.ainvoke = patched_chat_ainvoke
+
         except Exception as e:
             logger.debug(f"Mnemon: LangChain BaseChatModel patch failed — {e}")
 
@@ -210,6 +256,10 @@ class LangChainIntegration(MnemonIntegration):
                 from langchain_core.language_models.chat_models import BaseChatModel
                 BaseChatModel.invoke = self._original_chat_invoke
 
+            if self._original_chat_ainvoke is not None:
+                from langchain_core.language_models.chat_models import BaseChatModel
+                BaseChatModel.ainvoke = self._original_chat_ainvoke
+
             if self._original_chain_call is not None:
                 from langchain.chains.base import Chain
                 Chain.__call__ = self._original_chain_call
@@ -218,6 +268,7 @@ class LangChainIntegration(MnemonIntegration):
         finally:
             self._original_runnable_invoke = None
             self._original_chat_invoke = None
+            self._original_chat_ainvoke = None
             self._original_chain_call = None
 
 

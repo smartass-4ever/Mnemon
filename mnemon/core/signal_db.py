@@ -40,7 +40,21 @@ CREATE TABLE IF NOT EXISTS vocab_weights (
     tenant_count    INTEGER DEFAULT 0,
     last_updated    REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS proven_intents (
+    intent_key      TEXT PRIMARY KEY,
+    domain          TEXT NOT NULL DEFAULT 'general',
+    success_count   INTEGER DEFAULT 0,
+    failure_count   INTEGER DEFAULT 0,
+    boost_weight    REAL DEFAULT 0.0,
+    last_updated    REAL NOT NULL
+);
 """
+
+# Minimum evidence before collective boost kicks in
+_PROVEN_MIN_SUCCESSES = 3
+_PROVEN_MIN_RATE      = 0.75
+_PROVEN_MAX_BOOST     = 0.12   # max similarity score additive boost
 
 
 class SignalDatabase:
@@ -258,6 +272,62 @@ class SignalDatabase:
                 self._conn.commit()
         except Exception as e:
             logger.debug(f"update_vocab_weight failed (non-critical): {e}")
+
+    # ──────────────────────────────────────────
+    # PROVEN INTENTS — collective learning
+    # intent_key = md5(prewarmed_intent_string)[:24], privacy-safe
+    # Tracks which pre-warmed execution strategies have been validated
+    # cross-tenant so new tenants benefit from collective evidence.
+    # ──────────────────────────────────────────
+
+    async def record_proven_intent(self, intent_key: str, domain: str, success: bool):
+        """Record a cross-tenant outcome for a pre-warmed intent strategy."""
+        try:
+            async with self._lock:
+                row = self._conn.execute(
+                    "SELECT success_count, failure_count FROM proven_intents WHERE intent_key=?",
+                    (intent_key,),
+                ).fetchone()
+                now = time.time()
+                if row:
+                    sc = row["success_count"] + (1 if success else 0)
+                    fc = row["failure_count"] + (0 if success else 1)
+                    total = sc + fc
+                    rate  = sc / total if total > 0 else 0.5
+                    # Log-scaled boost: more evidence = more confidence, capped at max
+                    import math
+                    boost = min(_PROVEN_MAX_BOOST, rate * math.log1p(total) * 0.03)
+                    self._conn.execute(
+                        "UPDATE proven_intents SET success_count=?, failure_count=?, "
+                        "boost_weight=?, last_updated=? WHERE intent_key=?",
+                        (sc, fc, boost, now, intent_key),
+                    )
+                else:
+                    self._conn.execute(
+                        "INSERT INTO proven_intents VALUES (?,?,?,?,?,?)",
+                        (intent_key, domain, 1 if success else 0, 0 if success else 1, 0.0, now),
+                    )
+                self._conn.commit()
+        except Exception as e:
+            logger.debug(f"record_proven_intent failed: {e}")
+
+    async def get_proven_boosts(self) -> Dict[str, float]:
+        """
+        Return {intent_key: boost_weight} for all intents with sufficient evidence.
+        Used by EME.warm() to boost pre-warmed templates validated cross-tenant.
+        """
+        try:
+            async with self._lock:
+                rows = self._conn.execute(
+                    "SELECT intent_key, boost_weight FROM proven_intents "
+                    "WHERE success_count >= ? AND "
+                    "CAST(success_count AS REAL) / (success_count + failure_count + 1) >= ?",
+                    (_PROVEN_MIN_SUCCESSES, _PROVEN_MIN_RATE),
+                ).fetchall()
+            return {r["intent_key"]: r["boost_weight"] for r in rows}
+        except Exception as e:
+            logger.debug(f"get_proven_boosts failed: {e}")
+            return {}
 
     async def get_vocab_weights(self, concepts: List[str]) -> Dict[str, float]:
         """

@@ -22,7 +22,7 @@ approximate matches still benefit from these — exact match not required.
 import hashlib
 import json
 import time
-from typing import List
+from typing import Any, List
 
 from ..core.models import TemplateSegment
 
@@ -620,3 +620,435 @@ META_VOCABULARY: List[str] = [
     "prompt template", "output compression", "efficiency", "cost aware routing",
     "smart caching", "call deduplication", "budget management",
 ]
+
+
+# ─────────────────────────────────────────────
+# CURATED TEMPLATES (20)
+# Pre-warmed multi-step execution plans for common agent workflows.
+# Used by EME System 2 to seed the template index on first run.
+# NOT returned as cached LLM responses (is_prewarmed guard in semantic_lookup).
+# ─────────────────────────────────────────────
+
+def _step(action: str, params: dict, outputs: List[str]) -> dict:
+    content = {"action": action, "params": params, "outputs": outputs}
+    fp = hashlib.md5(json.dumps(content, sort_keys=True).encode()).hexdigest()[:16]
+    return {"action": action, "content": content, "fingerprint": fp, "outputs": outputs}
+
+
+CURATED_TEMPLATES = [
+
+    # ── RAG & Retrieval (4) ───────────────────────────────────────────────────
+
+    {
+        "intent": "answer a question from a knowledge base using retrieval augmented generation",
+        "steps": [
+            _step("retrieve_documents",
+                  {"top_k": 5, "similarity_threshold": 0.7, "hybrid": True},
+                  ["relevant_docs", "scores"]),
+            _step("rerank_documents",
+                  {"reranker": "cross-encoder", "top_n": 3},
+                  ["reranked_docs"]),
+            _step("generate_answer_with_citations",
+                  {"max_tokens": 500, "cite_sources": True},
+                  ["answer", "citations", "confidence"]),
+        ],
+    },
+
+    {
+        "intent": "summarize multiple documents based on a specific query",
+        "steps": [
+            _step("retrieve_relevant_passages",
+                  {"top_k": 8, "deduplicate": True},
+                  ["passages", "source_ids"]),
+            _step("extract_key_points",
+                  {"max_points": 5, "preserve_structure": True},
+                  ["key_points"]),
+            _step("synthesize_summary",
+                  {"length": "medium", "query_focused": True},
+                  ["summary", "word_count"]),
+        ],
+    },
+
+    {
+        "intent": "build and populate a vector knowledge base from source documents",
+        "steps": [
+            _step("load_and_chunk_documents",
+                  {"chunk_size": 512, "overlap": 64, "recursive": True},
+                  ["chunks", "chunk_count"]),
+            _step("embed_chunks",
+                  {"batch_size": 32, "model": "${embed_model}"},
+                  ["embeddings", "embedding_dim"]),
+            _step("upsert_to_vector_store",
+                  {"collection": "${collection}", "batch_size": 100},
+                  ["upserted_count", "collection_size"]),
+            _step("verify_retrieval_quality",
+                  {"test_queries": 3, "min_recall": 0.8},
+                  ["recall_score", "verified"]),
+        ],
+    },
+
+    {
+        "intent": "compare information across multiple sources and identify agreements and conflicts",
+        "steps": [
+            _step("retrieve_from_each_source",
+                  {"sources": "${sources}", "top_k_per_source": 3},
+                  ["source_results"]),
+            _step("cross_reference_claims",
+                  {"threshold": 0.75, "flag_conflicts": True},
+                  ["agreements", "conflicts", "uncertain"]),
+            _step("generate_comparison_report",
+                  {"format": "structured", "highlight_conflicts": True},
+                  ["report", "conflict_count"]),
+        ],
+    },
+
+    # ── Reasoning & Planning (3) ──────────────────────────────────────────────
+
+    {
+        "intent": "decompose and solve a complex multi-step problem using chain of thought reasoning",
+        "steps": [
+            _step("decompose_problem",
+                  {"max_subproblems": 5, "dependency_check": True},
+                  ["subproblems", "dependency_graph"]),
+            _step("plan_execution_order",
+                  {"strategy": "topological", "parallelize": True},
+                  ["execution_plan", "parallel_groups"]),
+            _step("execute_plan_steps",
+                  {"validate_each": True, "rollback_on_fail": False},
+                  ["step_results", "failed_steps"]),
+            _step("verify_and_synthesize_solution",
+                  {"check_constraints": True, "confidence_threshold": 0.8},
+                  ["solution", "confidence", "verified"]),
+        ],
+    },
+
+    {
+        "intent": "analyze a situation and generate actionable recommendations",
+        "steps": [
+            _step("gather_situation_context",
+                  {"depth": "comprehensive", "include_history": True},
+                  ["context", "key_facts"]),
+            _step("identify_constraints_and_goals",
+                  {"extract_implicit": True},
+                  ["constraints", "goals", "priorities"]),
+            _step("evaluate_options",
+                  {"num_options": 3, "score_by_criteria": True},
+                  ["options", "scores"]),
+            _step("generate_recommendations",
+                  {"format": "actionable", "include_rationale": True},
+                  ["recommendations", "rationale"]),
+        ],
+    },
+
+    {
+        "intent": "brainstorm and evaluate multiple solution approaches then select the best one",
+        "steps": [
+            _step("generate_solution_candidates",
+                  {"num_candidates": 5, "diverse": True},
+                  ["candidates"]),
+            _step("define_evaluation_criteria",
+                  {"weight_by_goal": True},
+                  ["criteria", "weights"]),
+            _step("score_candidates",
+                  {"matrix_eval": True, "normalize": True},
+                  ["scored_candidates"]),
+            _step("select_and_justify_best",
+                  {"include_tradeoffs": True},
+                  ["best_solution", "justification", "tradeoffs"]),
+        ],
+    },
+
+    # ── Multi-Agent Orchestration (3) ─────────────────────────────────────────
+
+    {
+        "intent": "coordinate specialized agents to complete a complex multi-step workflow",
+        "steps": [
+            _step("assign_agent_roles",
+                  {"match_by_capability": True, "load_balance": True},
+                  ["agent_assignments", "role_map"]),
+            _step("distribute_subtasks",
+                  {"parallelize_independent": True, "priority_order": True},
+                  ["task_queue", "dependency_map"]),
+            _step("collect_and_validate_results",
+                  {"timeout_ms": 30000, "retry_failed": True},
+                  ["results", "failed_agents"]),
+            _step("merge_agent_outputs",
+                  {"resolve_conflicts": True, "deduplicate": True},
+                  ["merged_output", "conflict_count"]),
+        ],
+    },
+
+    {
+        "intent": "run independent subtasks in parallel using multiple agents and aggregate results",
+        "steps": [
+            _step("spawn_parallel_agents",
+                  {"max_parallel": 5, "timeout_ms": 20000},
+                  ["agent_handles"]),
+            _step("monitor_completion",
+                  {"poll_interval_ms": 500, "fail_fast": False},
+                  ["completed", "failed", "partial"]),
+            _step("aggregate_parallel_outputs",
+                  {"strategy": "merge", "handle_partial": True},
+                  ["aggregated_result", "completeness_ratio"]),
+        ],
+    },
+
+    {
+        "intent": "route a task to the most capable specialized agent and return its result",
+        "steps": [
+            _step("assess_task_requirements",
+                  {"extract_capabilities": True, "estimate_complexity": True},
+                  ["required_capabilities", "complexity_score"]),
+            _step("select_best_agent",
+                  {"match_by_capability": True, "prefer_available": True},
+                  ["selected_agent", "match_score"]),
+            _step("delegate_and_monitor",
+                  {"timeout_ms": 15000, "stream_progress": False},
+                  ["agent_result", "latency_ms"]),
+        ],
+    },
+
+    # ── Tool Use & Function Calling (3) ──────────────────────────────────────
+
+    {
+        "intent": "search the web to find and synthesize up-to-date information on a topic",
+        "steps": [
+            _step("formulate_search_queries",
+                  {"num_queries": 3, "diverse": True, "include_date": True},
+                  ["queries"]),
+            _step("execute_web_search",
+                  {"engine": "${search_engine}", "results_per_query": 5},
+                  ["raw_results", "urls"]),
+            _step("filter_and_parse_results",
+                  {"remove_duplicates": True, "min_relevance": 0.6},
+                  ["filtered_results", "kept_count"]),
+            _step("synthesize_search_answer",
+                  {"cite_urls": True, "max_tokens": 400},
+                  ["answer", "sources"]),
+        ],
+    },
+
+    {
+        "intent": "execute code in a sandbox to solve a computational problem and return the result",
+        "steps": [
+            _step("write_solution_code",
+                  {"language": "${language}", "include_tests": True},
+                  ["code", "test_cases"]),
+            _step("execute_in_sandbox",
+                  {"timeout_ms": 10000, "memory_limit_mb": 256},
+                  ["stdout", "stderr", "exit_code"]),
+            _step("validate_and_parse_output",
+                  {"check_test_cases": True, "parse_structured": True},
+                  ["result", "test_passed", "parse_error"]),
+            _step("handle_execution_errors",
+                  {"retry_on_syntax_error": True, "max_retries": 2},
+                  ["final_result", "error_handled"]),
+        ],
+    },
+
+    {
+        "intent": "call an external API tool and process its structured response",
+        "steps": [
+            _step("validate_tool_inputs",
+                  {"schema_check": True, "sanitize": True},
+                  ["validated_inputs", "validation_errors"]),
+            _step("call_tool_with_retry",
+                  {"max_retries": 3, "backoff_ms": 500, "timeout_ms": 10000},
+                  ["raw_response", "status_code", "latency_ms"]),
+            _step("parse_and_transform_response",
+                  {"extract_fields": True, "normalize": True},
+                  ["parsed_response", "missing_fields"]),
+        ],
+    },
+
+    # ── Memory & Context Management (2) ──────────────────────────────────────
+
+    {
+        "intent": "recall relevant context from memory and use it to generate a better response",
+        "steps": [
+            _step("query_memory_system",
+                  {"top_k": 5, "layers": ["episodic", "semantic"], "min_relevance": 0.6},
+                  ["recalled_memories", "scores"]),
+            _step("filter_and_rank_memories",
+                  {"deduplicate": True, "recency_weight": 0.3},
+                  ["filtered_memories", "context_text"]),
+            _step("inject_context_and_generate",
+                  {"position": "system_prefix", "max_context_tokens": 800},
+                  ["response", "context_used"]),
+        ],
+    },
+
+    {
+        "intent": "extract and persist key facts from a conversation or document for future sessions",
+        "steps": [
+            _step("extract_key_facts",
+                  {"importance_threshold": 0.6, "max_facts": 10},
+                  ["facts", "importance_scores"]),
+            _step("classify_by_memory_layer",
+                  {"layers": ["episodic", "semantic", "relationship"]},
+                  ["classified_facts"]),
+            _step("store_to_persistent_memory",
+                  {"deduplicate": True, "update_existing": True},
+                  ["stored_ids", "updated_ids", "skipped"]),
+        ],
+    },
+
+    # ── Structured Output & Extraction (2) ───────────────────────────────────
+
+    {
+        "intent": "extract structured data matching a defined schema from unstructured text",
+        "steps": [
+            _step("identify_target_schema",
+                  {"schema": "${schema}", "infer_if_missing": True},
+                  ["schema", "field_count"]),
+            _step("parse_entities_and_values",
+                  {"use_few_shot": True, "confidence_per_field": True},
+                  ["raw_extracted", "field_confidences"]),
+            _step("validate_against_schema",
+                  {"strict_types": True, "fill_optional_defaults": True},
+                  ["validated_data", "validation_errors"]),
+            _step("return_structured_output",
+                  {"format": "${output_format}", "include_confidence": True},
+                  ["output", "overall_confidence"]),
+        ],
+    },
+
+    {
+        "intent": "generate a formatted report from raw data and analysis results",
+        "steps": [
+            _step("collect_and_validate_data",
+                  {"sources": "${data_sources}", "validate_schema": True},
+                  ["validated_data", "data_quality_score"]),
+            _step("run_analysis",
+                  {"metrics": "${metrics}", "comparisons": True},
+                  ["analysis_results", "insights"]),
+            _step("apply_report_template",
+                  {"template": "${template}", "sections": "${sections}"},
+                  ["formatted_report", "word_count"]),
+        ],
+    },
+
+    # ── Error Handling & Resilience (2) ──────────────────────────────────────
+
+    {
+        "intent": "retry a failed operation with exponential backoff and circuit breaking",
+        "steps": [
+            _step("classify_error",
+                  {"transient_patterns": ["timeout", "rate_limit", "503"],
+                   "permanent_patterns": ["404", "auth_error"]},
+                  ["error_class", "is_retryable"]),
+            _step("apply_backoff_strategy",
+                  {"initial_ms": 500, "multiplier": 2.0, "max_ms": 30000, "jitter": True},
+                  ["wait_ms", "attempt_number"]),
+            _step("retry_operation",
+                  {"circuit_breaker_threshold": 5, "half_open_test": True},
+                  ["result", "circuit_state", "total_attempts"]),
+        ],
+    },
+
+    {
+        "intent": "validate an LLM response against constraints and automatically fix violations",
+        "steps": [
+            _step("check_format_and_constraints",
+                  {"constraints": "${constraints}", "schema": "${schema}"},
+                  ["violations", "passed_checks"]),
+            _step("prompt_llm_to_fix_violations",
+                  {"include_original": True, "max_fix_attempts": 2},
+                  ["fixed_response", "fix_applied"]),
+            _step("revalidate_fixed_response",
+                  {"strict": True},
+                  ["is_valid", "remaining_violations"]),
+        ],
+    },
+
+    # ── Human-in-the-Loop (1) ─────────────────────────────────────────────────
+
+    {
+        "intent": "request human review and approval before executing a high-risk action",
+        "steps": [
+            _step("describe_action_and_risk",
+                  {"include_consequences": True, "risk_level": "${risk_level}"},
+                  ["description", "estimated_risk"]),
+            _step("notify_and_await_human",
+                  {"channel": "${notify_channel}", "timeout_ms": 300000},
+                  ["approved", "reviewer_id", "comments"]),
+            _step("proceed_or_abort",
+                  {"audit_log": True, "notify_outcome": True},
+                  ["outcome", "audit_id"]),
+        ],
+    },
+
+]
+
+TEMPLATE_COUNT = len(CURATED_TEMPLATES)
+
+
+def load_templates(tenant_id: str) -> List[Any]:
+    """
+    Load pre-warmed execution templates as ExecutionTemplate objects.
+    Called during Mnemon initialisation for cold-start EME value.
+    Returned templates have is_prewarmed=True so semantic_lookup() skips
+    them for the moth bridge (they contain plan JSON, not LLM responses).
+    """
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+    from ..core.memory import SimpleEmbedder
+    from ..core.models import ExecutionTemplate, TemplateSegment, ComputationFingerprint
+
+    embedder = SimpleEmbedder()
+    templates = []
+
+    for i, tmpl in enumerate(CURATED_TEMPLATES):
+        intent = tmpl["intent"]
+        steps = tmpl["steps"]
+
+        # Embed intent at full resolution (384-dim) for TemplateIndex
+        intent_embedding = embedder.embed_full(intent)
+
+        # Build fingerprint from intent (deterministic)
+        fp = ComputationFingerprint.build(
+            goal=intent, input_schema={}, context={},
+            capabilities=[], constraints={},
+        )
+
+        segments: List[TemplateSegment] = []
+        for j, step in enumerate(steps):
+            content = step["content"]
+            content_str = json.dumps(content, sort_keys=True)
+            sig = embedder.embed(content_str)
+            seg = TemplateSegment(
+                segment_id=f"pwt_{i:03d}_s{j}_{step['fingerprint']}",
+                tenant_id=tenant_id,
+                content=content,
+                fingerprint=step["fingerprint"],
+                signature=sig,
+                outputs=step["outputs"],
+                domain_tags=set(),
+                success_rate=1.0,
+                confidence=0.90,
+                is_generated=False,
+                use_count=0,
+            )
+            segments.append(seg)
+
+        template_id = hashlib.md5(f"prewarmed:{tenant_id}:{intent}".encode()).hexdigest()[:24]
+
+        et = ExecutionTemplate(
+            template_id=template_id,
+            tenant_id=tenant_id,
+            intent=intent,
+            fingerprint=fp,
+            segments=segments,
+            success_count=0,
+            failure_count=0,
+            embedding=intent_embedding,
+            tool_versions={},
+            api_schemas={},
+            needs_reverification=False,
+            is_prewarmed=True,
+        )
+        templates.append(et)
+
+    return templates

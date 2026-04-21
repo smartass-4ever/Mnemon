@@ -216,8 +216,15 @@ class _SyntheticAnthropicStream:
     def __iter__(self):
         return self._events()
 
+    async def __aiter__(self):
+        for event in self._events():
+            yield event
+
     @property
     def text_stream(self):
+        yield self._text
+
+    async def atext_stream(self):
         yield self._text
 
     def get_final_message(self) -> Any:

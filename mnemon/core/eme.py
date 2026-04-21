@@ -551,6 +551,8 @@ class ExecutionMemoryEngine:
 
         self._fragments_loaded = False
         self.retrospector = None
+        # Cross-tenant collective learning: proven boosts loaded on warm()
+        self._proven_boosts: Dict[str, float] = {}  # intent_key → boost_weight
 
         # Per-call buffers populated in _fill_gap for retrospector tracing.
         # Reset at the top of run() — asyncio-safe (single-threaded event loop).
@@ -604,6 +606,15 @@ class ExecutionMemoryEngine:
                     self.tenant_id, frag.segment_id, frag.signature
                 )
                 self._fragment_map[frag.segment_id] = frag
+
+        # Load cross-tenant proven boosts for pre-warmed template prioritisation
+        if self.signal_db:
+            try:
+                self._proven_boosts = await self.signal_db.get_proven_boosts()
+                if self._proven_boosts:
+                    logger.info(f"EME: {len(self._proven_boosts)} proven intent boost(s) loaded")
+            except Exception as e:
+                logger.debug(f"EME: proven boosts load failed (non-critical): {e}")
 
         self._fragments_loaded = True
         logger.info(
@@ -810,6 +821,11 @@ class ExecutionMemoryEngine:
                 fp, t.fingerprint, goal_embedding, t.embedding,
                 capabilities, list(t.tool_versions.keys())
             )
+            # Apply collective cross-tenant boost to proven pre-warmed templates
+            if t.is_prewarmed and self._proven_boosts:
+                intent_key = hashlib.md5(f"prewarmed:{t.intent}".encode()).hexdigest()[:24]
+                boost = self._proven_boosts.get(intent_key, 0.0)
+                score = min(1.0, score + boost)
             if score > best_score:
                 best_score = score
                 best_template = t
@@ -831,6 +847,10 @@ class ExecutionMemoryEngine:
             await self.db.update_template_outcome(
                 self.tenant_id, best_template.template_id, True
             )
+            if best_template.is_prewarmed and self.signal_db:
+                intent_key = hashlib.md5(f"prewarmed:{best_template.intent}".encode()).hexdigest()[:24]
+                domain = list(best_template.segments[0].domain_tags)[0] if best_template.segments and best_template.segments[0].domain_tags else "general"
+                asyncio.create_task(self.signal_db.record_proven_intent(intent_key, domain, True))
             # [FIX BUG-1] tokens_saved and latency_saved_ms were not set here.
             # The original EMEResult was returned with both fields at their
             # dataclass default of 0, even though all segments were reused.
@@ -1433,30 +1453,31 @@ class ExecutionMemoryEngine:
                 template = await self.db.fetch_template_by_fingerprint(
                     self.tenant_id, fp.full_hash
                 )
-                if template and not template.should_evict:
+                if template and not template.should_evict and not template.is_prewarmed:
                     text = str(template.segments[0].content) if template.segments else ""
                     await self.db.update_template_outcome(self.tenant_id, tid, True)
                     return (tid, text)
 
-            # System 2: semantic similarity
+            # System 2: semantic similarity — skip pre-warmed templates (plan JSON, not LLM text)
             goal_emb = await self._embed(goal, full=True)
-            candidates = await self._template_index.top_k(self.tenant_id, goal_emb, k=1)
-            if candidates:
-                tid, score = candidates[0]
-                if score >= SYSTEM2_THRESHOLD_DEFAULT:
-                    reverse = self._system1_reverse()
-                    fp_hash = reverse.get(tid)
-                    if fp_hash:
-                        template = await self.db.fetch_template_by_fingerprint(
-                            self.tenant_id, fp_hash
-                        )
-                        if template and not template.should_evict:
-                            text = (
-                                str(template.segments[0].content)
-                                if template.segments else ""
-                            )
-                            await self.db.update_template_outcome(self.tenant_id, tid, True)
-                            return (tid, text)
+            candidates = await self._template_index.top_k(self.tenant_id, goal_emb, k=5)
+            for tid, score in candidates:
+                if score < SYSTEM2_THRESHOLD_DEFAULT:
+                    break
+                reverse = self._system1_reverse()
+                fp_hash = reverse.get(tid)
+                if not fp_hash:
+                    continue
+                template = await self.db.fetch_template_by_fingerprint(
+                    self.tenant_id, fp_hash
+                )
+                if template and not template.should_evict and not template.is_prewarmed:
+                    text = (
+                        str(template.segments[0].content)
+                        if template.segments else ""
+                    )
+                    await self.db.update_template_outcome(self.tenant_id, tid, True)
+                    return (tid, text)
         except Exception as e:
             logger.debug(f"EME semantic_lookup failed: {e}")
         return None

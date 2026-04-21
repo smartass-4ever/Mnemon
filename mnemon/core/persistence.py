@@ -24,7 +24,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 4
 
 
 class SchemaError(Exception):
@@ -289,6 +289,8 @@ class EROSDatabase:
         migrations = {
             0: self._migration_v0_to_v1,
             1: self._migration_v1_to_v2,
+            2: self._migration_v2_to_v3,
+            3: self._migration_v3_to_v4,
         }
 
         for v in range(current, CURRENT_SCHEMA_VERSION):
@@ -433,6 +435,40 @@ class EROSDatabase:
                 ON memories(tenant_id, activation_domain, timestamp DESC);
         """)
         self._conn.commit()
+
+    async def _migration_v3_to_v4(self):
+        """Add session_health table for cross-session drift detection."""
+        self._conn.executescript("""
+            CREATE TABLE IF NOT EXISTS session_health (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id       TEXT NOT NULL,
+                session_id      TEXT NOT NULL,
+                timestamp       REAL NOT NULL,
+                cache_hit_rate  REAL DEFAULT 0.0,
+                memory_writes   INTEGER DEFAULT 0,
+                total_calls     INTEGER DEFAULT 0,
+                avg_latency_ms  REAL DEFAULT 0.0,
+                notes           TEXT DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_session_health_tenant
+                ON session_health(tenant_id, timestamp DESC);
+        """)
+        self._conn.commit()
+
+    async def _migration_v2_to_v3(self):
+        """Add is_prewarmed column to execution_templates."""
+        try:
+            self._conn.execute(
+                "ALTER TABLE execution_templates ADD COLUMN is_prewarmed INTEGER DEFAULT 0"
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_templates_prewarmed "
+                "ON execution_templates(tenant_id, is_prewarmed)"
+            )
+            self._conn.commit()
+        except Exception as e:
+            if "duplicate column" not in str(e).lower():
+                raise
 
     # ──────────────────────────────────────────
     # MEMORY OPERATIONS
@@ -707,12 +743,20 @@ class EROSDatabase:
             ]
             fp = template.fingerprint
             self._conn.execute("""
-                INSERT OR REPLACE INTO execution_templates VALUES (
+                INSERT OR REPLACE INTO execution_templates (
+                    template_id, tenant_id, intent,
+                    fingerprint_hash, fingerprint_data, segments,
+                    success_count, failure_count,
+                    created_at, last_used_at, embedding,
+                    tool_versions, api_schemas, needs_reverification,
+                    is_prewarmed
+                ) VALUES (
                     :template_id, :tenant_id, :intent,
                     :fingerprint_hash, :fingerprint_data, :segments,
                     :success_count, :failure_count,
                     :created_at, :last_used_at, :embedding,
-                    :tool_versions, :api_schemas, :needs_reverification
+                    :tool_versions, :api_schemas, :needs_reverification,
+                    :is_prewarmed
                 )
             """, {
                 "template_id":          template.template_id,
@@ -735,6 +779,7 @@ class EROSDatabase:
                 "tool_versions":        json.dumps(template.tool_versions),
                 "api_schemas":          json.dumps(template.api_schemas),
                 "needs_reverification": int(template.needs_reverification),
+                "is_prewarmed":         int(getattr(template, "is_prewarmed", False)),
             })
             self._conn.commit()
 
@@ -754,6 +799,16 @@ class EROSDatabase:
         async with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM execution_templates WHERE tenant_id=? ORDER BY last_used_at DESC",
+                (tenant_id,)
+            ).fetchall()
+        return [self._row_to_template(r) for r in rows]
+
+    async def fetch_prewarmed_templates(self, tenant_id: str) -> List[ExecutionTemplate]:
+        """Return only pre-warmed (library) templates for a tenant."""
+        async with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM execution_templates "
+                "WHERE tenant_id=? AND is_prewarmed=1 ORDER BY last_used_at DESC",
                 (tenant_id,)
             ).fetchall()
         return [self._row_to_template(r) for r in rows]
@@ -830,6 +885,7 @@ class EROSDatabase:
             tool_versions=json.loads(row["tool_versions"]),
             api_schemas=json.loads(row["api_schemas"]),
             needs_reverification=bool(row["needs_reverification"]),
+            is_prewarmed=bool(row["is_prewarmed"]) if "is_prewarmed" in row.keys() else False,
         )
 
     # ──────────────────────────────────────────
@@ -876,6 +932,53 @@ class EROSDatabase:
             )
             for r in rows
         ]
+
+    # ──────────────────────────────────────────
+    # SESSION HEALTH (drift detection)
+    # ──────────────────────────────────────────
+
+    async def write_session_health(
+        self,
+        tenant_id: str,
+        session_id: str,
+        cache_hit_rate: float,
+        memory_writes: int,
+        total_calls: int,
+        avg_latency_ms: float,
+        notes: str = "",
+    ):
+        async with self._lock:
+            self._conn.execute(
+                "INSERT INTO session_health "
+                "(tenant_id, session_id, timestamp, cache_hit_rate, memory_writes, "
+                "total_calls, avg_latency_ms, notes) VALUES (?,?,?,?,?,?,?,?)",
+                (tenant_id, session_id, time.time(), cache_hit_rate,
+                 memory_writes, total_calls, avg_latency_ms, notes),
+            )
+            self._conn.commit()
+
+    async def fetch_session_health(
+        self, tenant_id: str, limit: int = 30
+    ) -> List[Dict]:
+        async with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM session_health WHERE tenant_id=? "
+                "ORDER BY id DESC LIMIT ?",
+                (tenant_id, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    async def fetch_memories_since(
+        self, tenant_id: str, since_ts: float, limit: int = 200
+    ) -> List[str]:
+        """Return memory_ids written after since_ts — used by drift auto-correction."""
+        async with self._lock:
+            rows = self._conn.execute(
+                "SELECT memory_id FROM memories WHERE tenant_id=? AND timestamp >= ? "
+                "AND intent_valid=1 ORDER BY timestamp ASC LIMIT ?",
+                (tenant_id, since_ts, limit),
+            ).fetchall()
+        return [r["memory_id"] for r in rows]
 
     # ──────────────────────────────────────────
     # BELIEF REGISTRY

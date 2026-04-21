@@ -38,6 +38,7 @@ from mnemon.security.manager import SecurityManager, TenantSecurityConfig
 from mnemon.observability.watchdog import Watchdog
 from mnemon.observability.telemetry import Telemetry
 from mnemon.llm.client import LLMClient, auto_client
+from mnemon.core.drift import DriftDetector
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,7 @@ class Mnemon:
                 bus=self._bus, eme=self._eme, memory=self._memory,
                 webhook_url=watchdog_webhook,
             )
+        self._drift = DriftDetector(tenant_id=tenant_id, db=self._db)
         self._started = False
 
     async def start(self):
@@ -148,10 +150,10 @@ class Mnemon:
             )
         if self._eme:
             await self._eme.warm()
-            # Load pre-warmed fragments on cold start
+            # Load pre-warmed fragments and templates on cold start
             if self._prewarm_fragments:
                 try:
-                    from mnemon.fragments.library import load_fragments
+                    from mnemon.fragments.library import load_fragments, load_templates
                     existing = await self._db.fetch_fragments(self.tenant_id)
                     if len(existing) == 0:
                         frags = load_fragments(self.tenant_id)
@@ -161,6 +163,20 @@ class Mnemon:
                         logger.info(f"Pre-warmed {len(frags)} fragments loaded")
                 except Exception as e:
                     logger.debug(f"Fragment pre-warm skipped: {e}")
+                try:
+                    from mnemon.fragments.library import load_templates
+                    existing_tmpl = await self._db.fetch_prewarmed_templates(self.tenant_id)
+                    if len(existing_tmpl) == 0:
+                        tmpls = load_templates(self.tenant_id)
+                        for tmpl in tmpls:
+                            await self._db.write_template(tmpl)
+                            if tmpl.embedding:
+                                await self._eme._template_index.add(
+                                    self.tenant_id, tmpl.template_id, tmpl.embedding
+                                )
+                        logger.info(f"Pre-warmed {len(tmpls)} templates loaded")
+                except Exception as e:
+                    logger.debug(f"Template pre-warm skipped: {e}")
         if self._bus:
             await self._bus.start()
         if self._watchdog:
@@ -173,6 +189,10 @@ class Mnemon:
             await self._watchdog.stop()
         if self._bus:
             await self._bus.stop()
+        try:
+            await self._drift.flush_session()
+        except Exception:
+            pass
         await self._db.disconnect()
         if self._telemetry:
             self._telemetry.emit_log()
@@ -256,6 +276,13 @@ class Mnemon:
             except Exception as e:
                 logger.debug(f"Bus record failed: {e}")
 
+        # Drift tracking — record every call regardless of cache outcome
+        try:
+            cache_hit = bool(eme_result and eme_result.cache_level in ("system1", "system2"))
+            self._drift.record_call(cache_hit=cache_hit, latency_ms=latency_ms)
+        except Exception:
+            pass
+
         # Telemetry
         if self._telemetry and eme_result:
             self._telemetry.eme_run(
@@ -291,7 +318,9 @@ class Mnemon:
             importance=importance,
         )
         try:
-            return await self._memory.write(signal)
+            result = await self._memory.write(signal)
+            self._drift.record_memory_write()
+            return result
         except Exception as e:
             logger.warning(f"remember() failed: {e}")
             return None
@@ -407,6 +436,63 @@ class Mnemon:
             "message":   "Watchdog not enabled — enable_watchdog=True for detailed health",
         }
 
+    async def drift_report(self) -> "DriftReport":
+        """
+        Analyse cross-session health and return a DriftReport.
+        Detects silent degradation before it becomes a user-facing problem.
+        """
+        return await self._drift.detect()
+
+    async def auto_correct_drift(self) -> Dict[str, Any]:
+        """
+        Detect drift and attempt automatic correction.
+
+        Finds memories written during the degradation window, runs conflict
+        detection across them, and supersedes the weaker side of each conflict.
+        Returns a summary of what was corrected.
+        """
+        report = await self._drift.detect()
+        if report.is_healthy() or report.drift_since_ts is None:
+            return {"status": "healthy", "corrections": 0, "report": str(report)}
+
+        memory_ids = await self._drift.get_correction_targets(report.drift_since_ts)
+        if not memory_ids:
+            return {
+                "status": report.severity,
+                "corrections": 0,
+                "message": "No memories found in drift window to correct.",
+                "report": str(report),
+            }
+
+        corrections = 0
+        if self._memory:
+            try:
+                memories = await self._db.fetch_memories(self.tenant_id, memory_ids)
+                conflicts = self._memory._detect_conflicts(memories)
+                for conflict in conflicts:
+                    if len(conflict) >= 2:
+                        # Supersede the memory with the lower importance score
+                        weaker = min(conflict, key=lambda m: m.importance)
+                        stronger = max(conflict, key=lambda m: m.importance)
+                        await self._db.supersede_memory(
+                            self.tenant_id, weaker.memory_id, stronger.memory_id
+                        )
+                        corrections += 1
+            except Exception as e:
+                logger.warning(f"auto_correct_drift: correction step failed: {e}")
+
+        logger.info(
+            f"auto_correct_drift [{self.tenant_id}]: "
+            f"{corrections} conflict(s) resolved across {len(memory_ids)} candidate memories"
+        )
+        return {
+            "status": report.severity,
+            "corrections": corrections,
+            "candidates_reviewed": len(memory_ids),
+            "drift_since": report.drift_since_ts,
+            "report": str(report),
+        }
+
     def telemetry_report(self) -> dict:
         """Get current telemetry report."""
         if self._telemetry:
@@ -516,6 +602,14 @@ class MnemonSync:
         """Print a formatted stats summary."""
         print(repr(self._stats))
 
+    @property
+    def waste_report(self) -> str:
+        """
+        Personal waste report — which queries your agent repeated across sessions
+        and what they cost you. Print it directly: print(m.waste_report)
+        """
+        return self._stats.waste_report()
+
     def _run(self, coro):
         return self._loop.run_until_complete(coro)
 
@@ -537,6 +631,20 @@ class MnemonSync:
 
     def get_stats(self) -> dict:
         return self._m.get_stats()
+
+    def drift_report(self):
+        """
+        Cross-session health analysis. Detects silent performance degradation.
+        Returns a DriftReport — print it directly: print(m.drift_report())
+        """
+        return self._run(self._m.drift_report())
+
+    def auto_correct_drift(self) -> dict:
+        """
+        Detect drift and automatically resolve conflicting memories in the
+        degradation window. Returns a summary of what was corrected.
+        """
+        return self._run(self._m.auto_correct_drift())
 
     def close(self):
         if self._moth is not None:
