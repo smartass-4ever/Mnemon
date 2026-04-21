@@ -72,8 +72,16 @@ def _try_load_sentence_transformers():
     if _ST_MODEL_CACHE is not None:
         return _ST_MODEL_CACHE
     try:
+        import os, logging as _log, warnings
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+        os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        _log.getLogger("sentence_transformers").setLevel(_log.ERROR)
+        _log.getLogger("transformers").setLevel(_log.ERROR)
+        _log.getLogger("huggingface_hub").setLevel(_log.ERROR)
+        warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
         from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("all-MiniLM-L6-v2")
+        model = SentenceTransformer("all-MiniLM-L6-v2", tokenizer_kwargs={"clean_up_tokenization_spaces": True})
         _ST_MODEL_CACHE = model
         logger.info("Mnemon embedder: sentence-transformers loaded (all-MiniLM-L6-v2, 384-dim)")
         return model

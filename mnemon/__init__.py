@@ -431,6 +431,19 @@ class Mnemon:
         return stats
 
 
+def _cancel_all_tasks(loop: asyncio.AbstractEventLoop) -> None:
+    """Cancel every pending task on loop, then drain them. Prevents segfault on close."""
+    try:
+        pending = asyncio.all_tasks(loop)
+        if not pending:
+            return
+        for task in pending:
+            task.cancel()
+        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+    except Exception:
+        pass
+
+
 class MnemonSync:
     """
     Synchronous wrapper around Mnemon for quick experimentation.
@@ -474,6 +487,7 @@ class MnemonSync:
             except Exception:
                 pass
         self._loop.run_until_complete(self._m.stop())
+        _cancel_all_tasks(self._loop)
         self._loop.close()
 
     @property
@@ -533,6 +547,7 @@ class MnemonSync:
             self._moth = None
         if self._m is not None:
             self._loop.run_until_complete(self._m.stop())
+            _cancel_all_tasks(self._loop)
             self._loop.close()
             self._m = None
 

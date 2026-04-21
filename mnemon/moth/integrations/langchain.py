@@ -26,7 +26,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from mnemon.moth import MnemonIntegration
-from ._utils import extract_query, prompt_hash, record_outcome, track_cache_hit
+from ._utils import extract_query, prompt_hash, record_outcome, track_cache_hit, recall_as_context
 from ._cache import BoundedTTLCache
 from ._eme_bridge import MothCache
 
@@ -43,6 +43,7 @@ class LangChainIntegration(MnemonIntegration):
     def __init__(self) -> None:
         self._original_runnable_invoke: Optional[Any] = None
         self._original_chain_call:      Optional[Any] = None
+        self._original_chat_invoke:     Optional[Any] = None
         self._mnemon:                   Optional[Any] = None
 
     def is_available(self) -> bool:
@@ -60,12 +61,14 @@ class LangChainIntegration(MnemonIntegration):
             from langchain_core.runnables.base import RunnableSequence
             self._original_runnable_invoke = RunnableSequence.invoke
             orig_invoke  = self._original_runnable_invoke
-            step_cache   = MothCache(m, "langchain")
+            # Per-step uses hash-only cache — EME semantic lookup causes cross-step
+            # false positives (step N's output mistaken for step N+1's cache hit).
+            step_cache   = BoundedTTLCache(maxsize=500, ttl=3600)
+            self._step_cache = step_cache
             chain_cache  = BoundedTTLCache(maxsize=500, ttl=3600)  # legacy fallback
 
             def patched_invoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
                 query = _extract_lc_query(input)
-                # No state injection — memory reaches LLM via Anthropic/OpenAI intercepts
 
                 steps = getattr(_self, "steps", None)
                 if not steps:
@@ -73,14 +76,23 @@ class LangChainIntegration(MnemonIntegration):
                     record_outcome(m, query, str(result)[:400])
                     return result
 
-                # Per-step execution with System 2 cache
+                # Per-step execution with System 2 cache.
+                # LLM steps (BaseChatModel) are intentionally NOT step-cached here —
+                # they flow through patched_chat_invoke which handles both caching
+                # and memory injection in the right order.
                 current = input
                 try:
                     for i, step in enumerate(steps):
-                        step_goal = f"step_{i}:{type(step).__name__}:{query}"
-                        step_key  = _step_cache_key(step, current)
+                        if _is_chat_model(step):
+                            # Let BaseChatModel patch handle cache + injection
+                            if config is not None:
+                                current = step.invoke(current, config)
+                            else:
+                                current = step.invoke(current)
+                            continue
 
-                        cached = step_cache.check(step_goal, [type(step).__name__], step_key)
+                        step_key = _step_cache_key(step, current)
+                        cached = step_cache.get(step_key)
                         if cached is not None:
                             track_cache_hit(m, f"langchain:step_{i}")
                             current = cached
@@ -91,10 +103,7 @@ class LangChainIntegration(MnemonIntegration):
                         else:
                             current = step.invoke(current)
 
-                        step_cache.store(
-                            step_goal, [type(step).__name__], step_key,
-                            current, str(current)[:400]
-                        )
+                        step_cache[step_key] = current
 
                 except Exception as e:
                     logger.debug(
@@ -102,8 +111,8 @@ class LangChainIntegration(MnemonIntegration):
                         f"falling back to whole-chain"
                     )
                     current = orig_invoke(_self, input, config, **kwargs)
+                    record_outcome(m, query, str(current)[:400])
 
-                record_outcome(m, query, str(current)[:400])
                 return current
 
             RunnableSequence.invoke = patched_invoke
@@ -111,7 +120,61 @@ class LangChainIntegration(MnemonIntegration):
         except Exception as e:
             logger.debug(f"Mnemon: LangChain RunnableSequence patch failed — {e}")
 
-        # Patch 2: Legacy Chain.__call__ — chain-level System 1
+        # Patch 2: BaseChatModel.invoke — cache + memory injection for ALL providers
+        # (Groq, Anthropic via langchain-anthropic, OpenAI via langchain-openai, etc.)
+        # Owns LLM-step caching so RunnableSequence doesn't bypass injection.
+        # Cache is keyed on ORIGINAL messages (before injection) so memory growth
+        # doesn't invalidate cached LLM responses.
+        try:
+            from langchain_core.language_models.chat_models import BaseChatModel
+            self._original_chat_invoke = BaseChatModel.invoke
+            orig_chat_invoke = self._original_chat_invoke
+            llm_cache = BoundedTTLCache(maxsize=500, ttl=3600)
+
+            def patched_chat_invoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
+                query = ""
+                recall_query = ""
+                hash_key = None
+                try:
+                    messages     = _messages_from_prompt_value(input)
+                    # recall_query = system + human (full intent signal for injection)
+                    # query        = human only (clean goal for memory storage)
+                    recall_query = _query_from_messages(messages)
+                    query        = _human_query_from_messages(messages) or recall_query
+                    hash_key     = _step_cache_key(_self, input)
+
+                    cached = llm_cache.get(hash_key)
+                    if cached is not None:
+                        track_cache_hit(m, "langchain:llm")
+                        return cached
+
+                    context = recall_as_context(m, recall_query, source="langchain") if recall_query else ""
+                    if context:
+                        input = _inject_context_into_prompt_value(input, messages, context)
+                except Exception:
+                    pass
+
+                result = orig_chat_invoke(_self, input, config, **kwargs)
+
+                try:
+                    if hash_key is not None:
+                        llm_cache[hash_key] = result
+                    if query:
+                        text = getattr(result, "content", None) or str(result)
+                        if isinstance(text, list):
+                            text = " ".join(str(b) for b in text)
+                        record_outcome(m, query, str(text)[:400])
+                except Exception:
+                    pass
+
+                return result
+
+            BaseChatModel.invoke = patched_chat_invoke
+
+        except Exception as e:
+            logger.debug(f"Mnemon: LangChain BaseChatModel patch failed — {e}")
+
+        # Patch 3: Legacy Chain.__call__ — chain-level System 1
         try:
             from langchain.chains.base import Chain
             self._original_chain_call = Chain.__call__
@@ -143,6 +206,10 @@ class LangChainIntegration(MnemonIntegration):
                 from langchain_core.runnables.base import RunnableSequence
                 RunnableSequence.invoke = self._original_runnable_invoke
 
+            if self._original_chat_invoke is not None:
+                from langchain_core.language_models.chat_models import BaseChatModel
+                BaseChatModel.invoke = self._original_chat_invoke
+
             if self._original_chain_call is not None:
                 from langchain.chains.base import Chain
                 Chain.__call__ = self._original_chain_call
@@ -150,6 +217,7 @@ class LangChainIntegration(MnemonIntegration):
             logger.debug(f"Mnemon: LangChain unpatch failed — {e}")
         finally:
             self._original_runnable_invoke = None
+            self._original_chat_invoke = None
             self._original_chain_call = None
 
 
@@ -182,6 +250,87 @@ def _chain_cache_key(chain: Any, input: Any) -> str:
         [{"role": "user", "content": str(input)}], None, chain_type
     )
     return f"{chain_type}:{input_hash}"
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _is_chat_model(step: Any) -> bool:
+    try:
+        from langchain_core.language_models.chat_models import BaseChatModel
+        return isinstance(step, BaseChatModel)
+    except Exception:
+        return False
+
+
+# ── BaseChatModel injection helpers ──────────────────────────────────────────
+
+def _messages_from_prompt_value(input: Any) -> List[Any]:
+    """Extract BaseMessage list from a PromptValue or raw message list."""
+    try:
+        from langchain_core.prompt_values import PromptValue
+        if isinstance(input, PromptValue):
+            return input.to_messages()
+    except Exception:
+        pass
+    if isinstance(input, list):
+        return input
+    return []
+
+
+def _human_query_from_messages(messages: List[Any]) -> str:
+    """Return only the last human message — used as clean goal for memory storage."""
+    try:
+        from langchain_core.messages import HumanMessage
+        human = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
+        if human and isinstance(human.content, str):
+            return human.content[:300].strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _query_from_messages(messages: List[Any]) -> str:
+    """Pull last human/user message as the recall query."""
+    try:
+        from langchain_core.messages import HumanMessage, SystemMessage
+        human = next(
+            (m for m in reversed(messages) if isinstance(m, HumanMessage)), None
+        )
+        system = next(
+            (m for m in messages if isinstance(m, SystemMessage)), None
+        )
+        parts = []
+        if system and isinstance(system.content, str):
+            parts.append(system.content[:200])
+        if human and isinstance(human.content, str):
+            parts.append(human.content[:200])
+        return " ".join(parts).strip()[:350]
+    except Exception:
+        return ""
+
+
+def _inject_context_into_prompt_value(input: Any, messages: List[Any], context: str) -> Any:
+    """Prepend context to the system message (or insert one) in a PromptValue."""
+    try:
+        from langchain_core.messages import SystemMessage
+        from langchain_core.prompt_values import ChatPromptValue
+
+        new_messages = list(messages)
+        if new_messages and isinstance(new_messages[0], SystemMessage):
+            existing = new_messages[0].content if isinstance(new_messages[0].content, str) else ""
+            new_messages[0] = SystemMessage(content=f"{context}\n\n{existing}" if existing else context)
+        else:
+            new_messages.insert(0, SystemMessage(content=context))
+
+        try:
+            from langchain_core.prompt_values import PromptValue
+            if isinstance(input, PromptValue):
+                return ChatPromptValue(messages=new_messages)
+        except Exception:
+            pass
+        return new_messages
+    except Exception:
+        return input
 
 
 # ── Public helper: MnemonMemory ───────────────────────────────────────────────

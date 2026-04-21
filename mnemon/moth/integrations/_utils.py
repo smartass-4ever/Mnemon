@@ -53,13 +53,13 @@ def _format_recall_result(result: Dict, m: Any, query: str, source: str) -> str:
     if memories:
         lines.append("[Mnemon — context from previous sessions]")
         for mem in memories:
-            content = mem.get("content", {})
+            # recall() returns {text: ...} at top level; compressed_context uses {content: {text: ...}}
             text = (
-                content.get("text")
-                or content.get("value")
-                or (str(content) if content and content != {} else None)
+                mem.get("text")
+                or mem.get("content", {}).get("text")
+                or mem.get("content", {}).get("value")
             )
-            if text and text != "{}":
+            if text:
                 lines.append(f"- {text.strip()}")
 
     if facts:
@@ -82,7 +82,7 @@ def _format_recall_result(result: Dict, m: Any, query: str, source: str) -> str:
 def record_outcome(m: "MnemonSync", goal: str, outcome: str, importance: float = 0.65) -> None:
     """Record a task outcome to Mnemon. Never raises."""
     try:
-        text = f"{goal[:120]} → {outcome[:400]}" if goal else outcome[:500]
+        text = f"{goal[:120]} -> {outcome[:400]}" if goal else outcome[:500]
         m.remember(text, importance=importance)
     except Exception as e:
         logger.debug(f"Mnemon record_outcome failed: {e}")

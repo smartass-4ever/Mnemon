@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import logging
+import sys
 from typing import Any, Dict, Optional
 
 from mnemon.moth import MnemonIntegration
@@ -55,7 +56,10 @@ class CrewAIIntegration(MnemonIntegration):
         self._mnemon: Optional[Any] = None
 
     def is_available(self) -> bool:
-        return importlib.util.find_spec("crewai") is not None
+        # Only activate if crewai is actually imported in the user's process,
+        # not just installed. Prevents CrewAI's stdout patching from affecting
+        # unrelated scripts that happen to have crewai installed.
+        return "crewai" in sys.modules
 
     def patch(self, mnemon: Any) -> None:
         from crewai.events.event_bus import crewai_event_bus
