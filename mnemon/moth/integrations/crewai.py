@@ -1,24 +1,19 @@
 """
 Mnemon moth — CrewAI integration.
 
-Hooks into CrewAI's native event bus (crewai_event_bus) using the
-BaseEventListener pattern. No monkey-patching of internals required.
+Registers directly with crewai_event_bus (not via BaseEventListener) so
+we hold exact function references and unpatch() reliably removes them.
 
-  AgentExecutionStartedEvent → inject recalled memory into agent.backstory
-    before the agent calls the LLM. Restores original on completion.
-
-  AgentExecutionCompletedEvent → record outcome to experience bus + restore
-    agent.backstory to its original value.
-
-  TaskCompletedEvent → additional outcome recording at task granularity.
+  AgentExecutionStartedEvent  → inject recalled memory into agent.backstory
+  AgentExecutionCompletedEvent → record outcome + restore original backstory
+  TaskCompletedEvent          → additional outcome recording at task granularity
 
 System 2 EME:
-  Patches Task.execute_sync to cache task outputs keyed by (task_description
-  + agent_role + context_hash). On a cache hit the agent is not called.
-  Falls back gracefully if Task.execute_sync changes between CrewAI versions.
+  Patches Task.execute_sync to cache task outputs. On a cache hit the agent
+  is not called. Falls back gracefully if Task.execute_sync changes between
+  CrewAI versions.
 
-Tested against crewai 0.80+ / 1.x. BaseEventListener pattern is stable
-across versions; execute_sync patch falls back to no-op on failure.
+Tested against crewai 0.80+ / 1.x.
 """
 
 from __future__ import annotations
@@ -43,92 +38,92 @@ _backstory_originals: Dict[int, str] = {}
 
 class CrewAIIntegration(MnemonIntegration):
     """
-    Instruments CrewAI via its native event bus.
-    No internal patching — uses BaseEventListener pattern exactly as
-    CrewAI intends for observability tools.
+    Instruments CrewAI via its event bus using direct handler registration.
+    Storing exact handler references guarantees unpatch() removes them cleanly.
     """
 
     name = "crewai"
 
     def __init__(self) -> None:
-        self._listener: Optional[Any] = None
+        self._handlers: Dict[Any, Any] = {}   # event_type → handler fn
         self._original_execute_sync: Optional[Any] = None
         self._mnemon: Optional[Any] = None
 
     def is_available(self) -> bool:
-        # Only activate if crewai is actually imported in the user's process,
-        # not just installed. Prevents CrewAI's stdout patching from affecting
-        # unrelated scripts that happen to have crewai installed.
+        # Only activate if crewai is actually imported in the user's process.
         return "crewai" in sys.modules
 
     def patch(self, mnemon: Any) -> None:
-        if self._listener is not None:
+        if self._handlers:
             return  # already patched — prevents duplicate listeners on re-init
-        from crewai.events.event_bus import crewai_event_bus
-        from crewai.events.base_event_listener import BaseEventListener
-        from crewai.events.types.agent_events import (
-            AgentExecutionStartedEvent,
-            AgentExecutionCompletedEvent,
-        )
-        from crewai.events.types.task_events import TaskCompletedEvent
+
+        try:
+            from crewai.events.event_bus import crewai_event_bus
+            from crewai.events.types.agent_events import (
+                AgentExecutionStartedEvent,
+                AgentExecutionCompletedEvent,
+            )
+            from crewai.events.types.task_events import TaskCompletedEvent
+        except Exception as e:
+            logger.debug(f"Mnemon: CrewAI event types unavailable — {e}")
+            return
 
         self._mnemon = mnemon
         m = mnemon
 
-        class _MnemonListener(BaseEventListener):
-            def setup_listeners(self, bus: Any) -> None:
-                @bus.on(AgentExecutionStartedEvent)
-                def on_agent_start(source: Any, event: AgentExecutionStartedEvent) -> None:
+        def on_agent_start(source: Any, event: Any) -> None:
+            try:
+                agent = event.agent
+                task_text = getattr(event.task, "description", "") or getattr(event, "task_prompt", "")
+                query = f"{getattr(agent, 'role', '')} {task_text}"[:300]
+                context = recall_as_context(m, query, source="crewai")
+                if context:
+                    original = getattr(agent, "backstory", "") or ""
+                    _backstory_originals[id(agent)] = original
                     try:
-                        agent = event.agent
-                        task_text = getattr(event.task, "description", "") or event.task_prompt
-                        query = f"{getattr(agent, 'role', '')} {task_text}"[:300]
-                        context = recall_as_context(m, query, source="crewai")
-                        if context:
-                            original = getattr(agent, "backstory", "") or ""
-                            _backstory_originals[id(agent)] = original
-                            try:
-                                object.__setattr__(agent, "backstory", f"{context}\n\n{original}")
-                            except (AttributeError, TypeError):
-                                agent.__dict__["backstory"] = f"{context}\n\n{original}"
-                    except Exception as e:
-                        logger.debug(f"Mnemon: CrewAI on_agent_start failed — {e}")
+                        object.__setattr__(agent, "backstory", f"{context}\n\n{original}")
+                    except (AttributeError, TypeError):
+                        agent.__dict__["backstory"] = f"{context}\n\n{original}"
+            except Exception as e:
+                logger.debug(f"Mnemon: CrewAI on_agent_start failed — {e}")
 
-                @bus.on(AgentExecutionCompletedEvent)
-                def on_agent_completed(source: Any, event: AgentExecutionCompletedEvent) -> None:
+        def on_agent_completed(source: Any, event: Any) -> None:
+            try:
+                agent = event.agent
+                original = _backstory_originals.pop(id(agent), None)
+                if original is not None:
                     try:
-                        agent = event.agent
-                        # Restore original backstory
-                        original = _backstory_originals.pop(id(agent), None)
-                        if original is not None:
-                            try:
-                                object.__setattr__(agent, "backstory", original)
-                            except (AttributeError, TypeError):
-                                agent.__dict__["backstory"] = original
+                        object.__setattr__(agent, "backstory", original)
+                    except (AttributeError, TypeError):
+                        agent.__dict__["backstory"] = original
+                task_text = getattr(event.task, "description", "") or ""
+                goal = f"{getattr(agent, 'role', '')} {task_text}"[:120]
+                record_outcome(m, goal, str(event.output)[:400])
+            except Exception as e:
+                logger.debug(f"Mnemon: CrewAI on_agent_completed failed — {e}")
 
-                        # Record to experience bus
-                        task_text = getattr(event.task, "description", "") or ""
-                        goal = f"{getattr(agent, 'role', '')} {task_text}"[:120]
-                        record_outcome(m, goal, str(event.output)[:400])
-                    except Exception as e:
-                        logger.debug(f"Mnemon: CrewAI on_agent_completed failed — {e}")
+        def on_task_completed(source: Any, event: Any) -> None:
+            try:
+                task = event.task
+                description = getattr(task, "description", "") if task else ""
+                output_str = str(event.output.raw if hasattr(event.output, "raw") else event.output)
+                record_outcome(m, description[:120], output_str[:400], importance=0.7)
+            except Exception as e:
+                logger.debug(f"Mnemon: CrewAI on_task_completed failed — {e}")
 
-                @bus.on(TaskCompletedEvent)
-                def on_task_completed(source: Any, event: TaskCompletedEvent) -> None:
-                    try:
-                        task = event.task
-                        description = getattr(task, "description", "") if task else ""
-                        output_str = str(event.output.raw if hasattr(event.output, "raw") else event.output)
-                        record_outcome(m, description[:120], output_str[:400], importance=0.7)
-                    except Exception as e:
-                        logger.debug(f"Mnemon: CrewAI on_task_completed failed — {e}")
-
-                # Store handler refs on the listener for unpatch
-                self._on_agent_start = on_agent_start
-                self._on_agent_completed = on_agent_completed
-                self._on_task_completed = on_task_completed
-
-        self._listener = _MnemonListener()
+        # Register directly — store the exact objects the bus holds so off() works
+        try:
+            crewai_event_bus.on(AgentExecutionStartedEvent)(on_agent_start)
+            crewai_event_bus.on(AgentExecutionCompletedEvent)(on_agent_completed)
+            crewai_event_bus.on(TaskCompletedEvent)(on_task_completed)
+            self._handlers = {
+                AgentExecutionStartedEvent:   on_agent_start,
+                AgentExecutionCompletedEvent: on_agent_completed,
+                TaskCompletedEvent:           on_task_completed,
+            }
+        except Exception as e:
+            logger.debug(f"Mnemon: CrewAI event registration failed — {e}")
+            return
 
         # System 2 EME: patch Task.execute_sync
         try:
@@ -163,22 +158,14 @@ class CrewAIIntegration(MnemonIntegration):
     def unpatch(self) -> None:
         try:
             from crewai.events.event_bus import crewai_event_bus
-            from crewai.events.types.agent_events import (
-                AgentExecutionStartedEvent,
-                AgentExecutionCompletedEvent,
-            )
-            from crewai.events.types.task_events import TaskCompletedEvent
-
-            if self._listener is not None:
-                listener = self._listener
-                if hasattr(listener, "_on_agent_start"):
-                    crewai_event_bus.off(AgentExecutionStartedEvent, listener._on_agent_start)
-                if hasattr(listener, "_on_agent_completed"):
-                    crewai_event_bus.off(AgentExecutionCompletedEvent, listener._on_agent_completed)
-                if hasattr(listener, "_on_task_completed"):
-                    crewai_event_bus.off(TaskCompletedEvent, listener._on_task_completed)
+            for event_type, handler in list(self._handlers.items()):
+                try:
+                    crewai_event_bus.off(event_type, handler)
+                except Exception as e:
+                    logger.debug(f"Mnemon: CrewAI off({event_type.__name__}) failed — {e}")
         except Exception as e:
-            logger.debug(f"Mnemon: CrewAI event bus off failed — {e}")
+            logger.debug(f"Mnemon: CrewAI event bus import failed during unpatch — {e}")
+        self._handlers = {}
 
         try:
             if self._original_execute_sync is not None:
@@ -187,7 +174,6 @@ class CrewAIIntegration(MnemonIntegration):
         except Exception as e:
             logger.debug(f"Mnemon: CrewAI execute_sync unpatch failed — {e}")
         finally:
-            self._listener = None
             self._original_execute_sync = None
 
 

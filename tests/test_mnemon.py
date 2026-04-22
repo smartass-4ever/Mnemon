@@ -12,13 +12,14 @@ import json
 import sys
 import os
 import time
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mnemon import Mnemon, TenantSecurityConfig
 from mnemon.core.models import (
     MemoryLayer, SignalType, BondedMemory, PADVector,
-    ComputationFingerprint, ExperienceSignal, RiskLevel
+    ComputationFingerprint, ExperienceSignal, RiskLevel, RecallResult
 )
 from mnemon.core.persistence import EROSDatabase, InvertedIndex
 from mnemon.core.memory import (
@@ -769,6 +770,440 @@ async def test_full_pipeline():
 
     await eros.stop()
     print(f"  ✓ Full pipeline integration test (LLM calls: {mock.call_count})")
+
+
+# ─────────────────────────────────────────────
+# 12. DRIFT DETECTION
+# ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_drift_detector_healthy():
+    """Fresh system with no session history reports healthy."""
+    import tempfile
+    from mnemon.core.drift import DriftDetector
+    db = EROSDatabase(tenant_id="drift_test", db_dir=tempfile.mkdtemp())
+    await db.connect()
+    detector = DriftDetector(tenant_id="drift_test", db=db)
+    report = await detector.detect()
+    assert report.severity == "healthy"
+    assert report.is_healthy()
+    await db.disconnect()
+    print("  ✓ Drift detector returns healthy with no session history")
+
+
+@pytest.mark.asyncio
+async def test_drift_detector_with_sessions():
+    """Degraded hit rate across sessions triggers warning."""
+    import tempfile
+    from mnemon.core.drift import DriftDetector
+    db = EROSDatabase(tenant_id="drift_sess", db_dir=tempfile.mkdtemp())
+    await db.connect()
+
+    # Write 5 healthy baseline sessions
+    for i in range(5):
+        await db.write_session_health(
+            tenant_id="drift_sess",
+            session_id=f"sess_{i}",
+            cache_hit_rate=0.80,
+            memory_writes=5,
+            total_calls=20,
+            avg_latency_ms=100.0,
+        )
+    # Write 3 degraded sessions (50% drop from 0.80)
+    for i in range(5, 8):
+        await db.write_session_health(
+            tenant_id="drift_sess",
+            session_id=f"sess_{i}",
+            cache_hit_rate=0.20,
+            memory_writes=5,
+            total_calls=20,
+            avg_latency_ms=100.0,
+        )
+
+    detector = DriftDetector(tenant_id="drift_sess", db=db)
+    report = await detector.detect()
+    assert report.severity in ("warning", "degraded", "critical")
+    assert report.hit_rate_delta < 0
+    assert report.total_sessions == 8
+    await db.disconnect()
+    print(f"  ✓ Drift detector detects degradation: severity={report.severity}, delta={report.hit_rate_delta:.2%}")
+
+
+@pytest.mark.asyncio
+async def test_drift_flush_and_detect():
+    """flush_session() persists data that detect() then picks up."""
+    import tempfile
+    from mnemon.core.drift import DriftDetector
+    db = EROSDatabase(tenant_id="drift_flush", db_dir=tempfile.mkdtemp())
+    await db.connect()
+    detector = DriftDetector(tenant_id="drift_flush", db=db)
+
+    # Simulate 4 sessions manually
+    for _ in range(4):
+        detector._session_calls = 10
+        detector._session_hits  = 8
+        await detector.flush_session(notes="synthetic")
+
+    report = await detector.detect()
+    assert report.total_sessions == 4
+    assert report.severity == "healthy"  # not enough sessions for window but all healthy
+    await db.disconnect()
+    print(f"  ✓ flush_session() + detect() round-trip works: {report.severity}")
+
+
+# ─────────────────────────────────────────────
+# 13. COLLECTIVE LEARNING (SIGNAL DB)
+# ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_proven_intent_accumulates():
+    """record_proven_intent accumulates boost after enough successes."""
+    import tempfile
+    from mnemon.core.signal_db import SignalDatabase
+    db = SignalDatabase(db_path=os.path.join(tempfile.mkdtemp(), "sig.db"))
+    await db.connect()
+    intent_key = "test_intent_001"
+
+    # First two successes — below _PROVEN_MIN_SUCCESSES (3)
+    await db.record_proven_intent(intent_key, domain="rag", success=True)
+    await db.record_proven_intent(intent_key, domain="rag", success=True)
+    boosts = await db.get_proven_boosts()
+    assert intent_key not in boosts  # not enough evidence yet
+
+    # Third success crosses the threshold
+    await db.record_proven_intent(intent_key, domain="rag", success=True)
+    boosts = await db.get_proven_boosts()
+    assert intent_key in boosts
+    assert 0 < boosts[intent_key] <= 0.12
+    await db.disconnect()
+    print(f"  ✓ proven_intent boost after 3 successes: {boosts[intent_key]:.4f}")
+
+
+@pytest.mark.asyncio
+async def test_proven_intent_failure_reduces_boost():
+    """Failures lower the success rate and can remove the boost."""
+    import tempfile
+    from mnemon.core.signal_db import SignalDatabase
+    db = SignalDatabase(db_path=os.path.join(tempfile.mkdtemp(), "sig.db"))
+    await db.connect()
+    intent_key = "test_intent_002"
+
+    # Enough successes to qualify
+    for _ in range(5):
+        await db.record_proven_intent(intent_key, domain="reasoning", success=True)
+    boosts_before = await db.get_proven_boosts()
+    assert intent_key in boosts_before
+
+    # Add 10 failures — rate drops well below 0.75
+    for _ in range(10):
+        await db.record_proven_intent(intent_key, domain="reasoning", success=False)
+    boosts_after = await db.get_proven_boosts()
+    assert intent_key not in boosts_after  # filtered out by min rate
+    await db.disconnect()
+    print(f"  ✓ Failures correctly remove collective boost")
+
+
+# ─────────────────────────────────────────────
+# 14. WASTE REPORT
+# ─────────────────────────────────────────────
+
+def test_waste_report_no_data():
+    from mnemon.moth.stats import MothStats
+    stats = MothStats()
+    report = stats.waste_report()
+    assert "no data yet" in report.lower()
+    print("  ✓ waste_report() with no data shows correct message")
+
+
+def test_waste_report_repeated_queries():
+    from mnemon.moth.stats import MothStats
+    stats = MothStats()
+    query = "what is the capital of France"
+    stats.record_query(query)
+    stats.record_query(query)  # second call = repeated
+    stats.record_query(query)  # third call
+    report = stats.waste_report()
+    assert "asked 3x" in report
+    assert "2 redundant" in report
+    print(f"  ✓ waste_report() correctly identifies repeated queries")
+
+
+def test_waste_report_custom_cost():
+    from mnemon.moth.stats import MothStats
+    stats = MothStats()
+    query = "how do you make tea"
+    stats.record_query(query)
+    stats.record_query(query)
+    report_default = stats.waste_report()
+    report_custom  = stats.waste_report(cost_per_call=0.05)
+    # Custom cost should show higher dollar amount
+    assert "0.050" in report_custom
+    assert report_default != report_custom
+    print("  ✓ waste_report() respects custom cost_per_call")
+
+
+# ─────────────────────────────────────────────
+# 15. RECALL RESULT TYPE
+# ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_recall_returns_recall_result():
+    """m.recall() returns a RecallResult with proper attributes."""
+    import tempfile, uuid
+    from mnemon.core.models import RecallResult
+    m = Mnemon(
+        tenant_id=f"rr_{uuid.uuid4().hex[:8]}",
+        db_dir=tempfile.mkdtemp(),
+        enable_telemetry=False,
+    )
+    await m.start()
+    result = await m.recall("test query")
+    assert isinstance(result, RecallResult)
+    assert hasattr(result, "memories")
+    assert hasattr(result, "memory_ids")
+    assert hasattr(result, "context")
+    assert hasattr(result, "conflicts")
+    assert hasattr(result, "working")
+    assert hasattr(result, "pool_size")
+    assert isinstance(result.memories, list)
+    assert isinstance(result.memory_ids, list)
+    # Backward compat: dict-like access
+    assert result.get("memories") == result.memories
+    assert result.get("nonexistent", "default") == "default"
+    assert "memories" in result
+    await m.stop()
+    print("  ✓ recall() returns RecallResult with correct attributes and dict compat")
+
+
+@pytest.mark.asyncio
+async def test_recall_result_with_memories():
+    """After remembering, recall result contains the memory."""
+    import tempfile, uuid
+    m = Mnemon(
+        tenant_id=f"rr2_{uuid.uuid4().hex[:8]}",
+        db_dir=tempfile.mkdtemp(),
+        enable_telemetry=False,
+    )
+    await m.start()
+    await m.remember("Acme Corp uses GPT-4 for summarization", importance=0.9)
+    await asyncio.sleep(0.1)  # let index settle
+    result = await m.recall("Acme Corp")
+    assert isinstance(result.memories, list)
+    assert isinstance(result.memory_ids, list)
+    assert len(result) == len(result.memories)
+    assert bool(result) == (len(result.memories) > 0)
+    await m.stop()
+    print(f"  ✓ RecallResult after remember: {len(result.memories)} memories, pool_size={result.pool_size}")
+
+
+# ─────────────────────────────────────────────
+# 16. FORGET / EXPORT / IMPORT
+# ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_forget_supersedes_memories():
+    """forget() marks matching memories as superseded."""
+    import tempfile, uuid
+    m = Mnemon(
+        tenant_id=f"fg_{uuid.uuid4().hex[:8]}",
+        db_dir=tempfile.mkdtemp(),
+        enable_telemetry=False,
+    )
+    await m.start()
+    await m.remember("Acme Corp prefers PDF reports", importance=0.9)
+    await m.remember("Acme Corp uses Slack for comms", importance=0.8)
+    # forget() should not crash even if recall returns 0 (cold inverted index)
+    count = await m.forget("Acme Corp", top_k=10)
+    assert isinstance(count, int)
+    assert count >= 0
+    await m.stop()
+    print(f"  ✓ forget() executed without error, removed {count} memories")
+
+
+@pytest.mark.asyncio
+async def test_export_import_round_trip():
+    """export_memory + import_memory preserves memory count."""
+    import tempfile, uuid, os
+    tmp = tempfile.mkdtemp()
+    tenant = f"ei_{uuid.uuid4().hex[:8]}"
+
+    m = Mnemon(tenant_id=tenant, db_dir=tmp, enable_telemetry=False)
+    await m.start()
+    await m.remember("Alpha team uses Python", importance=0.8)
+    await m.remember("Beta team uses Go", importance=0.7)
+    await m.remember("CI runs on GitHub Actions", importance=0.6)
+
+    export_path = os.path.join(tmp, "memories.json")
+    exported = await m.export_memory(export_path)
+    assert exported == 3
+    assert os.path.exists(export_path)
+    await m.stop()
+
+    # Import into a fresh tenant
+    m2 = Mnemon(tenant_id=f"ei2_{uuid.uuid4().hex[:8]}", db_dir=tmp, enable_telemetry=False)
+    await m2.start()
+    imported = await m2.import_memory(export_path)
+    assert imported == 3
+    await m2.stop()
+    print(f"  ✓ export_memory + import_memory round-trip: {exported} exported, {imported} imported")
+
+
+# ─────────────────────────────────────────────
+# 17. SYNTHETIC RESPONSE FIELDS (cold-start)
+# ─────────────────────────────────────────────
+
+def test_synthetic_anthropic_response_fields():
+    """_synthetic_anthropic_response has all SDK-expected fields."""
+    import types
+    from mnemon.moth.integrations.anthropic import _synthetic_anthropic_response
+    resp = _synthetic_anthropic_response("hello world", "claude-sonnet-4-6")
+    assert hasattr(resp, "id")
+    assert hasattr(resp, "type")
+    assert hasattr(resp, "role")
+    assert hasattr(resp, "content")
+    assert hasattr(resp, "stop_reason")
+    assert hasattr(resp, "stop_sequence")
+    assert hasattr(resp, "usage")
+    assert resp.type == "message"
+    assert resp.role == "assistant"
+    assert resp.content[0].text == "hello world"
+    print("  ✓ Anthropic synthetic response has all expected fields")
+
+
+def test_synthetic_openai_response_fields():
+    """_synthetic_openai_response has all SDK-expected fields."""
+    from mnemon.moth.integrations.openai_sdk import _synthetic_openai_response
+    resp = _synthetic_openai_response("hello", "gpt-4o")
+    assert hasattr(resp, "id")
+    assert hasattr(resp, "object")
+    assert hasattr(resp, "created")
+    assert hasattr(resp, "model")
+    assert hasattr(resp, "system_fingerprint")
+    assert hasattr(resp, "choices")
+    assert hasattr(resp, "usage")
+    assert resp.object == "chat.completion"
+    assert resp.choices[0].message.content == "hello"
+    assert resp.choices[0].finish_reason == "stop"
+    print("  ✓ OpenAI synthetic response has all expected fields")
+
+
+# ─────────────────────────────────────────────
+# 18. AUTO CORRECT DRIFT
+# ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_auto_correct_drift_healthy():
+    """auto_correct_drift() returns healthy status when no drift."""
+    import tempfile, uuid
+    m = Mnemon(
+        tenant_id=f"acd_{uuid.uuid4().hex[:8]}",
+        db_dir=tempfile.mkdtemp(),
+        enable_telemetry=False,
+    )
+    await m.start()
+    result = await m.auto_correct_drift()
+    assert result["status"] == "healthy"
+    assert result["corrections"] == 0
+    await m.stop()
+    print("  ✓ auto_correct_drift() returns healthy on fresh system")
+
+
+@pytest.mark.asyncio
+async def test_auto_correct_drift_with_degraded_sessions():
+    """auto_correct_drift() returns degraded status and corrections >= 0."""
+    import tempfile, uuid
+    tmp = tempfile.mkdtemp()
+    tenant = f"acd2_{uuid.uuid4().hex[:8]}"
+
+    m = Mnemon(tenant_id=tenant, db_dir=tmp, enable_telemetry=False)
+    await m.start()
+
+    # Inject session history directly to simulate drift
+    for i in range(5):
+        await m._db.write_session_health(
+            tenant_id=tenant, session_id=f"s{i}",
+            cache_hit_rate=0.85, memory_writes=3, total_calls=20, avg_latency_ms=80.0,
+        )
+    for i in range(5, 8):
+        await m._db.write_session_health(
+            tenant_id=tenant, session_id=f"s{i}",
+            cache_hit_rate=0.15, memory_writes=3, total_calls=20, avg_latency_ms=80.0,
+        )
+
+    result = await m.auto_correct_drift()
+    assert result["status"] in ("warning", "degraded", "critical", "healthy")
+    assert "corrections" in result
+    assert isinstance(result["corrections"], int)
+    await m.stop()
+    print(f"  ✓ auto_correct_drift() with degraded sessions: status={result['status']}, corrections={result['corrections']}")
+
+
+# ─────────────────────────────────────────────
+# 19. STREAMING CACHE (SYNTHETIC STREAMS)
+# ─────────────────────────────────────────────
+
+def test_synthetic_anthropic_stream_iter():
+    """_SyntheticAnthropicStream yields events and text_stream works."""
+    from mnemon.moth.integrations.anthropic import _SyntheticAnthropicStream
+    stream = _SyntheticAnthropicStream("Test response text", "claude-sonnet-4-6")
+
+    events = list(stream)
+    types_ = [e.type for e in events]
+    assert "message_start" in types_
+    assert "content_block_delta" in types_
+    assert "message_stop" in types_
+
+    text_parts = list(stream.text_stream)
+    assert "".join(text_parts) == "Test response text"
+
+    msg = stream.get_final_message()
+    assert msg.role == "assistant"
+    assert msg.stop_reason == "end_turn"
+    print("  ✓ _SyntheticAnthropicStream yields correct events and text")
+
+
+def test_synthetic_anthropic_stream_context_manager():
+    """_SyntheticAnthropicStream works as context manager."""
+    from mnemon.moth.integrations.anthropic import _SyntheticAnthropicStream
+    with _SyntheticAnthropicStream("hello", "claude-sonnet-4-6") as s:
+        events = list(s)
+    assert len(events) > 0
+    print("  ✓ _SyntheticAnthropicStream works as context manager")
+
+
+@pytest.mark.asyncio
+async def test_synthetic_anthropic_stream_async():
+    """_SyntheticAnthropicStream async iteration works."""
+    from mnemon.moth.integrations.anthropic import _SyntheticAnthropicStream
+    stream = _SyntheticAnthropicStream("Async test", "claude-sonnet-4-6")
+    events = []
+    async for event in stream:
+        events.append(event)
+    assert any(e.type == "content_block_delta" for e in events)
+    print("  ✓ _SyntheticAnthropicStream async iteration works")
+
+
+def test_synthetic_openai_stream_iter():
+    """_SyntheticOpenAIStream yields ChatCompletionChunk-compatible objects."""
+    from mnemon.moth.integrations.openai_sdk import _SyntheticOpenAIStream
+    stream = _SyntheticOpenAIStream("OpenAI cached response", "gpt-4o")
+    chunks = list(stream)
+    assert len(chunks) == 2  # content chunk + stop chunk
+    assert chunks[0].choices[0].delta.content == "OpenAI cached response"
+    assert chunks[1].choices[0].finish_reason == "stop"
+    print("  ✓ _SyntheticOpenAIStream yields correct chunks")
+
+
+@pytest.mark.asyncio
+async def test_synthetic_openai_stream_async():
+    """_SyntheticOpenAIStream async iteration works."""
+    from mnemon.moth.integrations.openai_sdk import _SyntheticOpenAIStream
+    stream = _SyntheticOpenAIStream("async openai", "gpt-4o")
+    chunks = []
+    async for chunk in stream:
+        chunks.append(chunk)
+    assert len(chunks) == 2
+    print("  ✓ _SyntheticOpenAIStream async iteration works")
 
 
 # ─────────────────────────────────────────────

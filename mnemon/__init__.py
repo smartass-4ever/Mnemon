@@ -28,7 +28,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from mnemon.core.models import (
-    ExperienceSignal, MemoryLayer, RiskLevel, SignalType, MNEMON_VERSION
+    ExperienceSignal, MemoryLayer, RiskLevel, SignalType, MNEMON_VERSION, RecallResult
 )
 from mnemon.core.persistence import EROSDatabase, InvertedIndex
 from mnemon.core.memory import CognitiveMemorySystem, SimpleEmbedder
@@ -183,6 +183,16 @@ class Mnemon:
             await self._watchdog.start()
         self._started = True
         logger.info(f"Mnemon {MNEMON_VERSION} started — tenant={self.tenant_id}")
+        # Surface embedder quality to the user at startup — not just in logs
+        if self._memory and getattr(self._embedder, "backend_name", "") == "hash-projection":
+            import sys as _sys
+            print(
+                "\nMnemon: hash-projection embedder active (56% retrieval precision).\n"
+                "  Install sentence-transformers for production quality:\n"
+                "    pip install mnemon-ai[full]\n"
+                "  Or check setup with: mnemon doctor\n",
+                file=_sys.stderr, flush=True,
+            )
 
     async def stop(self):
         if self._watchdog:
@@ -325,17 +335,25 @@ class Mnemon:
             logger.warning(f"Mnemon: remember() failed — content was NOT saved. Reason: {e}")
             return None
 
-    async def recall(self, query: str, session_id: str = "", top_k: int = 10) -> Dict[str, Any]:
+    async def recall(self, query: str, session_id: str = "", top_k: int = 10) -> RecallResult:
         if not self._memory:
-            return {"memories": [], "working": {}, "conflicts": []}
+            return RecallResult(memories=[], memory_ids=[], context={}, conflicts=[], working={}, pool_size=0)
         try:
-            return await self._memory.retrieve(
+            raw = await self._memory.retrieve(
                 task_signal=query, session_id=session_id or self.agent_id,
                 task_goal=query, top_k=top_k,
             )
+            return RecallResult(
+                memories=raw.get("memories", []),
+                memory_ids=raw.get("memory_ids", []),
+                context=raw.get("compressed_context", {}),
+                conflicts=raw.get("conflicts", []),
+                working=raw.get("working", {}),
+                pool_size=raw.get("pool_size", 0),
+            )
         except Exception as e:
             logger.warning(f"recall() failed: {e}")
-            return {"memories": [], "working": {}, "conflicts": []}
+            return RecallResult(memories=[], memory_ids=[], context={}, conflicts=[], working={}, pool_size=0)
 
     async def forget(self, topic: str, top_k: int = 10) -> int:
         """Semantically find memories matching topic and supersede them. Returns count removed."""
@@ -343,7 +361,7 @@ class Mnemon:
             return 0
         try:
             result = await self.recall(topic, top_k=top_k)
-            memory_ids = result.get("memory_ids", [])
+            memory_ids = result.memory_ids
             for mid in memory_ids:
                 await self._db.supersede_memory(self.tenant_id, mid, "forgotten_by_user")
             return len(memory_ids)

@@ -247,6 +247,57 @@ class PADVector:
 
 
 # ─────────────────────────────────────────────
+# RECALL RESULT
+# ─────────────────────────────────────────────
+
+@dataclass
+class RecallResult:
+    """
+    Structured return type for m.recall().
+
+    Attributes:
+        memories:    list of content dicts for matched memories, highest-score first
+        memory_ids:  corresponding memory IDs (same order as memories)
+        context:     pre-assembled compressed context — by_layer, anchors, tensions
+        conflicts:   detected contradictions between matched memories
+        working:     current working memory snapshot for this session
+        pool_size:   how many total memories were scanned
+    """
+    memories:   List[Any]
+    memory_ids: List[str]
+    context:    Dict[str, Any]
+    conflicts:  List[Dict]
+    working:    Dict[str, Any]
+    pool_size:  int
+
+    def __bool__(self) -> bool:
+        return bool(self.memories)
+
+    def __len__(self) -> int:
+        return len(self.memories)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Dict-style access for backward compatibility."""
+        return self._as_dict().get(key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        return self._as_dict()[key]
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._as_dict()
+
+    def _as_dict(self) -> Dict[str, Any]:
+        return {
+            "memories":           self.memories,
+            "memory_ids":         self.memory_ids,
+            "compressed_context": self.context,
+            "conflicts":          self.conflicts,
+            "working":            self.working,
+            "pool_size":          self.pool_size,
+        }
+
+
+# ─────────────────────────────────────────────
 # COMPUTATION FINGERPRINT (EME)
 # ─────────────────────────────────────────────
 

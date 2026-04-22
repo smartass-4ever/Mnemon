@@ -335,9 +335,9 @@ class TestCrewAIIntegration:
         m = _StubMnemon()
         integration.patch(m)
 
-        assert integration._listener is not None
+        assert bool(integration._handlers)
         integration.unpatch()
-        assert integration._listener is None
+        assert not integration._handlers
 
     def test_task_execute_sync_patched(self):
         from mnemon.moth.integrations.crewai import CrewAIIntegration
@@ -398,9 +398,12 @@ class TestCrewAIIntegration:
         m = _StubMnemon()
         integration.patch(m)
 
-        assert integration._listener is not None
-        listener = integration._listener
-        assert hasattr(listener, "_on_agent_start")
+        assert bool(integration._handlers)
+
+        # Get the handler directly from _handlers dict
+        from crewai.events.types.agent_events import AgentExecutionStartedEvent
+        on_agent_start = integration._handlers.get(AgentExecutionStartedEvent)
+        assert on_agent_start is not None
 
         # Call the handler directly with a fake event
         class FakeAgent:
@@ -419,7 +422,7 @@ class TestCrewAIIntegration:
             task = FakeTask()
             task_prompt = "research quantum computing"
 
-        listener._on_agent_start(source=None, event=FakeEvent())
+        on_agent_start(source=None, event=FakeEvent())
 
         # recall should have been called
         assert len(m.recalled) > 0
