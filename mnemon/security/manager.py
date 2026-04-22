@@ -284,6 +284,40 @@ class TenantSecurityConfig:
 # SECURITY MANAGER
 # ─────────────────────────────────────────────
 
+# ─────────────────────────────────────────────
+# PROMPT INJECTION SCRUBBER
+# ─────────────────────────────────────────────
+
+_INJECTION_PATTERNS = [
+    re.compile(r'\n\s*Human\s*:', re.IGNORECASE),
+    re.compile(r'\n\s*Assistant\s*:', re.IGNORECASE),
+    re.compile(r'<\|im_start\|>.*?<\|im_end\|>', re.DOTALL),
+    re.compile(r'<\|im_start\|>'),
+    re.compile(r'<\|im_end\|>'),
+    re.compile(r'<\|endoftext\|>'),
+    re.compile(r'ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions?', re.IGNORECASE),
+    re.compile(r'disregard\s+(?:all\s+)?(?:previous|prior)\s+instructions?', re.IGNORECASE),
+    re.compile(r'you\s+are\s+now\s+(?:a\s+)?(?:an?\s+)?\w+', re.IGNORECASE),
+    re.compile(r'\[INST\]|\[/INST\]'),
+    re.compile(r'<<SYS>>|<</SYS>>'),
+]
+
+
+def scrub_injection(content: Any) -> Any:
+    """
+    Strip known prompt-injection markers from content before storing in memory.
+    Prevents adversarial memories from hijacking agent context on recall.
+    Applied unconditionally at write time.
+    """
+    if isinstance(content, str):
+        for pat in _INJECTION_PATTERNS:
+            content = pat.sub('', content)
+        return content
+    if isinstance(content, dict):
+        return {k: scrub_injection(v) for k, v in content.items()}
+    return content
+
+
 class SecurityManager:
     """
     Central security enforcement point.

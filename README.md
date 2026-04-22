@@ -154,7 +154,7 @@ context = m.recall("security audit for Acme Corp")
 print(context)  # returns ranked memories in ~15ms
 
 # Third run: plan is fully cached, 0 tokens spent
-def plan_audit(goal, inputs):
+def plan_audit(goal, inputs, context, capabilities, constraints):
     # your actual planning logic here
     return {"steps": ["enumerate assets", "check CVEs", "draft report"]}
 

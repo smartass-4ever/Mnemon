@@ -34,7 +34,7 @@ from mnemon.core.persistence import EROSDatabase, InvertedIndex
 from mnemon.core.memory import CognitiveMemorySystem, SimpleEmbedder
 from mnemon.core.eme import ExecutionMemoryEngine, TemplateAdapter, CostBudget, EMEResult
 from mnemon.core.bus import ExperienceBus
-from mnemon.security.manager import SecurityManager, TenantSecurityConfig
+from mnemon.security.manager import SecurityManager, TenantSecurityConfig, scrub_injection
 from mnemon.observability.watchdog import Watchdog
 from mnemon.observability.telemetry import Telemetry
 from mnemon.llm.client import LLMClient, auto_client
@@ -69,6 +69,7 @@ class Mnemon:
         watchdog_webhook: Optional[str] = None,
         enable_telemetry: bool = True,
         prewarm_fragments: bool = True,
+        silent: bool = False,
     ):
         self.tenant_id = tenant_id
         self.agent_id  = agent_id
@@ -133,6 +134,10 @@ class Mnemon:
             )
         self._drift = DriftDetector(tenant_id=tenant_id, db=self._db)
         self._started = False
+        self._silent = silent
+        self._session_tokens_saved: int = 0
+        self._session_latency_saved_ms: float = 0.0
+        self._session_calls: int = 0
 
     async def start(self):
         await self._db.connect()
@@ -207,6 +212,17 @@ class Mnemon:
         if self._telemetry:
             self._telemetry.emit_log()
         self._started = False
+        if not self._silent and self._session_tokens_saved > 0:
+            import sys as _sys
+            cost_usd = self._session_tokens_saved * 0.000003
+            secs_saved = self._session_latency_saved_ms / 1000
+            print(
+                f"\nMnemon: {self._session_tokens_saved:,} tokens saved"
+                f" · ${cost_usd:.4f}"
+                f" · {secs_saved:.1f}s faster"
+                f" ({self._session_calls} calls this session)\n",
+                file=_sys.stderr, flush=True,
+            )
 
     async def __aenter__(self):
         await self.start()
@@ -304,6 +320,11 @@ class Mnemon:
         if self._watchdog and eme_result:
             self._watchdog.record_eme_run(eme_result.cache_level)
 
+        self._session_calls += 1
+        if eme_result:
+            self._session_tokens_saved += eme_result.tokens_saved or 0
+            self._session_latency_saved_ms += eme_result.latency_saved_ms or 0.0
+
         return {
             "template":         eme_result.template if eme_result else None,
             "cache_level":      eme_result.cache_level if eme_result else "error",
@@ -316,10 +337,16 @@ class Mnemon:
             "session_id":       session_id,
         }
 
+    _MAX_CONTENT_BYTES = 65_536  # 64 KB hard cap per memory entry
+
     async def remember(self, content: Any, layer: Optional[MemoryLayer] = None,
                        importance: float = 0.5, session_id: str = "") -> Optional[str]:
         if not self._memory:
             return None
+        content = scrub_injection(content)
+        if isinstance(content, str) and len(content.encode()) > self._MAX_CONTENT_BYTES:
+            logger.warning("remember(): content exceeds 64KB — truncating to prevent OOM")
+            content = content.encode()[:self._MAX_CONTENT_BYTES].decode("utf-8", errors="ignore")
         signal = ExperienceSignal(
             signal_id=hashlib.md5(f"{time.time()}:{str(content)[:50]}".encode()).hexdigest()[:16],
             tenant_id=self.tenant_id, session_id=session_id or self.agent_id,
@@ -372,6 +399,9 @@ class Mnemon:
     async def export_memory(self, path: str) -> int:
         """Export all active memories to a JSON file. Returns count exported."""
         import json as _json
+        path = os.path.realpath(path)
+        if '\x00' in path or not path.endswith('.json'):
+            raise ValueError(f"export_memory: invalid path '{path}' — must be a .json file")
         memories = await self._db.fetch_all_memories(self.tenant_id)
         data = {
             "tenant_id":  self.tenant_id,
@@ -397,12 +427,24 @@ class Mnemon:
         logger.info(f"Mnemon: exported {len(memories)} memories to {path}")
         return len(memories)
 
+    _MAX_IMPORT_ENTRIES = 10_000
+
     async def import_memory(self, path: str) -> int:
         """Import memories from a JSON file created by export_memory(). Returns count imported."""
         import json as _json
+        path = os.path.realpath(path)
+        if '\x00' in path or not path.endswith('.json'):
+            raise ValueError(f"import_memory: invalid path '{path}' — must be a .json file")
         with open(path, encoding="utf-8") as f:
             data = _json.load(f)
+        if not isinstance(data, dict) or "memories" not in data:
+            raise ValueError("import_memory: file missing required 'memories' key")
         memories = data.get("memories", [])
+        if not isinstance(memories, list):
+            raise ValueError("import_memory: 'memories' must be a list")
+        if len(memories) > self._MAX_IMPORT_ENTRIES:
+            logger.warning(f"import_memory: capping import at {self._MAX_IMPORT_ENTRIES} entries (file has {len(memories)})")
+            memories = memories[:self._MAX_IMPORT_ENTRIES]
         imported = 0
         for entry in memories:
             try:
@@ -502,6 +544,7 @@ class Mnemon:
             prewarm_fragments=config.get("prewarm_fragments", True),
             enable_watchdog=config.get("enable_watchdog", False),
             enable_telemetry=config.get("enable_telemetry", True),
+            silent=config.get("silent", False),
             similarity_threshold=config.get("similarity_threshold", 0.70),
             router_model=config.get("router_model", "claude-haiku-4-5-20251001"),
             gap_fill_model=config.get("gap_fill_model", "claude-sonnet-4-6"),
@@ -664,9 +707,29 @@ class MnemonSync:
                 self._moth.deactivate()
             except Exception:
                 pass
+        # Suppress Mnemon.stop()'s own print — MnemonSync prints a combined summary below
+        self._m._silent = True
         self._loop.run_until_complete(self._m.stop())
         _cancel_all_tasks(self._loop)
         self._loop.close()
+        silent = self._kwargs.get("silent", False)
+        if not silent:
+            import sys as _sys
+            s = self._stats.summary
+            moth_tokens = s.get("tokens_saved_est", 0)
+            run_tokens  = self._m._session_tokens_saved
+            total_tokens = max(moth_tokens, run_tokens)
+            cache_hits   = s.get("cache_hits", 0) or self._m._session_calls
+            if total_tokens > 0 or cache_hits > 0:
+                cost_usd = total_tokens * 0.000003
+                secs_saved = self._m._session_latency_saved_ms / 1000
+                print(
+                    f"\nMnemon: ~{total_tokens:,} tokens saved"
+                    f" · ~${cost_usd:.4f}"
+                    + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else "")
+                    + f" ({cache_hits} cache hits this session)\n",
+                    file=_sys.stderr, flush=True,
+                )
 
     @property
     def active_integrations(self) -> List[str]:
