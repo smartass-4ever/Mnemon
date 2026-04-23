@@ -2,23 +2,105 @@
 
 # Mnemon
 
-**Your agents forget everything. Every run. Every time. Mnemon fixes that.**
+**The persistent cognitive context layer for AI agents.**
 
 ---
 
 ## The Problem
 
-Every agent you've shipped starts from zero.
+Your agent is expensive, slow, and amnesiac — by design.
 
-It re-plans what it already planned last Tuesday. It repeats the mistake it made three runs ago. It asks the customer the same questions it asked last month. It re-generates the same expensive plan it generated yesterday — and charges you again for the privilege.
+Every run, it starts from zero. It re-plans what it already planned last Tuesday. It repeats the mistake it made three sessions ago. It charges you full LLM price for a plan it already generated yesterday. It asks your customer the same onboarding questions it asked last month.
 
-This isn't a configuration issue. It's structural. CrewAI, LangChain, Dify, Letta — every major agent framework is stateless by default. Memory was bolted on later, as an afterthought, requiring managed services, external vector databases, and new infrastructure just to remember a name between sessions.
+This isn't a bug in your code. It's structural. LangChain, CrewAI, AutoGen, LangGraph — every major agent framework is **stateless by default**. Memory was bolted on later, requiring managed cloud services, external vector databases, and new infrastructure just to remember a name between sessions.
 
-You built a smart agent. You got an amnesiac.
+Meanwhile, you're paying for the same tokens over and over. Every repeated plan. Every redundant reasoning step. Every re-generated report.
+
+**You built a smart agent. You got an amnesiac that invoices you twice.**
 
 ---
 
-## The Answer
+## The Solution
+
+```python
+import mnemon
+m = mnemon.init()
+```
+
+One line. Your existing agent — whatever framework it uses — now has:
+
+- **Persistent memory** across sessions
+- **Execution caching** that skips the LLM entirely on repeated work
+- **Cross-session learning** that gets smarter the longer it runs
+- **Drift detection** that catches silent degradation before it costs you
+
+No config file. No server. No new infrastructure. No changes to your existing agent code. Everything lives in a local SQLite file next to your code. Your data never leaves your machine.
+
+At the end of every session, Mnemon tells you exactly what it saved:
+
+```
+Mnemon: 1,250 tokens saved · $0.0038 · 20.0s faster (3 cache hits this session)
+```
+
+---
+
+## If You Already Have an Agent — Read This First
+
+Mnemon automatically patches whatever frameworks you have installed. You do not need to change your agent code.
+
+**Before Mnemon — your existing LangChain agent:**
+```python
+from langchain_anthropic import ChatAnthropic
+
+llm = ChatAnthropic(model="claude-sonnet-4-6")
+response = llm.invoke("Generate weekly security report for Acme Corp")
+# Every call hits the LLM. No memory. No caching. Full cost every time.
+```
+
+**After Mnemon — same code, one new line at the top:**
+```python
+import mnemon
+m = mnemon.init()  # ← this is the only change
+
+from langchain_anthropic import ChatAnthropic
+
+llm = ChatAnthropic(model="claude-sonnet-4-6")
+response = llm.invoke("Generate weekly security report for Acme Corp")
+# First call: normal LLM call, result cached
+# Every repeat: served in 2.66ms, zero tokens, zero cost
+```
+
+Same thing works for the Anthropic SDK, OpenAI SDK, CrewAI, LangGraph, and AutoGen. Install Mnemon, add one line, done.
+
+---
+
+## Install
+
+```bash
+pip install mnemon-ai
+```
+
+For production-quality memory retrieval (recommended):
+```bash
+pip install mnemon-ai[full]
+```
+
+Set one environment variable for your LLM (used for gap-fill only — retrieval never calls it):
+
+```bash
+export GROQ_API_KEY=gsk_...      # pip install mnemon-ai[groq]   ← free tier, start here
+export ANTHROPIC_API_KEY=sk-...  # pip install mnemon-ai[anthropic]
+export OPENAI_API_KEY=sk-...     # pip install mnemon-ai[openai]
+export GOOGLE_API_KEY=AIza...    # pip install mnemon-ai[google]
+```
+
+Mnemon detects the key automatically. Use Groq to try it for free right now.
+
+---
+
+## Getting Started
+
+### Step 1 — Initialize
 
 ```python
 import mnemon
@@ -26,53 +108,80 @@ import mnemon
 m = mnemon.init()
 ```
 
-That's it. One line. Your agent now has persistent memory, execution caching, and cross-session learning. No config file. No server. No new infrastructure. Everything lives in a local SQLite file next to your code. Your data never leaves your machine.
-
-```python
-# Remember across sessions
-m.remember("Acme Corp prefers formal PDF reports, not dashboards")
-m.learn_fact("acme_contact", "Sarah K — decisions go through her")
-
-# Recall relevant context in 15ms, zero LLM calls
-context = m.recall("weekly security audit for Acme Corp")
-
-# Cache expensive plans — skip the LLM entirely on repeats
-result = m.run(
-    goal="weekly security audit for Acme Corp",
-    inputs={"client": "Acme Corp", "week": "Apr 14-18"},
-    generation_fn=my_planning_function,
-)
-
-print(f"Cache:        {result['cache_level']}")    # system1 — exact hit
-print(f"Tokens saved: {result['tokens_saved']}")   # 1,250
-print(f"Time saved:   {result['latency_saved_ms']:.0f}ms")  # 20,000ms
-```
-
-Access the same instance from anywhere in your codebase:
+This auto-detects your project name, creates a local SQLite database, and patches any installed frameworks (LangChain, Anthropic SDK, OpenAI SDK, CrewAI, LangGraph, AutoGen). You can access the same instance from anywhere in your codebase:
 
 ```python
 m = mnemon.get()
 ```
 
-No context manager required. Cleans up when your process exits.
+### Step 2 — Give your agent memory
+
+```python
+# Store facts that persist across sessions
+m.remember("Acme Corp prefers formal PDF reports, not dashboards")
+m.remember("Always flag open CVEs before recommendations")
+m.learn_fact("acme_contact", "Sarah K — all decisions go through her")
+m.learn_fact("acme_sla", "4h response window")
+```
+
+### Step 3 — Recall relevant context before any task
+
+```python
+context = m.recall("weekly security audit for Acme Corp")
+# Returns ranked, relevant memories in ~15ms — no LLM call
+```
+
+### Step 4 — Let the cache work
+
+After the first run of any repeated task, Mnemon caches the execution plan. Every subsequent run with the same goal — or a semantically similar one — is served from cache:
+
+```python
+result = m.run(
+    goal="weekly security audit for Acme Corp",
+    inputs={"client": "Acme Corp", "week": "Apr 21-25"},
+    generation_fn=your_planning_function,
+)
+
+print(result["cache_level"])       # "system1" on a hit — exact match in 2.66ms
+print(result["tokens_saved"])      # 1250
+print(result["latency_saved_ms"])  # 20000.0
+```
+
+The `generation_fn` receives `(goal, inputs, context, capabilities, constraints)` and returns your plan. It's only called on a cache miss.
 
 ---
 
-## Why Mnemon Is Different
+## What Makes Mnemon Different
 
-Every other memory library for agents is one of two things: a managed cloud service that owns your data, or a thin wrapper around a vector database that only does retrieval.
+Everyone else in this space builds **flat memory** — store a memory, retrieve it, done. The agent still calls the LLM every single time. The memory just makes the prompt slightly better.
 
-Mnemon is neither.
+Mnemon does three things nobody else does together:
 
-**It runs entirely local.** SQLite, no server, no API calls to a memory service. Your agent's memory is a file you own.
+### 1. Execution caching — skips the LLM entirely
 
-**Retrieval doesn't call the LLM.** Most memory systems embed your query, do a cosine search, and return chunks. Mnemon uses resonance-weighted retrieval — 15ms average, zero tokens, zero cost per recall.
+If your agent generates a security report for Acme Corp every Monday, Mnemon recognizes the pattern after the first run and serves the cached plan in **2.66ms** — skipping 20 seconds of LLM generation and 1,250 tokens of cost.
 
-**It caches execution, not just context.** No other agent memory library does this. If your agent plans a security audit for Acme Corp every Monday, Mnemon recognizes the pattern and serves the cached plan in 2.66ms — skipping 20 seconds of LLM generation entirely. Partial matches work too: if 4 of 5 plan segments match, only the delta goes to the LLM.
+Partial matches work too: if 4 of 5 plan segments match a new request, only the delta goes to the LLM. You pay for the difference, not the whole thing.
 
-**It's a library, not a framework.** Drop it into CrewAI, LangChain, raw API calls, or anything else. You don't adopt a new runtime. You add one import.
+No other agent memory library does this.
 
-**It gets smarter over time.** Every run feeds the experience bus. Patterns that work get reinforced. Plans that fail get quarantined. A pattern learned from one run improves cache hit rates on all future runs.
+### 2. Zero-code auto-instrumentation across 6 frameworks
+
+Most memory libraries require you to wire them in manually — call `memory.add()`, call `memory.search()`, restructure your agent. Mnemon patches your existing code at the framework level. One import, zero restructuring.
+
+Supported: **Anthropic SDK, OpenAI SDK, LangChain, LangGraph, CrewAI, AutoGen**
+
+### 3. Drift detection — catches silent degradation
+
+Every session, Mnemon measures your agent's performance against a rolling baseline. When cache hit rates drop, latency climbs, or memory retrieval degrades — it tells you before your users notice.
+
+```python
+report = m.drift_report()
+print(report)  # severity, what degraded, since when
+
+# Auto-correct: finds conflicting memories written during degradation and resolves them
+result = m.auto_correct_drift()
+```
 
 ---
 
@@ -86,12 +195,6 @@ Mnemon is neither.
 | Last-session baseline | 27.6% |
 | Random baseline | 25.2% |
 | Null (no memory) | 23.4% |
-
-### Memory retrieval — LongMemEval
-
-| Metric | Score |
-|---|---|
-| Retrieval accuracy | **64.6%** |
 
 ### Execution cache — EME benchmarks
 
@@ -117,63 +220,9 @@ Full benchmark runs, methodology, and raw data: [`reports/`](reports/)
 
 ---
 
-## Install
-
-```bash
-pip install mnemon-ai
-```
-
-Set one environment variable for your LLM (used for gap-fill only — retrieval never calls it):
-
-```bash
-export GROQ_API_KEY=gsk_...      # pip install mnemon-ai[groq]   ← free tier, start here
-export ANTHROPIC_API_KEY=sk-...  # pip install mnemon-ai[anthropic]
-export OPENAI_API_KEY=sk-...     # pip install mnemon-ai[openai]
-export GOOGLE_API_KEY=AIza...    # pip install mnemon-ai[google]
-```
-
-Mnemon detects the key automatically. Use Groq if you want to try it right now for free.
-
----
-
-## Complete Example
-
-```python
-import mnemon
-
-# Initialize once — auto-detects your project name
-m = mnemon.init()
-
-# First run: agent learns client preferences
-m.remember("Acme Corp wants bullet-point summaries, not prose")
-m.remember("always flag open CVEs before recommendations")
-m.learn_fact("acme_sla", "4h response window")
-
-# Second run: instant recall, no LLM
-context = m.recall("security audit for Acme Corp")
-print(context)  # returns ranked memories in ~15ms
-
-# Third run: plan is fully cached, 0 tokens spent
-def plan_audit(goal, inputs, context, capabilities, constraints):
-    # your actual planning logic here
-    return {"steps": ["enumerate assets", "check CVEs", "draft report"]}
-
-result = m.run(
-    goal="security audit for Acme Corp",
-    inputs={"client": "Acme Corp", "week": "Apr 21-25"},
-    generation_fn=plan_audit,
-)
-
-print(result["cache_level"])      # system1
-print(result["tokens_saved"])     # 1250
-print(result["latency_saved_ms"]) # 20000.0
-```
-
----
-
 ## What's Inside
 
-### `mnemon.memory` — Stratified Memory
+### Memory — Stratified, not flat
 
 Five memory layers, each with a purpose:
 
@@ -185,34 +234,64 @@ Five memory layers, each with a purpose:
 | Relationship | per-user interaction patterns | permanent |
 | Emotional | affective context, time-decayed | decays |
 
-Retrieval uses resonance weighting — no LLM, ~15ms. Intent-based reranking fires only when needed.
+Retrieval uses resonance weighting — no LLM call, ~15ms average. Intent-based reranking fires only when needed.
 
-### `mnemon.cache` — Execution Memory Engine (EME)
+### Cache — Execution Memory Engine (EME)
 
-Template cache for structured agent workflows.
-
-- **System 1** — exact fingerprint match → 2.66ms, zero LLM
+- **System 1** — exact fingerprint match → 2.66ms, zero tokens
 - **System 2** — partial segment match → only the delta goes to the LLM
 - **Retrospector** — quarantines failed plan fragments so bad patterns don't recycle
 
 Ships with 49 pre-warmed segments from real enterprise runs.
 
-### `mnemon.bus` — Experience Bus
+### Bus — Experience Loop
 
-Always-on learning loop. Records outcomes, detects patterns, feeds both memory and EME automatically. Your agent improves on every run without any instrumentation from you.
+Always-on learning. Records outcomes, detects patterns, feeds both memory and EME automatically. Your agent improves on every run without any instrumentation from you.
 
 ---
 
-## Production Features
+## Advanced Usage
+
+### Memory and recall
+
+```python
+# Forget a topic (supersedes matching memories)
+m.forget("Acme Corp contact details")
+
+# Export / import memory (JSON round-trip)
+m.export_memory("backup.json")
+m.import_memory("backup.json")
+
+# Specific facts
+m.learn_fact("preferred_format", "PDF")
+value = m.recall_fact("preferred_format")
+```
+
+### Use only what you need
+
+```python
+# Memory only — no caching, no bus
+m = Mnemon(tenant_id="x", eme_enabled=False, bus_enabled=False)
+
+# Execution cache only
+m = Mnemon(tenant_id="x", memory_enabled=False, bus_enabled=False)
+
+# Or via init() shorthand
+m = mnemon.init(use="memory")   # memory only
+m = mnemon.init(use="cache")    # EME only
+m = mnemon.init(use="bus")      # experience bus only
+```
+
+### Production — multi-tenant with security
 
 ```python
 from mnemon import Mnemon
 from mnemon.security.manager import TenantSecurityConfig
 
 m = Mnemon(
-    tenant_id="my_company",
+    tenant_id="acme_corp",
     security_config=TenantSecurityConfig(
-        tenant_id="my_company",
+        tenant_id="acme_corp",
         blocked_categories=["pii", "medical_records"],
         encrypt_privileged=True,
     ),
@@ -221,68 +300,15 @@ m = Mnemon(
 )
 ```
 
-Multi-tenant out of the box. Each `tenant_id` gets an isolated SQLite database — no cross-tenant leakage. Cross-tenant signal sharing (opt-in) lets cache patterns learned by one tenant improve hit rates across your platform.
+Each `tenant_id` gets an isolated SQLite database — no cross-tenant leakage. Cross-tenant signal sharing (opt-in) lets cache patterns from one tenant improve hit rates across your platform.
 
----
-
-## Fail-Safe
-
-Mnemon never crashes the system it serves.
-
-- Memory retrieval fails → agent runs without context
-- EME fails → `generation_fn` called directly
-- Bus fails → agent continues unmonitored
-- Database unavailable → in-memory fallback
-
-All failures are logged, never raised. You can't break your agent by adding Mnemon.
-
----
-
-## Use Only What You Need
+### Suppress the session summary
 
 ```python
-# Memory only
-m = Mnemon(tenant_id="x", eme_enabled=False, bus_enabled=False)
-
-# Execution cache only
-m = Mnemon(tenant_id="x", memory_enabled=False, bus_enabled=False)
-
-# Specific memory layers only
-from mnemon.core.models import MemoryLayer
-m = Mnemon(
-    tenant_id="x",
-    enabled_layers=[MemoryLayer.EPISODIC, MemoryLayer.SEMANTIC],
-    eme_enabled=False,
-    bus_enabled=False,
-)
+m = mnemon.init(silent=True)
 ```
 
----
-
-## Framework Adapters
-
-`mnemon.init()` auto-detects CrewAI if it's installed. For manual control:
-
-```python
-from mnemon.adapters.crewai import CrewAIAdapter
-
-m = Mnemon(tenant_id="my_company", adapter=CrewAIAdapter())
-```
-
-Write your own by subclassing `TemplateAdapter`:
-
-```python
-from mnemon.core.eme import TemplateAdapter
-
-class MyAdapter(TemplateAdapter):
-    def decompose(self, template): ...
-    def reconstruct(self, segments): ...
-    def extract_signature(self, template, goal): ...
-```
-
----
-
-## Async API
+### Async API
 
 ```python
 import asyncio
@@ -301,6 +327,31 @@ async def main():
 
 asyncio.run(main())
 ```
+
+### Health and diagnostics
+
+```python
+# CLI health check
+# mnemon doctor
+
+# Programmatic
+report = m.drift_report()       # cross-session degradation analysis
+result = m.auto_correct_drift() # auto-resolve conflicting memories
+stats  = m.get_stats()          # memory counts, cache stats, security config
+```
+
+---
+
+## Fail-Safe
+
+Mnemon never crashes the system it serves.
+
+- Memory retrieval fails → agent runs without context
+- EME fails → `generation_fn` called directly
+- Bus fails → agent continues unmonitored
+- Database unavailable → in-memory fallback
+
+All failures are logged, never raised. You can't break your agent by adding Mnemon.
 
 ---
 
