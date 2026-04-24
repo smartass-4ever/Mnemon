@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name="mnemon-ai",
-    version="1.0.5",
+    version="1.0.6",
     author="Mahika Jadhav",
     author_email="mahikajadhav22@gmail.com",
     description="The intelligence layer between your agents and oblivion",
