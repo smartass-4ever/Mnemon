@@ -39,7 +39,7 @@ No config file. No server. No new infrastructure. No changes to your existing ag
 At the end of every session, Mnemon tells you exactly what it saved:
 
 ```
-Mnemon: 1,250 tokens saved · $0.0038 · 20.0s faster (3 cache hits this session)
+Mnemon: ~1,250 tokens saved · ~$0.0038 · 20.0s faster
 ```
 
 ---
@@ -72,6 +72,10 @@ response = llm.invoke("Generate weekly security report for Acme Corp")
 
 Same thing works for the Anthropic SDK, OpenAI SDK, CrewAI, LangGraph, and AutoGen. Install Mnemon, add one line, done.
 
+**Framework notes:**
+- **LangGraph** — call `mnemon.init()` *before* compiling your graph. If you compile first, Mnemon patches the graph after the fact and per-node caching won't activate.
+- **CrewAI** — import `crewai` *before* calling `mnemon.init()`. Mnemon hooks into CrewAI's event bus at init time; reversing the order means the hook misses registration.
+
 ---
 
 ## Install
@@ -82,10 +86,11 @@ pip install mnemon-ai
 
 For production-quality memory retrieval (recommended):
 ```bash
-pip install mnemon-ai[full]
+pip install mnemon-ai[embeddings]   # sentence-transformers only — retrieval upgrade
+pip install mnemon-ai[full]         # embeddings + all LLM providers
 ```
 
-Set one environment variable for your LLM (used for gap-fill only — retrieval never calls it):
+Set one environment variable for your LLM (used for gap-fill and memory extraction — retrieval never calls it):
 
 ```bash
 export GROQ_API_KEY=gsk_...      # pip install mnemon-ai[groq]   ← free tier, start here
@@ -95,6 +100,11 @@ export GOOGLE_API_KEY=AIza...    # pip install mnemon-ai[google]
 ```
 
 Mnemon detects the key automatically. Use Groq to try it for free right now.
+
+**Try it in 30 seconds — no API key needed:**
+```bash
+mnemon demo
+```
 
 ---
 
@@ -265,21 +275,26 @@ m.import_memory("backup.json")
 # Specific facts
 m.learn_fact("preferred_format", "PDF")
 value = m.recall_fact("preferred_format")
+
+# Waste report — which queries your agent repeated and what they cost
+print(m.waste_report)
 ```
 
 ### Use only what you need
 
 ```python
-# Memory only — no caching, no bus
-m = Mnemon(tenant_id="x", eme_enabled=False, bus_enabled=False)
+# Via init() shorthand
+m = mnemon.init(use="memory")          # memory only — no caching, no bus
+m = mnemon.init(use="cache")           # EME caching only
+m = mnemon.init(use="bus")             # experience bus only
+m = mnemon.init(use=["memory","cache"])# memory + EME
 
-# Execution cache only
-m = Mnemon(tenant_id="x", memory_enabled=False, bus_enabled=False)
+# Or directly with the async class
+async with Mnemon(tenant_id="x", eme_enabled=False, bus_enabled=False) as m:
+    ...  # memory only
 
-# Or via init() shorthand
-m = mnemon.init(use="memory")   # memory only
-m = mnemon.init(use="cache")    # EME only
-m = mnemon.init(use="bus")      # experience bus only
+async with Mnemon(tenant_id="x", memory_enabled=False, bus_enabled=False) as m:
+    ...  # cache only
 ```
 
 ### Production — multi-tenant with security
@@ -300,7 +315,7 @@ m = Mnemon(
 )
 ```
 
-Each `tenant_id` gets an isolated SQLite database — no cross-tenant leakage. Cross-tenant signal sharing (opt-in) lets cache patterns from one tenant improve hit rates across your platform.
+Each `tenant_id` gets an isolated SQLite database — no cross-tenant leakage.
 
 ### Suppress the session summary
 

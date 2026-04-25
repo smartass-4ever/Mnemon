@@ -364,7 +364,8 @@ async def cmd_doctor(args):
             memories  = db_stats.get("memories", 0)
             checks.append(("DB connectivity",    True, f"ok — tenant: {tenant_id}"))
             checks.append(("Memories",           True, str(memories)))
-            checks.append(("Fragment library",   fragments >= 50, f"{fragments} fragments {'✓' if fragments >= 50 else '(run mnemon init)'}"))
+            from mnemon.fragments.library import FRAGMENT_COUNT
+            checks.append(("Fragment library",   fragments >= FRAGMENT_COUNT, f"{fragments} fragments {'✓' if fragments >= FRAGMENT_COUNT else '(run mnemon init)'}"))
             checks.append(("Template library",   templates >= 10, f"{templates} templates {'✓' if templates >= 10 else '(run mnemon init)'}"))
 
             drift = await m.drift_report()

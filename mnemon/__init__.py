@@ -845,8 +845,39 @@ class MnemonSync:
                 pass
             self._moth = None
         if self._m is not None:
+            # Suppress inner Mnemon.stop() print — we print the combined summary below
+            self._m._silent = True
             self._loop.run_until_complete(self._m.stop())
             _cancel_all_tasks(self._loop)
+            # Print combined summary (moth API savings + EME planning savings)
+            silent = self._kwargs.get("silent", False)
+            if not silent:
+                import sys as _sys
+                s = self._stats.summary
+                moth_tokens  = s.get("tokens_saved_est", 0)
+                run_tokens   = self._m._session_tokens_saved
+                total_tokens = max(moth_tokens, run_tokens)
+                plans_saved  = self._m._session_plans_saved
+                memories_stored = self._m._session_memories_stored
+                secs_saved   = self._m._session_latency_saved_ms / 1000
+                parts = []
+                if total_tokens > 0:
+                    real_cost    = s.get("cost_saved_usd")
+                    cost_is_real = s.get("cost_is_real", False)
+                    if real_cost is not None:
+                        cost_str = f"${real_cost:.4f}" if cost_is_real else f"~${real_cost:.4f}"
+                    else:
+                        cost_str = f"~${total_tokens * 0.000003:.4f}"
+                    parts.append(f"~{total_tokens:,} tokens saved · {cost_str}"
+                                 + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else ""))
+                if plans_saved > 0:
+                    future_tokens = self._m._session_future_tokens
+                    future_cost   = future_tokens * 0.000015
+                    parts.append(f"{plans_saved} plan(s) cached → next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})")
+                if memories_stored > 0:
+                    parts.append(f"{memories_stored} memory/memories stored")
+                if parts:
+                    print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stderr, flush=True)
             self._loop.close()
             self._m = None
 
