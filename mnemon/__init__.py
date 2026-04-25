@@ -138,6 +138,8 @@ class Mnemon:
         self._session_tokens_saved: int = 0
         self._session_latency_saved_ms: float = 0.0
         self._session_calls: int = 0
+        self._session_plans_saved: int = 0
+        self._session_memories_stored: int = 0
 
     async def start(self):
         await self._db.connect()
@@ -216,17 +218,21 @@ class Mnemon:
         if self._telemetry:
             self._telemetry.emit_log()
         self._started = False
-        if not self._silent and self._session_tokens_saved > 0:
+        if not self._silent:
             import sys as _sys
-            cost_usd = self._session_tokens_saved * 0.000003
-            secs_saved = self._session_latency_saved_ms / 1000
-            print(
-                f"\nMnemon: {self._session_tokens_saved:,} tokens saved"
-                f" · ${cost_usd:.4f}"
-                f" · {secs_saved:.1f}s faster"
-                f" ({self._session_calls} calls this session)\n",
-                file=_sys.stderr, flush=True,
-            )
+            parts = []
+            if self._session_tokens_saved > 0:
+                cost_usd = self._session_tokens_saved * 0.000003
+                secs_saved = self._session_latency_saved_ms / 1000
+                parts.append(f"{self._session_tokens_saved:,} tokens saved · ${cost_usd:.4f} · {secs_saved:.1f}s faster")
+            if self._session_plans_saved > 0:
+                future_tokens = self._session_plans_saved * 1250
+                future_cost = future_tokens * 0.000003
+                parts.append(f"{self._session_plans_saved} plan(s) cached → next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})")
+            if self._session_memories_stored > 0:
+                parts.append(f"{self._session_memories_stored} memory/memories stored")
+            if parts:
+                print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stderr, flush=True)
 
     async def __aenter__(self):
         await self.start()
@@ -328,6 +334,8 @@ class Mnemon:
         if eme_result:
             self._session_tokens_saved += eme_result.tokens_saved or 0
             self._session_latency_saved_ms += eme_result.latency_saved_ms or 0.0
+            if eme_result.cache_level == "miss":
+                self._session_plans_saved += 1
 
         return {
             "template":         eme_result.template if eme_result else None,
@@ -361,6 +369,7 @@ class Mnemon:
         try:
             result = await self._memory.write(signal)
             self._drift.record_memory_write()
+            self._session_memories_stored += 1
             return result
         except Exception as e:
             logger.warning(f"Mnemon: remember() failed — content was NOT saved. Reason: {e}")
@@ -723,17 +732,22 @@ class MnemonSync:
             moth_tokens = s.get("tokens_saved_est", 0)
             run_tokens  = self._m._session_tokens_saved
             total_tokens = max(moth_tokens, run_tokens)
-            cache_hits   = s.get("cache_hits", 0) or self._m._session_calls
-            if total_tokens > 0 or cache_hits > 0:
+            plans_saved  = self._m._session_plans_saved
+            memories_stored = self._m._session_memories_stored
+            secs_saved = self._m._session_latency_saved_ms / 1000
+            parts = []
+            if total_tokens > 0:
                 cost_usd = total_tokens * 0.000003
-                secs_saved = self._m._session_latency_saved_ms / 1000
-                print(
-                    f"\nMnemon: ~{total_tokens:,} tokens saved"
-                    f" · ~${cost_usd:.4f}"
-                    + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else "")
-                    + f" ({cache_hits} cache hits this session)\n",
-                    file=_sys.stderr, flush=True,
-                )
+                parts.append(f"~{total_tokens:,} tokens saved · ~${cost_usd:.4f}"
+                             + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else ""))
+            if plans_saved > 0:
+                future_tokens = plans_saved * 1250
+                future_cost = future_tokens * 0.000003
+                parts.append(f"{plans_saved} plan(s) cached → next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})")
+            if memories_stored > 0:
+                parts.append(f"{memories_stored} memory/memories stored")
+            if parts:
+                print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stderr, flush=True)
 
     @property
     def active_integrations(self) -> List[str]:
