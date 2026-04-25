@@ -139,6 +139,7 @@ class Mnemon:
         self._session_latency_saved_ms: float = 0.0
         self._session_calls: int = 0
         self._session_plans_saved: int = 0
+        self._session_future_tokens: int = 0
         self._session_memories_stored: int = 0
 
     async def start(self):
@@ -226,9 +227,8 @@ class Mnemon:
                 secs_saved = self._session_latency_saved_ms / 1000
                 parts.append(f"{self._session_tokens_saved:,} tokens saved · ${cost_usd:.4f} · {secs_saved:.1f}s faster")
             if self._session_plans_saved > 0:
-                future_tokens = self._session_plans_saved * 1250
-                future_cost = future_tokens * 0.000003
-                parts.append(f"{self._session_plans_saved} plan(s) cached → next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})")
+                future_cost = self._session_future_tokens * 0.000003
+                parts.append(f"{self._session_plans_saved} plan(s) cached → next run saves ~{self._session_future_tokens:,} tokens (~${future_cost:.4f})")
             if self._session_memories_stored > 0:
                 parts.append(f"{self._session_memories_stored} memory/memories stored")
             if parts:
@@ -336,6 +336,7 @@ class Mnemon:
             self._session_latency_saved_ms += eme_result.latency_saved_ms or 0.0
             if eme_result.cache_level == "miss":
                 self._session_plans_saved += 1
+                self._session_future_tokens += (eme_result.segments_generated or 0) * 250
 
         return {
             "template":         eme_result.template if eme_result else None,
@@ -737,12 +738,17 @@ class MnemonSync:
             secs_saved = self._m._session_latency_saved_ms / 1000
             parts = []
             if total_tokens > 0:
-                cost_usd = total_tokens * 0.000003
-                parts.append(f"~{total_tokens:,} tokens saved · ~${cost_usd:.4f}"
+                real_cost = s.get("cost_saved_usd")
+                cost_is_real = s.get("cost_is_real", False)
+                if real_cost is not None:
+                    cost_str = f"${real_cost:.4f}" if cost_is_real else f"~${real_cost:.4f}"
+                else:
+                    cost_str = f"~${total_tokens * 0.000003:.4f}"
+                parts.append(f"~{total_tokens:,} tokens saved · {cost_str}"
                              + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else ""))
             if plans_saved > 0:
-                future_tokens = plans_saved * 1250
-                future_cost = future_tokens * 0.000003
+                future_tokens = self._m._session_future_tokens
+                future_cost = future_tokens * 0.000015
                 parts.append(f"{plans_saved} plan(s) cached → next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})")
             if memories_stored > 0:
                 parts.append(f"{memories_stored} memory/memories stored")

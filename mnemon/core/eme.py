@@ -1197,13 +1197,14 @@ class ExecutionMemoryEngine:
                 validation_passed=False,
             )
 
-        await self._cache_template(goal, template, fp, capabilities)
+        segment_count = await self._cache_template(goal, template, fp, capabilities)
 
         return EMEResult(
             status="miss",
             template=template,
             template_id=None,
             segments_reused=0,
+            segments_generated=segment_count,
             cache_level="miss",
         )
 
@@ -1290,9 +1291,11 @@ class ExecutionMemoryEngine:
                 await self._template_index.add(self.tenant_id, template_id, goal_embedding)
 
             logger.debug(f"Template cached: {template_id} ({len(segments)} segments)")
+            return len(segments)
 
         except Exception as e:
             logger.warning(f"Template caching failed: {e}")
+        return 0
 
     # ──────────────────────────────────────────
     # DEPENDENCY VALIDATION

@@ -95,7 +95,8 @@ class AnthropicIntegration(MnemonIntegration):
             if cached is not None:
                 if isinstance(cached, str):
                     cached = _synthetic_anthropic_response(cached, model)
-                track_cache_hit(m, "anthropic", _anthropic_tokens(cached))
+                total, inp, out = _anthropic_tokens(cached)
+                track_cache_hit(m, "anthropic", total, model, inp, out)
                 return cached
 
             context       = recall_as_context(m, query, source="anthropic") if query else ""
@@ -148,7 +149,8 @@ class AnthropicIntegration(MnemonIntegration):
             if cached is not None:
                 if isinstance(cached, str):
                     cached = _synthetic_anthropic_response(cached, model)
-                track_cache_hit(m, "anthropic", _anthropic_tokens(cached))
+                total, inp, out = _anthropic_tokens(cached)
+                track_cache_hit(m, "anthropic", total, model, inp, out)
                 return cached
 
             context       = await recall_as_context_async(m, query, source="anthropic") if query else ""
@@ -382,11 +384,14 @@ def _synthetic_anthropic_response(text: str, model: str) -> Any:
     )
 
 
-def _anthropic_tokens(response: Any) -> Optional[int]:
+def _anthropic_tokens(response: Any) -> tuple:
+    """Returns (total, input_tokens, output_tokens). total is None if unavailable."""
     try:
         usage = getattr(response, "usage", None)
         if usage:
-            return getattr(usage, "input_tokens", 0) + getattr(usage, "output_tokens", 0)
+            inp = getattr(usage, "input_tokens", 0) or 0
+            out = getattr(usage, "output_tokens", 0) or 0
+            return inp + out, inp, out
     except Exception:
         pass
-    return None
+    return None, None, None

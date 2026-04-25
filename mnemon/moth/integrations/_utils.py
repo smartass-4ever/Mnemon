@@ -148,11 +148,18 @@ def extract_query(messages: List[Dict], system: Optional[str] = None) -> str:
     return " ".join(parts).strip()[:350]
 
 
-def track_cache_hit(m: Any, source: str, tokens: Optional[int] = None) -> None:
+def track_cache_hit(
+    m: Any,
+    source: str,
+    tokens: Optional[int] = None,
+    model: Optional[str] = None,
+    input_tokens: Optional[int] = None,
+    output_tokens: Optional[int] = None,
+) -> None:
     """Record a cache hit to MothStats. Never raises."""
     try:
         if hasattr(m, "_stats") and m._stats is not None:
-            m._stats.record_hit(source, tokens)
+            m._stats.record_hit(source, tokens, model, input_tokens, output_tokens)
     except Exception:
         pass
 

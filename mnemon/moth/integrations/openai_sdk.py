@@ -84,7 +84,8 @@ class OpenAIIntegration(MnemonIntegration):
             if cached is not None:
                 if isinstance(cached, str):
                     cached = _synthetic_openai_response(cached, model)
-                track_cache_hit(m, "openai", _openai_tokens(cached))
+                total, inp, out = _openai_tokens(cached)
+                track_cache_hit(m, "openai", total, model, inp, out)
                 return cached
 
             context         = recall_as_context(m, query, source="openai") if query else ""
@@ -130,7 +131,8 @@ class OpenAIIntegration(MnemonIntegration):
             if cached is not None:
                 if isinstance(cached, str):
                     cached = _synthetic_openai_response(cached, model)
-                track_cache_hit(m, "openai", _openai_tokens(cached))
+                total, inp, out = _openai_tokens(cached)
+                track_cache_hit(m, "openai", total, model, inp, out)
                 return cached
 
             context         = await recall_as_context_async(m, query, source="openai") if query else ""
@@ -331,11 +333,15 @@ def _openai_text(response: Any) -> str:
     return str(response)[:400]
 
 
-def _openai_tokens(response: Any) -> Optional[int]:
+def _openai_tokens(response: Any) -> tuple:
+    """Returns (total, input_tokens, output_tokens). total is None if unavailable."""
     try:
         usage = getattr(response, "usage", None)
         if usage:
-            return getattr(usage, "total_tokens", None)
+            inp = getattr(usage, "prompt_tokens", 0) or 0
+            out = getattr(usage, "completion_tokens", 0) or 0
+            total = getattr(usage, "total_tokens", None) or (inp + out)
+            return total, inp, out
     except Exception:
         pass
-    return None
+    return None, None, None

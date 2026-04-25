@@ -15,7 +15,38 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 
-_COST_PER_CALL_USD = 0.006  # conservative mid-tier model average
+# Per-model pricing: (input_usd_per_token, output_usd_per_token)
+# Sources: Anthropic, OpenAI, Groq pricing pages (April 2026)
+_MODEL_PRICING: Dict[str, tuple] = {
+    # Anthropic
+    "claude-opus-4-7":              (0.000015,  0.000075),
+    "claude-opus-4-5":              (0.000015,  0.000075),
+    "claude-sonnet-4-6":            (0.000003,  0.000015),
+    "claude-sonnet-4-5":            (0.000003,  0.000015),
+    "claude-haiku-4-5":             (0.0000008, 0.000004),
+    "claude-haiku-4-5-20251001":    (0.0000008, 0.000004),
+    "claude-3-5-sonnet-20241022":   (0.000003,  0.000015),
+    "claude-3-5-haiku-20241022":    (0.0000008, 0.000004),
+    "claude-3-opus-20240229":       (0.000015,  0.000075),
+    "claude-3-haiku-20240307":      (0.00000025,0.00000125),
+    # OpenAI
+    "gpt-4o":                       (0.0000025, 0.000010),
+    "gpt-4o-mini":                  (0.00000015,0.0000006),
+    "gpt-4-turbo":                  (0.000010,  0.000030),
+    "gpt-4":                        (0.000030,  0.000060),
+    "gpt-3.5-turbo":                (0.0000005, 0.0000015),
+    "o1":                           (0.000015,  0.000060),
+    "o1-mini":                      (0.000003,  0.000012),
+    "o3-mini":                      (0.000003,  0.000012),
+    # Groq (free tier / hosted open-source)
+    "llama-3.1-8b-instant":         (0.00000005,0.00000008),
+    "llama-3.1-70b-versatile":      (0.00000059,0.00000079),
+    "llama-3.3-70b-versatile":      (0.00000059,0.00000079),
+    "mixtral-8x7b-32768":           (0.00000024,0.00000024),
+    "gemma2-9b-it":                 (0.0000002, 0.0000002),
+}
+_FALLBACK_INPUT_USD  = 0.000003   # sonnet-class default if model unknown
+_FALLBACK_OUTPUT_USD = 0.000015
 
 
 @dataclass
@@ -46,6 +77,8 @@ class MothStats:
         self._gates:             Dict[str, int] = defaultdict(int)
         self._tokens:            int = 0
         self._tokens_known_hits: int = 0
+        self._cost_saved_real:   float = 0.0   # computed from real model pricing
+        self._cost_saved_real_hits: int = 0    # how many hits have real cost
         self._history:           deque = deque(maxlen=20)
         # query_log: hash → {preview, count, first_seen, last_seen}
         self._query_log:         Dict[str, dict] = {}
@@ -61,6 +94,8 @@ class MothStats:
             self._gates             = defaultdict(int, data.get("gates", {}))
             self._tokens            = data.get("tokens", 0)
             self._tokens_known_hits = data.get("tokens_known_hits", 0)
+            self._cost_saved_real   = data.get("cost_saved_real", 0.0)
+            self._cost_saved_real_hits = data.get("cost_saved_real_hits", 0)
             self._query_log         = data.get("query_log", {})
             for h in data.get("history", []):
                 try:
@@ -81,6 +116,8 @@ class MothStats:
                 "gates":              dict(self._gates),
                 "tokens":             self._tokens,
                 "tokens_known_hits":  self._tokens_known_hits,
+                "cost_saved_real":    self._cost_saved_real,
+                "cost_saved_real_hits": self._cost_saved_real_hits,
                 "query_log":          self._query_log,
                 "history": [
                     {"source": h.source, "query": h.query, "injected": h.injected,
@@ -119,11 +156,25 @@ class MothStats:
         except Exception:
             pass
 
-    def record_hit(self, source: str, tokens: Optional[int] = None) -> None:
+    def record_hit(
+        self,
+        source: str,
+        tokens: Optional[int] = None,
+        model: Optional[str] = None,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None,
+    ) -> None:
         self._hits[source] += 1
         if tokens is not None:
             self._tokens += tokens
             self._tokens_known_hits += 1
+        if model is not None and (input_tokens is not None or output_tokens is not None):
+            pricing = _MODEL_PRICING.get(model)
+            in_rate  = pricing[0] if pricing else _FALLBACK_INPUT_USD
+            out_rate = pricing[1] if pricing else _FALLBACK_OUTPUT_USD
+            cost = (input_tokens or 0) * in_rate + (output_tokens or 0) * out_rate
+            self._cost_saved_real += cost
+            self._cost_saved_real_hits += 1
         self._save()
 
     def record_injection(self, source: str, query: str, context: str) -> None:
@@ -152,6 +203,16 @@ class MothStats:
         return self._tokens + (unknown_hits * self._EST_TOKENS_PER_HIT)
 
     @property
+    def cost_saved_usd(self) -> Optional[float]:
+        """Real cost saved if model pricing known, else None."""
+        if self._cost_saved_real_hits == 0:
+            return None
+        # Add estimated cost for hits without model info
+        unknown_hits = self.total_hits - self._cost_saved_real_hits
+        est_extra = unknown_hits * self._EST_TOKENS_PER_HIT * _FALLBACK_OUTPUT_USD
+        return self._cost_saved_real + est_extra
+
+    @property
     def summary(self) -> dict:
         all_sources = sorted(
             set(self._hits) | set(self._injections) | set(self._gates)
@@ -160,6 +221,8 @@ class MothStats:
             "cache_hits":         self.total_hits,
             "llm_calls_saved":    self.total_hits,
             "tokens_saved_est":   self.tokens_saved_est,
+            "cost_saved_usd":     self.cost_saved_usd,
+            "cost_is_real":       self._cost_saved_real_hits > 0,
             "memory_injections":  sum(self._injections.values()),
             "protein_bond_gates": sum(self._gates.values()),
             "by_integration": {
@@ -180,7 +243,7 @@ class MothStats:
     def recall_history(self) -> List[RecallTrace]:
         return list(self._history)
 
-    def waste_report(self, cost_per_call: float = _COST_PER_CALL_USD) -> str:
+    def waste_report(self, cost_per_call: float = 0.006) -> str:
         """
         Personal waste summary — shows repeated LLM calls across sessions
         and their estimated dollar cost. Designed to be visceral and specific.
