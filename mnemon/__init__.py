@@ -164,7 +164,11 @@ class Mnemon:
                         frags = load_fragments(self.tenant_id)
                         for frag in frags:
                             await self._db.write_fragment(frag)
-                        self._eme._fragments = frags
+                            if frag.signature:
+                                await self._eme._fragment_index.add(
+                                    self.tenant_id, frag.segment_id, frag.signature
+                                )
+                                self._eme._fragment_map[frag.segment_id] = frag
                         logger.info(f"Pre-warmed {len(frags)} fragments loaded")
                 except Exception as e:
                     logger.debug(f"Fragment pre-warm skipped: {e}")
