@@ -60,7 +60,6 @@ class Mnemon:
         llm_client=None,
         router_model:   str = "claude-haiku-4-5-20251001",
         drone_model:    str = "claude-haiku-4-5-20251001",
-        gap_fill_model: str = "claude-sonnet-4-6",
         data_region: str = "default",
         # Phase 2 — operational layer
         security_config: Optional[TenantSecurityConfig] = None,
@@ -116,9 +115,8 @@ class Mnemon:
         if eme_enabled:
             self._eme = ExecutionMemoryEngine(
                 tenant_id=tenant_id, db=self._db, embedder=self._embedder,
-                llm_client=resolved_llm, adapter=adapter,
+                adapter=adapter,
                 similarity_threshold=similarity_threshold,
-                gap_fill_model=gap_fill_model, cost_budget=cost_budget,
             )
         if bus_enabled:
             self._bus = ExperienceBus(
@@ -334,7 +332,7 @@ class Mnemon:
         if eme_result:
             self._session_tokens_saved += eme_result.tokens_saved or 0
             self._session_latency_saved_ms += eme_result.latency_saved_ms or 0.0
-            if eme_result.cache_level == "miss":
+            if eme_result.cache_level in ("miss", "system2_guided"):
                 self._session_plans_saved += 1
                 self._session_future_tokens += (eme_result.segments_generated or 0) * 250
 
@@ -561,7 +559,6 @@ class Mnemon:
             silent=config.get("silent", False),
             similarity_threshold=config.get("similarity_threshold", 0.70),
             router_model=config.get("router_model", "claude-haiku-4-5-20251001"),
-            gap_fill_model=config.get("gap_fill_model", "claude-sonnet-4-6"),
             drone_model=config.get("drone_model", "claude-haiku-4-5-20251001"),
             data_region=config.get("data_region", "default"),
         )

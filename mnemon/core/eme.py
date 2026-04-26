@@ -203,12 +203,29 @@ class CostBudget:
 
 
 # ─────────────────────────────────────────────
+# GAP FILL REQUEST
+# ─────────────────────────────────────────────
+
+@dataclass
+class GapFillRequest:
+    """
+    A segment with no fragment library match in System 2.
+    Deferred to the user's generation_fn with full context.
+    Zero Mnemon LLM cost. The filled result grows the fragment library.
+    """
+    position: int
+    segment_id: str
+    hint: str
+    surrounding_context: List[Any]
+
+
+# ─────────────────────────────────────────────
 # EME RESULT
 # ─────────────────────────────────────────────
 
 @dataclass
 class EMEResult:
-    status: str           # "system1" | "system2" | "miss" | "error"
+    status: str           # "system1" | "system2" | "system2_guided" | "miss" | "error"
     template: Any         # the hydrated/generated template
     template_id: Optional[str]
     segments_reused: int = 0
@@ -218,6 +235,7 @@ class EMEResult:
     fragments_used: int = 0
     cache_level: str = "miss"
     validation_passed: bool = True
+    pending_gaps: List[GapFillRequest] = field(default_factory=list)
 
 
 # ─────────────────────────────────────────────
@@ -521,21 +539,15 @@ class ExecutionMemoryEngine:
         tenant_id: str,
         db: EROSDatabase,
         embedder: Optional[SimpleEmbedder] = None,
-        llm_client=None,
         adapter: Optional[TemplateAdapter] = None,
         similarity_threshold: float = SYSTEM2_THRESHOLD_DEFAULT,
-        gap_fill_model: str = "claude-sonnet-4-6",
-        cost_budget: Optional[CostBudget] = None,
         signal_db: Optional[SignalDatabase] = None,
     ):
         self.tenant_id = tenant_id
         self.db = db
         self.embedder = embedder or SimpleEmbedder()
-        self.llm = llm_client
         self.adapter = adapter or GenericAdapter()
         self.threshold = similarity_threshold
-        self.gap_model = gap_fill_model
-        self.budget = cost_budget or CostBudget()
         self.signal_db = signal_db
 
         # System 1: in-memory hash lookup, sub-millisecond
@@ -665,13 +677,15 @@ class ExecutionMemoryEngine:
                 constraints, memory_context
             )
             if result:
-                # [FIX BUG-2] Must await the write-back.
-                # create_task (original) let the cache write race against the next
-                # call. The second identical run arrived before the write completed,
-                # found nothing in System 1, and fell through to System 2 again
-                # with tokens_saved=0. Awaiting here guarantees System 1 is ready
-                # for any subsequent call before we return.
-                await self._cache_template(goal, result.template, fp, capabilities)
+                if result.pending_gaps:
+                    # Unmatched segments deferred to user's generation_fn.
+                    # Zero Mnemon LLM cost — their LLM fills the gaps with full context.
+                    result = await self._guided_generation(
+                        result, goal, inputs, context, capabilities,
+                        constraints, generation_fn, fp
+                    )
+                else:
+                    await self._cache_template(goal, result.template, fp, capabilities)
 
         if not result:
             # ── FULL GENERATION ────────────────
@@ -869,19 +883,35 @@ class ExecutionMemoryEngine:
         # Gap fill for unmatched segments
         all_segments = list(best_template.segments)
         fragments_used = 0
-        generated_count = 0
+        pending_gaps: List[GapFillRequest] = []
 
         for idx in unmatched_indices:
             seg = all_segments[idx]
             window = self._window(all_segments, idx, window_size=2)
-            filled, used_fragment = await self._fill_gap(
-                seg, goal, window, memory_context, context
+            filled, used_fragment, gap_request = await self._fill_gap(
+                seg, goal, window, memory_context, context, idx
             )
-            all_segments[idx] = filled
-            if used_fragment:
-                fragments_used += 1
+            if gap_request is not None:
+                pending_gaps.append(gap_request)
             else:
-                generated_count += 1
+                all_segments[idx] = filled
+                if used_fragment:
+                    fragments_used += 1
+
+        if pending_gaps:
+            resolved = len(matched) + fragments_used
+            return EMEResult(
+                status="system2_guided",
+                template=self.adapter.reconstruct(all_segments),
+                template_id=best_template.template_id,
+                segments_reused=resolved,
+                segments_generated=0,
+                tokens_saved=resolved * 250,
+                latency_saved_ms=resolved * 2500,
+                fragments_used=fragments_used,
+                cache_level="system2_guided",
+                pending_gaps=pending_gaps,
+            )
 
         stitched_template = self.adapter.reconstruct(all_segments)
         is_valid = await self._validate_stitched(all_segments, capabilities, constraints)
@@ -906,7 +936,7 @@ class ExecutionMemoryEngine:
             template=stitched_template,
             template_id=best_template.template_id,
             segments_reused=len(matched),
-            segments_generated=generated_count,
+            segments_generated=0,
             tokens_saved=tokens_saved,
             latency_saved_ms=len(matched) * 2500,
             fragments_used=fragments_used,
@@ -1003,15 +1033,15 @@ class ExecutionMemoryEngine:
         context_window: List[TemplateSegment],
         memory_context: Optional[Dict],
         execution_context: Dict,
-    ) -> Tuple[TemplateSegment, bool]:
+        position: int = 0,
+    ) -> Tuple[TemplateSegment, bool, Optional[GapFillRequest]]:
         """
-        Three-tier gap fill:
-          1. Fragment library exact match   — zero LLM
-          2. Fragment library similar match — minimal LLM adaptation
-          3. LLM generation                 — fresh, cached as new fragment
+        Two-tier fragment lookup. Returns (segment, used_fragment, gap_request).
+        gap_request is non-None only for Tier 3 — deferred to user's generation_fn.
 
-        [v2] Uses ANNIndex top-k instead of O(n) list scan over self._fragments.
-        At 10k fragments the list scan was the dominant latency in gap fill.
+        Tier 1: exact fragment match (≥0.98)  — zero LLM, zero cost
+        Tier 2: similar fragment (≥0.80)      — use directly, zero LLM, zero cost
+        Tier 3: no fragment match             — GapFillRequest, user's LLM fills it
         """
         seg_str = json.dumps(segment.content, default=str) if segment.content else ""
         seg_sig = self._embed_sync(seg_str, full=False)
@@ -1028,147 +1058,155 @@ class ExecutionMemoryEngine:
             if frag is None:
                 continue
 
-            # Retrospector quarantine check — skip fragments flagged as bad.
             if self.retrospector:
                 try:
                     sys_db = self.retrospector.system_db
                     if await sys_db.is_quarantined(frag.segment_id, self.tenant_id):
                         continue
                 except Exception:
-                    pass  # quarantine check failure must never block gap fill
+                    pass
 
             if sim >= FRAGMENT_EXACT_THRESHOLD:
-                # Tier 1: exact hit — zero LLM
+                # Tier 1: exact hit — zero cost
                 frag.use_count += 1
                 await self._write_behind.enqueue(frag)
                 self._trace_frags_buf.append(frag.segment_id)
-                return frag, True
+                return frag, True, None
 
             if sim > best_sim:
                 best_sim = sim
                 best_frag = frag
 
         if best_frag and best_sim >= FRAGMENT_SIMILAR_THRESHOLD:
-            # Tier 2: similar match — minimal LLM adaptation
-            if self.llm and await self.budget.can_call():
-                adapted = await self._adapt_fragment(best_frag, goal, execution_context)
-                await self.budget.record_call()
-                self._trace_frags_buf.append(best_frag.segment_id)
-                return adapted, True
+            # Tier 2: similar fragment — use directly, no LLM adaptation
+            best_frag.use_count += 1
+            await self._write_behind.enqueue(best_frag)
+            self._trace_frags_buf.append(best_frag.segment_id)
+            return best_frag, True, None
 
-        # Tier 3: LLM generation
-        if self.llm and await self.budget.can_call():
-            generated = await self._llm_generate_segment(
-                segment, goal, context_window, memory_context, execution_context
-            )
-            await self.budget.record_call()
-            await self._write_behind.enqueue(generated)
-            if generated.signature:
-                await self._fragment_index.add(
-                    self.tenant_id, generated.segment_id, generated.signature
-                )
-            self._fragment_map[generated.segment_id] = generated
-            self._trace_gen_buf.append(generated.segment_id)
-            return generated, False
-
-        logger.warning(
-            f"Gap fill: budget exhausted or no LLM — "
-            f"using original segment {segment.segment_id}"
+        # Tier 3: no fragment match — defer to user's generation_fn
+        gap_request = GapFillRequest(
+            position=position,
+            segment_id=segment.segment_id,
+            hint=self._gap_hint(segment, context_window),
+            surrounding_context=[s.content for s in context_window],
         )
-        return segment, False
+        return segment, False, gap_request
 
-    async def _adapt_fragment(
+    def _gap_hint(self, segment: TemplateSegment, window: List[TemplateSegment]) -> str:
+        seg_preview = json.dumps(segment.content, default=str)[:120] if segment.content else "unknown step"
+        if window:
+            ctx = " → ".join(json.dumps(s.content, default=str)[:60] for s in window[:2])
+            return f"generate: {seg_preview} (context: {ctx})"
+        return f"generate: {seg_preview}"
+
+    async def _guided_generation(
         self,
-        fragment: TemplateSegment,
+        partial_result: "EMEResult",
         goal: str,
+        inputs: Dict,
         context: Dict,
-    ) -> TemplateSegment:
-        """Minimal LLM call to adapt a similar fragment to current context."""
-        prompt = (
-            f"Adapt this execution step for the current goal.\n"
-            f"Make minimal changes — only update what must change.\n"
-            f"Reply with JSON only.\n\n"
-            f"Current goal: {goal}\n"
-            f"Context: {json.dumps(context, default=str)[:200]}\n"
-            f"Original step: {json.dumps(fragment.content, default=str)[:300]}\n\n"
-            f'Reply: {{"content": <adapted step as JSON>}}'
-        )
+        capabilities: List[str],
+        constraints: Dict,
+        generation_fn: Callable,
+        fp: ComputationFingerprint,
+    ) -> Optional["EMEResult"]:
+        """
+        System 2 guided generation.
+        Matched segments + gap descriptions are injected into the user's
+        generation_fn context. Their LLM fills the gaps as part of its
+        normal call — zero Mnemon LLM cost. Filled segments are extracted
+        positionally and added to the fragment library for future runs.
+        """
+        pending_gaps = partial_result.pending_gaps
+        gap_positions = {g.position for g in pending_gaps}
+
+        partial_segs = self.adapter.decompose(partial_result.template)
+        matched_contents = [
+            (partial_segs[i].get("content", partial_segs[i]) if isinstance(partial_segs[i], dict) else partial_segs[i])
+            for i in range(len(partial_segs))
+            if i not in gap_positions
+        ]
+
+        enriched = dict(context)
+        enriched["_mnemon_partial_plan"] = {
+            "matched_segments": matched_contents,
+            "gaps": [
+                {
+                    "position": g.position,
+                    "hint": g.hint,
+                    "surrounding": g.surrounding_context,
+                }
+                for g in pending_gaps
+            ],
+            "total_steps": len(partial_segs),
+            "instruction": (
+                "matched_segments are already cached — do not regenerate them. "
+                "Generate the complete plan; fill every listed gap."
+            ),
+        }
+
         try:
-            response = await self.llm.complete(
-                prompt=prompt, model=self.gap_model, max_tokens=200
-            )
-            data = json.loads(response)
-            new_content = data.get("content", fragment.content)
-        except Exception:
-            new_content = fragment.content
-
-        seg_id = hashlib.md5(
-            f"{self.tenant_id}:{goal}:{time.time()}".encode()
-        ).hexdigest()[:16]
-        content_str = json.dumps(new_content, default=str)
-
-        return TemplateSegment(
-            segment_id=seg_id,
-            tenant_id=self.tenant_id,
-            content=new_content,
-            fingerprint=hashlib.md5(content_str.encode()).hexdigest()[:16],
-            signature=self._embed_sync(content_str, full=False),
-            domain_tags=fragment.domain_tags,
-            is_generated=True,
-            confidence=0.8,
-        )
-
-    async def _llm_generate_segment(
-        self,
-        segment: TemplateSegment,
-        goal: str,
-        window: List[TemplateSegment],
-        memory_context: Optional[Dict],
-        execution_context: Dict,
-    ) -> TemplateSegment:
-        """LLM generates a missing segment with windowed context."""
-        window_data = [{"id": s.segment_id, "content": s.content} for s in window]
-        mem_summary = ""
-        if memory_context and memory_context.get("memories"):
-            mem_summary = (
-                f"\nRelevant context from memory:\n"
-                f"{json.dumps(memory_context['memories'][:3], default=str)}"
-            )
-
-        prompt = (
-            f"Generate one execution step for this goal.\n"
-            f"Reply with JSON only — the step content only.\n\n"
-            f"Goal: {goal}\n"
-            f"Surrounding steps (context): {json.dumps(window_data, default=str)}"
-            f"{mem_summary}\n"
-            f"Execution context: {json.dumps(execution_context, default=str)[:200]}\n\n"
-            f"The step should connect logically with the surrounding steps.\n"
-            f'Reply: {{"step_id": "generated_step", "action": "...", "params": {{}}}}'
-        )
-        try:
-            response = await self.llm.complete(
-                prompt=prompt, model=self.gap_model, max_tokens=300
-            )
-            content = json.loads(response)
+            template = await generation_fn(goal, inputs, enriched, capabilities, constraints)
         except Exception as e:
-            logger.warning(f"Segment generation failed: {e}")
-            content = {"action": "placeholder", "error": str(e)}
+            logger.error(f"Guided generation failed: {e}")
+            return None
 
-        seg_id = hashlib.md5(
-            f"{self.tenant_id}:{goal}:{time.time()}:{segment.segment_id}".encode()
-        ).hexdigest()[:16]
-        content_str = json.dumps(content, default=str)
+        await self._cache_template(goal, template, fp, capabilities)
+        await self._extract_gap_fragments(template, pending_gaps)
 
-        return TemplateSegment(
-            segment_id=seg_id,
-            tenant_id=self.tenant_id,
-            content=content,
-            fingerprint=hashlib.md5(content_str.encode()).hexdigest()[:16],
-            signature=self._embed_sync(content_str, full=False),
-            domain_tags=segment.domain_tags,
-            is_generated=True,
-            confidence=0.7,
+        return EMEResult(
+            status="system2_guided",
+            template=template,
+            template_id=None,
+            segments_reused=partial_result.segments_reused,
+            segments_generated=len(pending_gaps),
+            tokens_saved=partial_result.tokens_saved,
+            latency_saved_ms=partial_result.latency_saved_ms,
+            fragments_used=partial_result.fragments_used,
+            cache_level="system2_guided",
+            validation_passed=True,
         )
+
+    async def _extract_gap_fragments(
+        self,
+        template: Any,
+        pending_gaps: List[GapFillRequest],
+    ) -> None:
+        """
+        Extract the filled segments at gap positions from the completed template.
+        Each is added to the fragment library — next run with a similar gap
+        hits Tier 1 or 2 at zero cost.
+        """
+        try:
+            segments_data = self.adapter.decompose(template)
+            for gap in pending_gaps:
+                if gap.position >= len(segments_data):
+                    continue
+                seg_data = segments_data[gap.position]
+                content = seg_data.get("content", seg_data) if isinstance(seg_data, dict) else seg_data
+                content_str = json.dumps(content, default=str)
+                sig = self._embed_sync(content_str, full=False)
+                seg = TemplateSegment(
+                    segment_id=hashlib.md5(
+                        f"{self.tenant_id}:gap:{gap.segment_id}:{time.time()}".encode()
+                    ).hexdigest()[:16],
+                    tenant_id=self.tenant_id,
+                    content=content,
+                    fingerprint=hashlib.md5(content_str.encode()).hexdigest()[:16],
+                    signature=sig,
+                    is_generated=True,
+                    confidence=0.85,
+                    success_rate=1.0,
+                )
+                await self._write_behind.enqueue(seg)
+                if sig:
+                    await self._fragment_index.add(self.tenant_id, seg.segment_id, sig)
+                    self._fragment_map[seg.segment_id] = seg
+                self._trace_gen_buf.append(seg.segment_id)
+                logger.debug(f"Gap fragment cached: {seg.segment_id} at position {gap.position}")
+        except Exception as e:
+            logger.debug(f"Gap fragment extraction failed (non-critical): {e}")
 
     # ──────────────────────────────────────────
     # FULL GENERATION
