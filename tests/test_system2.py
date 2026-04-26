@@ -1,5 +1,5 @@
 import asyncio
-from mnemon.core.eme import ExecutionMemoryEngine, CostBudget
+from mnemon.core.eme import ExecutionMemoryEngine
 from mnemon.core.persistence import EROSDatabase
 from mnemon.core.memory import SimpleEmbedder
 from mnemon.adapters.crewai import CrewAIAdapter
@@ -23,7 +23,6 @@ async def main():
         db=db,
         embedder=SimpleEmbedder(),
         adapter=CrewAIAdapter(),
-        cost_budget=CostBudget(max_llm_calls_per_hour=100),
     )
     await eme.warm()
 

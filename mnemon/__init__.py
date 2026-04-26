@@ -56,7 +56,6 @@ class Mnemon:
         similarity_threshold: float = 0.70,
         resonance_floor: float = 0.70,
         adapter: Optional[TemplateAdapter] = None,
-        cost_budget: Optional[CostBudget] = None,
         llm_client=None,
         router_model:   str = "claude-haiku-4-5-20251001",
         drone_model:    str = "claude-haiku-4-5-20251001",

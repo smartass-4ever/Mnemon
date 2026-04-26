@@ -26,7 +26,7 @@ from mnemon.core.memory import (
     CognitiveMemorySystem, SimpleEmbedder,
     RuleClassifier, WorkingMemory
 )
-from mnemon.core.eme import ExecutionMemoryEngine, GenericAdapter, CostBudget
+from mnemon.core.eme import ExecutionMemoryEngine, GenericAdapter
 from mnemon.core.bus import ExperienceBus, PADMonitor, Tier1Observer, BeliefRegistry
 from mnemon.security.manager import SecurityManager, ContentFilter, ContentSensitivity, TenantSecurityConfig
 from mnemon.observability.watchdog import Watchdog
@@ -307,11 +307,12 @@ async def test_eme_fragment_library():
     print("  ✓ EME fragment library accumulation")
 
 
-async def test_eme_cost_budget_fallback():
-    budget = CostBudget(max_llm_calls_per_hour=0, overflow_policy="fallback")
+async def test_eme_generation_fn_only():
+    # EME no longer makes its own LLM calls — all generation goes through
+    # the user's generation_fn. Verify the run completes and caches correctly.
     eros = Mnemon(
-        tenant_id=TENANT, agent_id="test_budget",
-        db_dir=DB_DIR, cost_budget=budget,
+        tenant_id=TENANT, agent_id="test_gen_fn_only",
+        db_dir=DB_DIR,
         prewarm_fragments=False,
     )
     await eros.start()
@@ -319,11 +320,14 @@ async def test_eme_cost_budget_fallback():
     async def gen(goal, inputs, context, caps, constraints):
         return [{"id": "step_1", "action": "process"}]
 
-    # Should still work even with zero LLM budget
-    result = await eros.run(goal="test budget", inputs={}, generation_fn=gen)
+    result = await eros.run(goal="test gen fn only", inputs={}, generation_fn=gen)
     assert result is not None
+    assert result["template"] is not None
+    # Second run should hit cache
+    result2 = await eros.run(goal="test gen fn only", inputs={}, generation_fn=gen)
+    assert result2["cache_level"] == "system1"
     await eros.stop()
-    print("  ✓ EME cost budget fallback")
+    print("  ✓ EME generation_fn-only path")
 
 
 # ─────────────────────────────────────────────
@@ -1238,7 +1242,7 @@ def run_all():
         test_eme_system1_cache,
         test_eme_different_goals_miss,
         test_eme_fragment_library,
-        test_eme_cost_budget_fallback,
+        test_eme_generation_fn_only,
         test_bus_tier1_observation,
         test_bus_belief_registry,
         test_bus_signal_broadcast_and_query,

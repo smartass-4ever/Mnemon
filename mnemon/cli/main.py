@@ -190,7 +190,6 @@ async def cmd_init(args):
         "enable_telemetry":   True,
         # Models
         "router_model":       "claude-haiku-4-5-20251001",
-        "gap_fill_model":     "claude-sonnet-4-6",
         "drone_model":        "claude-haiku-4-5-20251001",
         # Retrieval
         "similarity_threshold": 0.70,

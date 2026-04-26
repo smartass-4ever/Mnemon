@@ -1,5 +1,5 @@
 import asyncio
-from mnemon.core.eme import ExecutionMemoryEngine, CostBudget
+from mnemon.core.eme import ExecutionMemoryEngine
 from mnemon.core.persistence import EROSDatabase
 from mnemon.core.memory import SimpleEmbedder
 from mnemon.adapters.crewai import CrewAIAdapter
