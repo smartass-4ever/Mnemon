@@ -334,7 +334,8 @@ class Mnemon:
             self._session_latency_saved_ms += eme_result.latency_saved_ms or 0.0
             if eme_result.cache_level in ("miss", "system2_guided"):
                 self._session_plans_saved += 1
-                self._session_future_tokens += (eme_result.segments_generated or 0) * 250
+                total_segs = (eme_result.segments_reused or 0) + (eme_result.segments_generated or 0)
+                self._session_future_tokens += total_segs * 250
 
         return {
             "template":         eme_result.template if eme_result else None,

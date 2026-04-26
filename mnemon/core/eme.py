@@ -575,6 +575,22 @@ class ExecutionMemoryEngine:
         """Attach a Retrospector instance. Call before the first run()."""
         self.retrospector = retrospector
 
+    @staticmethod
+    def _seg_tokens(segments) -> int:
+        """
+        Estimate token count from actual segment content (chars/4 ≈ tokens).
+        More accurate than the old flat 250/segment default — segments vary
+        from a 3-word label to a 500-word instruction block.
+        """
+        total = 0
+        for seg in segments:
+            try:
+                content = getattr(seg, "content", seg)
+                total += max(10, len(json.dumps(content, default=str)) // 4)
+            except Exception:
+                total += 250
+        return max(total, len(segments) * 10)
+
     # ──────────────────────────────────────────
     # WARM
     # ──────────────────────────────────────────
@@ -764,7 +780,7 @@ class ExecutionMemoryEngine:
 
         hydrated = self._hydrate(template, inputs)
         await self.db.update_template_outcome(self.tenant_id, template_id, True)
-        tokens_saved = len(template.segments) * 250
+        tokens_saved = self._seg_tokens(template.segments)
 
         return EMEResult(
             status="system1",
@@ -868,7 +884,7 @@ class ExecutionMemoryEngine:
             # [FIX BUG-1] tokens_saved and latency_saved_ms were not set here.
             # The original EMEResult was returned with both fields at their
             # dataclass default of 0, even though all segments were reused.
-            tokens_saved = len(matched) * 250
+            tokens_saved = self._seg_tokens(matched)
             return EMEResult(
                 status="system2",
                 template=hydrated,
@@ -899,15 +915,16 @@ class ExecutionMemoryEngine:
                     fragments_used += 1
 
         if pending_gaps:
-            resolved = len(matched) + fragments_used
+            gap_positions = {g.position for g in pending_gaps}
+            resolved_segs = [s for i, s in enumerate(all_segments) if i not in gap_positions]
             return EMEResult(
                 status="system2_guided",
                 template=self.adapter.reconstruct(all_segments),
                 template_id=best_template.template_id,
-                segments_reused=resolved,
+                segments_reused=len(resolved_segs),
                 segments_generated=0,
-                tokens_saved=resolved * 250,
-                latency_saved_ms=resolved * 2500,
+                tokens_saved=self._seg_tokens(resolved_segs),
+                latency_saved_ms=len(resolved_segs) * 2500,
                 fragments_used=fragments_used,
                 cache_level="system2_guided",
                 pending_gaps=pending_gaps,
@@ -930,7 +947,7 @@ class ExecutionMemoryEngine:
             self.tenant_id, best_template.template_id, True
         )
 
-        tokens_saved = len(matched) * 250
+        tokens_saved = self._seg_tokens(matched)
         return EMEResult(
             status="system2",
             template=stitched_template,
