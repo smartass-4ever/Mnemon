@@ -923,8 +923,8 @@ class ExecutionMemoryEngine:
                 template_id=best_template.template_id,
                 segments_reused=len(resolved_segs),
                 segments_generated=0,
-                tokens_saved=self._seg_tokens(resolved_segs),
-                latency_saved_ms=len(resolved_segs) * 2500,
+                tokens_saved=0,
+                latency_saved_ms=0.0,
                 fragments_used=fragments_used,
                 cache_level="system2_guided",
                 pending_gaps=pending_gaps,
@@ -1172,14 +1172,17 @@ class ExecutionMemoryEngine:
         await self._cache_template(goal, template, fp, capabilities)
         await self._extract_gap_fragments(template, pending_gaps)
 
+        # tokens_saved=0: generation_fn still makes a full LLM call on this run.
+        # The value of system2_guided is entirely in future runs — gap fragments
+        # are now stored, so next time this goal can hit system1 or system2 fully.
         return EMEResult(
             status="system2_guided",
             template=template,
             template_id=None,
             segments_reused=partial_result.segments_reused,
             segments_generated=len(pending_gaps),
-            tokens_saved=partial_result.tokens_saved,
-            latency_saved_ms=partial_result.latency_saved_ms,
+            tokens_saved=0,
+            latency_saved_ms=0.0,
             fragments_used=partial_result.fragments_used,
             cache_level="system2_guided",
             validation_passed=True,
