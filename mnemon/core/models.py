@@ -175,6 +175,7 @@ class TemplateSegment:
     use_count:             int = 0
     confidence:            float = 1.0   # set by LLM when gap-filling
     is_generated:          bool = False  # True = LLM gap-fill, False = cached
+    intent:                str = ""      # rule-extracted human-readable intent phrase
 
 
 @dataclass

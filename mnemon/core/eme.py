@@ -87,7 +87,9 @@ logger = logging.getLogger(__name__)
 SYSTEM2_THRESHOLD_DEFAULT  = 0.70   # minimum overall similarity for System 2
 FRAGMENT_EXACT_THRESHOLD   = 0.98   # fragment library exact hit
 FRAGMENT_SIMILAR_THRESHOLD = 0.80   # fragment library similar hit (LLM adapts)
-SEGMENT_MATCH_THRESHOLD    = 0.72   # per-segment similarity in _segment_diff
+SEGMENT_MATCH_THRESHOLD    = 0.72   # per-segment intent similarity — clear match
+INTENT_AMBIGUOUS_LOW       = 0.35   # below this: clear miss, skip drone
+SPREADING_DECAY            = 0.85   # activation decay per hop in dependency graph
 ANN_CANDIDATE_K            = 32     # ANN shortlist size for fragment search
 TEMPLATE_CANDIDATE_K       = 20     # top-k templates scored in System 2
 EMBEDDING_CACHE_SIZE       = 2048   # LRU embedding cache slots
@@ -542,6 +544,7 @@ class ExecutionMemoryEngine:
         adapter: Optional[TemplateAdapter] = None,
         similarity_threshold: float = SYSTEM2_THRESHOLD_DEFAULT,
         signal_db: Optional[SignalDatabase] = None,
+        drone_fn: Optional[Callable] = None,
     ):
         self.tenant_id = tenant_id
         self.db = db
@@ -549,6 +552,7 @@ class ExecutionMemoryEngine:
         self.adapter = adapter or GenericAdapter()
         self.threshold = similarity_threshold
         self.signal_db = signal_db
+        self.drone_fn = drone_fn  # async (goal: str, step_intent: str) -> bool
 
         # System 1: in-memory hash lookup, sub-millisecond
         self._system1_cache: Dict[str, str] = {}   # fingerprint_hash → template_id
@@ -866,8 +870,8 @@ class ExecutionMemoryEngine:
         if best_template.should_evict:
             return None
 
-        # Segment-level diff
-        matched, unmatched_indices = self._segment_diff(
+        # Segment-level diff (now async — drone may fire on ambiguous segments)
+        matched, unmatched_indices = await self._segment_diff(
             best_template.segments, goal, inputs
         )
 
@@ -899,6 +903,7 @@ class ExecutionMemoryEngine:
         # Gap fill for unmatched segments
         all_segments = list(best_template.segments)
         fragments_used = 0
+        fragment_filled_segs: List[TemplateSegment] = []
         pending_gaps: List[GapFillRequest] = []
 
         for idx in unmatched_indices:
@@ -913,6 +918,7 @@ class ExecutionMemoryEngine:
                 all_segments[idx] = filled
                 if used_fragment:
                     fragments_used += 1
+                    fragment_filled_segs.append(filled)
 
         if pending_gaps:
             gap_positions = {g.position for g in pending_gaps}
@@ -947,15 +953,17 @@ class ExecutionMemoryEngine:
             self.tenant_id, best_template.template_id, True
         )
 
-        tokens_saved = self._seg_tokens(matched)
+        # Fragment-filled segments are also served from cache — count them in savings
+        cached_count = len(matched) + fragments_used
+        tokens_saved = self._seg_tokens(matched) + self._seg_tokens(fragment_filled_segs)
         return EMEResult(
             status="system2",
             template=stitched_template,
             template_id=best_template.template_id,
-            segments_reused=len(matched),
+            segments_reused=cached_count,
             segments_generated=0,
             tokens_saved=tokens_saved,
-            latency_saved_ms=len(matched) * 2500,
+            latency_saved_ms=cached_count * 2500,
             fragments_used=fragments_used,
             cache_level="system2",
             validation_passed=True,
@@ -992,37 +1000,151 @@ class ExecutionMemoryEngine:
             CAPABILITY_WEIGHT * cap_sim
         )
 
-    def _segment_diff(
+    @staticmethod
+    def _extract_intent(seg_data: dict) -> str:
+        """
+        Rule-based intent extraction from segment data — no LLM, no I/O.
+        Produces a short human-readable phrase that lives in the same semantic
+        space as a user's goal string, fixing the fundamental mismatch where
+        _segment_diff previously compared goal embeddings against raw JSON content.
+        """
+        parts: List[str] = []
+
+        for key in ("action", "step", "name", "task", "operation"):
+            val = seg_data.get(key)
+            if isinstance(val, str) and val.strip():
+                parts.append(val.strip())
+                break
+
+        for key in ("tool", "tool_call", "function", "api"):
+            val = seg_data.get(key)
+            if isinstance(val, str) and val.strip():
+                parts.append(f"using {val.strip()}")
+                break
+
+        outputs = seg_data.get("outputs") or seg_data.get("produces") or seg_data.get("returns")
+        if outputs:
+            if isinstance(outputs, list):
+                parts.append(f"produces {', '.join(str(o) for o in outputs[:3])}")
+            elif isinstance(outputs, str):
+                parts.append(f"produces {outputs}")
+
+        for key in ("goal", "description", "objective", "intent"):
+            val = seg_data.get(key)
+            if isinstance(val, str) and val.strip() and val not in parts:
+                parts.append(val.strip())
+                break
+
+        if parts:
+            return " | ".join(parts)
+
+        for v in seg_data.values():
+            if isinstance(v, str) and len(v) > 3:
+                return v[:200]
+
+        return json.dumps(seg_data, default=str)[:200]
+
+    async def _drone_verify(self, goal: str, step_intent: str) -> bool:
+        """
+        Lightweight LLM drone for ambiguous segment matches.
+        Only fires when a segment's activated intent score falls in
+        [INTENT_AMBIGUOUS_LOW, SEGMENT_MATCH_THRESHOLD) — typically 3-8% of segments.
+        If no drone_fn is configured, defaults to False (conservative: cache miss).
+        """
+        if self.drone_fn is None:
+            return False
+        try:
+            prompt = (
+                f"Does this cached step serve the current goal?\n\n"
+                f"Goal: {goal}\n"
+                f"Step: {step_intent}\n\n"
+                f"Reply with only YES or NO."
+            )
+            result = await self.drone_fn(prompt)
+            return str(result).strip().upper().startswith("Y")
+        except Exception as e:
+            logger.debug(f"Intent drone failed (treating as miss): {e}")
+            return False
+
+    async def _segment_diff(
         self,
         segments: List[TemplateSegment],
         goal: str,
         inputs: Dict,
     ) -> Tuple[List[TemplateSegment], List[int]]:
         """
-        Identify which segments match the current task and which need gap fill.
-        Returns (matched_segments, indices_of_unmatched).
+        Intent-based segment matching with spreading activation over the dependency graph.
 
-        [FIX BUG-3] Original silently appended unsigned segments to matched_segs.
-        This inflated segments_reused and could trigger the all-matched early-return
-        path (which compounded BUG-1 — the early-return path had tokens_saved=0).
-        Unsigned segments now go to unmatched_indices so gap fill runs on them.
+        1. Base score: cosine(goal_embedding, seg.signature)
+           - New segments: sig = intent phrase embedding (same semantic space as goal)
+           - Legacy segments (no intent field): sig = content JSON embedding (old behavior)
+        2. Spreading activation via BFS through dependency edges (bidirectional, decay=0.85)
+           — a confident match in one step boosts adjacent steps in the plan graph
+        3. Classification:
+           - score >= 0.72 (SEGMENT_MATCH_THRESHOLD): matched, reuse from cache
+           - score in [0.35, 0.72): ambiguous → conditional drone verification
+           - score < 0.35 (INTENT_AMBIGUOUS_LOW): clear miss → gap fill
+        4. No drone_fn: ambiguous defaults to gap fill (conservative)
         """
         goal_sig = self._embed_sync(goal, full=False)
+
+        # Build bidirectional adjacency from stored dependency edges
+        seg_by_id: Dict[str, TemplateSegment] = {s.segment_id: s for s in segments}
+        adj: Dict[str, Set[str]] = {s.segment_id: set() for s in segments}
+        for seg in segments:
+            for dep_id in (seg.dependencies or []):
+                if dep_id in adj:
+                    adj[seg.segment_id].add(dep_id)
+                    adj[dep_id].add(seg.segment_id)
+
+        # Step 1: base cosine scores against intent embeddings
+        base_scores: Dict[str, float] = {}
+        for seg in segments:
+            if not seg.signature:
+                base_scores[seg.segment_id] = 0.0
+            else:
+                base_scores[seg.segment_id] = SimpleEmbedder.cosine_similarity(
+                    goal_sig, seg.signature
+                )
+
+        # Step 2: spreading activation — high-scoring segments boost their neighbors
+        activated: Dict[str, float] = dict(base_scores)
+        for source_id, score in base_scores.items():
+            if score < INTENT_AMBIGUOUS_LOW:
+                continue
+            queue: List[Tuple[str, float]] = [(source_id, score)]
+            visited: Set[str] = {source_id}
+            while queue:
+                current_id, current_score = queue.pop(0)
+                for neighbor_id in adj.get(current_id, set()):
+                    if neighbor_id in visited:
+                        continue
+                    visited.add(neighbor_id)
+                    spread = current_score * SPREADING_DECAY
+                    if spread > activated.get(neighbor_id, 0.0):
+                        activated[neighbor_id] = spread
+                        queue.append((neighbor_id, spread))
+
+        # Step 3: classify using final activated scores
         matched_segs: List[TemplateSegment] = []
         unmatched_indices: List[int] = []
 
         for i, seg in enumerate(segments):
             if not seg.signature:
-                logger.debug(
-                    f"Segment {seg.segment_id} has no signature — "
-                    f"routing to gap fill (was silently counted as matched in v1)"
-                )
+                logger.debug(f"Segment {seg.segment_id}: no intent signature — gap fill")
                 unmatched_indices.append(i)
                 continue
 
-            sim = SimpleEmbedder.cosine_similarity(goal_sig, seg.signature)
-            if sim >= SEGMENT_MATCH_THRESHOLD:
+            score = activated.get(seg.segment_id, 0.0)
+
+            if score >= SEGMENT_MATCH_THRESHOLD:
                 matched_segs.append(seg)
+            elif score >= INTENT_AMBIGUOUS_LOW:
+                step_intent = seg.intent or seg.segment_id
+                if await self._drone_verify(goal, step_intent):
+                    matched_segs.append(seg)
+                else:
+                    unmatched_indices.append(i)
             else:
                 unmatched_indices.append(i)
 
@@ -1293,7 +1415,10 @@ class ExecutionMemoryEngine:
                 for i, seg_data in enumerate(segments_data):
                     content = seg_data.get("content", seg_data)
                     content_str = json.dumps(content, default=str)
-                    sig = self._embed_sync(content_str, full=False)
+                    intent = self._extract_intent(seg_data)
+                    # Embed the intent phrase, not raw JSON — same semantic space as the goal.
+                    # This is the fix for _segment_diff: goal vs JSON was always a miss.
+                    sig = self._embed_sync(intent, full=False)
 
                     seg = TemplateSegment(
                         segment_id=seg_data.get("id", f"seg_{i}"),
@@ -1301,6 +1426,9 @@ class ExecutionMemoryEngine:
                         content=content,
                         fingerprint=hashlib.md5(content_str.encode()).hexdigest()[:16],
                         signature=sig,
+                        intent=intent,
+                        dependencies=seg_data.get("depends_on", []),
+                        outputs=seg_data.get("outputs", []),
                         is_generated=False,
                         confidence=1.0,
                         success_rate=1.0,
