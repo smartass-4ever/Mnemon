@@ -53,15 +53,4 @@ print(f"  Injections      : {stats.get('memory_injections', 0)}")
 print(f"  Protein bond gates: {stats.get('protein_bond_gates', 0)}")
 print()
 
-# ── 5. What does memory look like now? ───────────────────────────────────────
-recalled = m.recall("Paris France capital")
-mems = recalled.get("memories", [])
-ids   = recalled.get("memory_ids", [])
-scores = recalled.get("memory_scores", {})
-print(f"=== Memory recall: 'Paris France capital' ({len(mems)} results) ===")
-for mem, mid in zip(mems[:5], ids[:5]):
-    text  = mem.get("text", "").encode("ascii", errors="replace").decode("ascii")
-    score = scores.get(mid, 0.0)
-    print(f"  [{score:.2f}] {text[:120]}")
-
 m.close()

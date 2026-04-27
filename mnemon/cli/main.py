@@ -181,16 +181,12 @@ async def cmd_init(args):
         "version":            "1.0.0",
         "created_at":         time.time(),
         # Subsystem toggles
-        "memory_enabled":     True,
         "eme_enabled":        True,
         "bus_enabled":        True,
         "prewarm_fragments":  True,
         # Observability
         "enable_watchdog":    False,
         "enable_telemetry":   True,
-        # Models
-        "router_model":       "claude-haiku-4-5-20251001",
-        "drone_model":        "claude-haiku-4-5-20251001",
         # Retrieval
         "similarity_threshold": 0.70,
         "data_region":        "default",
@@ -295,7 +291,6 @@ async def cmd_health(args):
         watchdog = Watchdog(
             tenant_id=tenant_id,
             db=mnemon._db,
-            index=mnemon._index,
             bus=mnemon._bus,
             eme=mnemon._eme,
         )
@@ -421,11 +416,9 @@ async def cmd_stats(args):
     print(f"  Pool size:  {mem.get('pool_size', 0)} active memories")
 
     bus = stats.get("bus", {})
-    t2  = bus.get("tier2", {})
     t1  = bus.get("tier1", {})
-    print(f"\n  Bus broadcasts:    {t2.get('broadcasts_sent', 0)}")
-    print(f"  Bus immunizations: {t2.get('immunizations', 0)}")
-    print(f"  Tier 1 observed:   {t1.get('observations', 0)}")
+    print(f"\n  Bus tier1 observed: {t1.get('observations', 0)}")
+    print(f"  Bus signals fired:  {bus.get('tier1_signals', 0)}")
 
 
 def main():
