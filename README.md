@@ -1,80 +1,163 @@
+<div align="center">
+
 ![Mnemon](banner.png)
 
 # Mnemon
 
-**The persistent cognitive context layer for AI agents.**
+**Stop paying for work your agent already did. Watch it get better every run.**
+
+[![PyPI](https://img.shields.io/pypi/v/mnemon-ai?color=blue&label=PyPI)](https://pypi.org/project/mnemon-ai/)
+[![Python](https://img.shields.io/pypi/pyversions/mnemon-ai)](https://pypi.org/project/mnemon-ai/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Downloads](https://img.shields.io/pypi/dm/mnemon-ai)](https://pypi.org/project/mnemon-ai/)
+
+[Install](#install) · [Quickstart](#quickstart) · [Benchmarks](#the-numbers) · [API](#api)
+
+</div>
 
 ---
 
-## The Problem
+Mnemon gives your agent two things:
 
-Your agent is expensive, slow, and amnesiac — by design.
+**Token and latency savings** — repeated tasks skip the LLM entirely. 2.66ms instead of 20 seconds. Zero tokens instead of 1,250. The more your agent runs, the more it saves.
 
-Every run, it starts from zero. It re-plans what it already planned last Tuesday. It repeats the mistake it made three sessions ago. It charges you full LLM price for a plan it already generated yesterday. It asks your customer the same onboarding questions it asked last month.
+**A learning loop** — every outcome is observed, every pattern is detected, every failure is quarantined. Your agent doesn't just cache work — it accumulates intelligence that makes the next run cheaper and better than the last.
 
-This isn't a bug in your code. It's structural. LangChain, CrewAI, AutoGen, LangGraph — every major agent framework is **stateless by default**. Memory was bolted on later, requiring managed cloud services, external vector databases, and new infrastructure just to remember a name between sessions.
-
-Meanwhile, you're paying for the same tokens over and over. Every repeated plan. Every redundant reasoning step. Every re-generated report.
-
-**You built a smart agent. You got an amnesiac that invoices you twice.**
-
----
-
-## The Solution
+One line of code. No infrastructure. No changes to your existing agent.
 
 ```python
 import mnemon
 m = mnemon.init()
 ```
 
-One line. Your existing agent — whatever framework it uses — now has:
+---
 
-- **Persistent memory** across sessions
-- **Execution caching** that skips the LLM entirely on repeated work
-- **Cross-session learning** that gets smarter the longer it runs
-- **Drift detection** that catches silent degradation before it costs you
+## The Problem
 
-No config file. No server. No new infrastructure. No changes to your existing agent code. Everything lives in a local SQLite file next to your code. Your data never leaves your machine.
+Every agent framework — LangChain, CrewAI, AutoGen, LangGraph — is **stateless by default**.
 
-At the end of every session, Mnemon tells you exactly what it saved:
+Your agent generates a security report for Acme Corp every Monday. Every Monday it starts from zero: re-reads the same context, re-reasons through the same structure, re-generates the same plan. You pay full LLM price each time. It never gets faster. It never gets smarter.
 
-```
-Mnemon: ~1,250 tokens saved · ~$0.0038 · 20.0s faster
-```
+> **You built a smart agent. You got an amnesiac that invoices you twice.**
 
 ---
 
-## If You Already Have an Agent — Read This First
+## Two Things That Fix This
 
-Mnemon automatically patches whatever frameworks you have installed. You do not need to change your agent code.
+### 1. Execution Memory Engine — save tokens and time
 
-**Before Mnemon — your existing LangChain agent:**
-```python
-from langchain_anthropic import ChatAnthropic
+The EME is a generalised execution cache for any expensive recurring computation. After the first run, Mnemon fingerprints the plan and stores it. Every subsequent run with the same — or semantically similar — goal is served from cache.
 
-llm = ChatAnthropic(model="claude-sonnet-4-6")
-response = llm.invoke("Generate weekly security report for Acme Corp")
-# Every call hits the LLM. No memory. No caching. Full cost every time.
+```
+First run:  20,000ms · 1,250 tokens · full cost
+Every repeat:  2.66ms · 0 tokens   · $0.00
 ```
 
-**After Mnemon — same code, one new line at the top:**
+It works in two modes:
+
+- **System 1** — exact fingerprint match. Sub-millisecond. Zero LLM calls.
+- **System 2** — partial segment match. Only the changed parts go to the LLM. You pay for the delta, not the whole plan.
+
+Failed segments are quarantined by the Retrospector — bad patterns can't recycle into future plans.
+
+Ships with 49 pre-warmed segments from real enterprise runs so the cache starts warm on day one.
+
+### 2. Experience Bus — a learning loop that never stops
+
+The Bus is a passive observer. Every computation outcome — success, failure, latency, pattern — is recorded and analysed in the background. You never call it directly. It's always running.
+
+What it detects:
+
+| Signal | What it means |
+|---|---|
+| `DEGRADATION` | latency spike vs rolling baseline |
+| `PATTERN_FOUND` | a task type is failing at >30% — before you notice |
+| `ANOMALY` | sudden failure after a string of successes |
+| `RECOVERY` | the agent is stable again after a failure streak |
+
+What it does with that intelligence: feeds it back to the EME. Success patterns strengthen the fragment library. Failure patterns trigger quarantine. The cache gets smarter on every run — not just bigger.
+
+This is the loop: **EME saves the work. Bus learns from it. Both get better.**
+
+---
+
+## The Numbers
+
+### Execution cache — EME benchmarks
+
+| | |
+|---|---|
+| System 1 hit (exact match) | **2.66ms** |
+| Fresh LLM generation | ~20,000ms |
+| Speedup | **7,500×** |
+| 50 concurrent agents, burst | 0 LLM calls · 0.18s total |
+| Tokens saved (50 agents) | 62,500 |
+| Cost saved (50 agents) | $0.94 |
+
+### At scale (80% System 1 + 15% System 2 hit rate)
+
+| Daily plans | Monthly cost saved |
+|---|---|
+| 100 | $56 |
+| 1,000 | $503 |
+| 10,000 | $5,034 |
+| 100,000 | **$50,344** |
+
+### What your session looks like
+
+```
+Mnemon: ~1,250 tokens saved · ~$0.0038 · 20.0s faster
+Mnemon: 3 plan(s) cached → next run saves ~3,750 tokens (~$0.0113)
+```
+
+Full runs, methodology, and raw data: [`reports/`](reports/)
+
+---
+
+## Zero Code Changes
+
+Mnemon patches your installed frameworks at the call level. One import, nothing else:
+
 ```python
 import mnemon
-m = mnemon.init()  # ← this is the only change
+m = mnemon.init()
 
+# everything below is unchanged
 from langchain_anthropic import ChatAnthropic
-
 llm = ChatAnthropic(model="claude-sonnet-4-6")
 response = llm.invoke("Generate weekly security report for Acme Corp")
-# First call: normal LLM call, result cached
-# Every repeat: served in 2.66ms, zero tokens, zero cost
 ```
 
-Same thing works for the Anthropic SDK, OpenAI SDK, CrewAI, LangGraph, and AutoGen. Install Mnemon, add one line, done.
+Supported frameworks:
+
+| Framework | What gets patched |
+|---|---|
+| Anthropic SDK | `client.messages.create` |
+| OpenAI SDK | `client.chat.completions.create` |
+| LangChain | `BaseChatModel.invoke` / `ainvoke` |
+| LangGraph | `CompiledGraph.invoke` / `ainvoke` |
+| CrewAI | crew kickoff via event bus hook |
+| AutoGen | `ConversableAgent.generate_reply` |
 
 **Framework notes:**
-- **LangGraph** — call `mnemon.init()` *before* compiling your graph. If you compile first, Mnemon patches the graph after the fact and per-node caching won't activate.
-- **CrewAI** — import `crewai` *before* calling `mnemon.init()`. Mnemon hooks into CrewAI's event bus at init time; reversing the order means the hook misses registration.
+- **LangGraph** — call `mnemon.init()` *before* compiling your graph.
+- **CrewAI** — import `crewai` *before* calling `mnemon.init()`.
+
+---
+
+## vs. Everything Else
+
+| | Mnemon | Mem0 | LangMem | Roll your own |
+|---|:---:|:---:|:---:|:---:|
+| Execution caching (skip LLM entirely) | ✅ | ❌ | ❌ | ❌ |
+| System learning loop | ✅ | ❌ | ❌ | ❌ |
+| Zero-code auto-instrumentation | ✅ | ❌ | ❌ | ❌ |
+| Runs fully local (no cloud, no API) | ✅ | ❌ | ❌ | ✅ |
+| Drift detection | ✅ | ❌ | ❌ | ❌ |
+| Multi-tenant isolation | ✅ | ✅ | ❌ | ⚠️ |
+| One-line setup | ✅ | ❌ | ❌ | ❌ |
+
+Every other library makes your prompt slightly better. Mnemon eliminates the LLM call on repeated work and makes the next run cheaper than the last.
 
 ---
 
@@ -84,13 +167,12 @@ Same thing works for the Anthropic SDK, OpenAI SDK, CrewAI, LangGraph, and AutoG
 pip install mnemon-ai
 ```
 
-For production-quality memory retrieval (recommended):
 ```bash
-pip install mnemon-ai[embeddings]   # sentence-transformers only — retrieval upgrade
+pip install mnemon-ai[embeddings]   # sentence-transformers — recommended for production
 pip install mnemon-ai[full]         # embeddings + all LLM providers
 ```
 
-Set one environment variable for your LLM (used for gap-fill and memory extraction — retrieval never calls it):
+Set one environment variable (used only for gap-fill — retrieval never calls the LLM):
 
 ```bash
 export GROQ_API_KEY=gsk_...      # pip install mnemon-ai[groq]   ← free tier, start here
@@ -99,51 +181,28 @@ export OPENAI_API_KEY=sk-...     # pip install mnemon-ai[openai]
 export GOOGLE_API_KEY=AIza...    # pip install mnemon-ai[google]
 ```
 
-Mnemon detects the key automatically. Use Groq to try it for free right now.
+Mnemon detects the key automatically.
 
-**Try it in 30 seconds — no API key needed:**
+**No API key? Try the demo:**
 ```bash
 mnemon demo
 ```
 
 ---
 
-## Getting Started
-
-### Step 1 — Initialize
+## Quickstart
 
 ```python
 import mnemon
 
 m = mnemon.init()
-```
-
-This auto-detects your project name, creates a local SQLite database, and patches any installed frameworks (LangChain, Anthropic SDK, OpenAI SDK, CrewAI, LangGraph, AutoGen). You can access the same instance from anywhere in your codebase:
-
-```python
+# Auto-detects your project name, creates a local SQLite DB,
+# patches installed frameworks, starts the Bus.
+# Access the same instance from anywhere:
 m = mnemon.get()
 ```
 
-### Step 2 — Give your agent memory
-
-```python
-# Store facts that persist across sessions
-m.remember("Acme Corp prefers formal PDF reports, not dashboards")
-m.remember("Always flag open CVEs before recommendations")
-m.learn_fact("acme_contact", "Sarah K — all decisions go through her")
-m.learn_fact("acme_sla", "4h response window")
-```
-
-### Step 3 — Recall relevant context before any task
-
-```python
-context = m.recall("weekly security audit for Acme Corp")
-# Returns ranked, relevant memories in ~15ms — no LLM call
-```
-
-### Step 4 — Let the cache work
-
-After the first run of any repeated task, Mnemon caches the execution plan. Every subsequent run with the same goal — or a semantically similar one — is served from cache:
+### Run a cached plan
 
 ```python
 result = m.run(
@@ -152,152 +211,66 @@ result = m.run(
     generation_fn=your_planning_function,
 )
 
-print(result["cache_level"])       # "system1" on a hit — exact match in 2.66ms
+print(result["cache_level"])       # "system1" | "system2" | "miss"
 print(result["tokens_saved"])      # 1250
 print(result["latency_saved_ms"])  # 20000.0
+print(result["segments_reused"])   # how many plan segments came from cache
 ```
 
-The `generation_fn` receives `(goal, inputs, context, capabilities, constraints)` and returns your plan. It's only called on a cache miss.
+`generation_fn` receives `(goal, inputs, context, capabilities, constraints)` and returns your plan. It's only called on a cache miss.
 
----
-
-## What Makes Mnemon Different
-
-Everyone else in this space builds **flat memory** — store a memory, retrieve it, done. The agent still calls the LLM every single time. The memory just makes the prompt slightly better.
-
-Mnemon does three things nobody else does together:
-
-### 1. Execution caching — skips the LLM entirely
-
-If your agent generates a security report for Acme Corp every Monday, Mnemon recognizes the pattern after the first run and serves the cached plan in **2.66ms** — skipping 20 seconds of LLM generation and 1,250 tokens of cost.
-
-Partial matches work too: if 4 of 5 plan segments match a new request, only the delta goes to the LLM. You pay for the difference, not the whole thing.
-
-No other agent memory library does this.
-
-### 2. Zero-code auto-instrumentation across 6 frameworks
-
-Most memory libraries require you to wire them in manually — call `memory.add()`, call `memory.search()`, restructure your agent. Mnemon patches your existing code at the framework level. One import, zero restructuring.
-
-Supported: **Anthropic SDK, OpenAI SDK, LangChain, LangGraph, CrewAI, AutoGen**
-
-### 3. Drift detection — catches silent degradation
-
-Every session, Mnemon measures your agent's performance against a rolling baseline. When cache hit rates drop, latency climbs, or memory retrieval degrades — it tells you before your users notice.
+### See what you've saved
 
 ```python
-report = m.drift_report()
-print(report)  # severity, what degraded, since when
-
-# Auto-correct: finds conflicting memories written during degradation and resolves them
-result = m.auto_correct_drift()
+print(m.waste_report)   # repeated queries and their cumulative cost
+print(m.get_stats())    # EME stats, bus signals, security config
 ```
 
 ---
 
-## The Numbers
+## API
 
-### Memory retrieval — LoCoMo benchmark (1,986 questions)
-
-| | Accuracy |
-|---|---|
-| Mnemon | **70.0%** |
-| Last-session baseline | 27.6% |
-| Random baseline | 25.2% |
-| Null (no memory) | 23.4% |
-
-### Execution cache — EME benchmarks
-
-| Scenario | Result |
-|---|---|
-| System 1 hit latency (exact match) | **2.66ms** |
-| Fresh LLM generation | ~20,000ms |
-| Latency reduction | **7,500×** |
-| 50 concurrent agents, burst | **0 LLM calls, 0.18s total** |
-| Tokens saved (50 agents) | 62,500 |
-| Cost saved (50 agents, Sonnet pricing) | $0.94 |
-
-### At scale (80% System 1 + 15% System 2 hit rate)
-
-| Daily plans | Monthly cost saved |
-|---|---|
-| 100 | $56 |
-| 1,000 | $503 |
-| 10,000 | $5,034 |
-| 100,000 | $50,344 |
-
-Full benchmark runs, methodology, and raw data: [`reports/`](reports/)
-
----
-
-## What's Inside
-
-### Memory — Stratified, not flat
-
-Five memory layers, each with a purpose:
-
-| Layer | What it holds | Lifetime |
-|---|---|---|
-| Working | scratchpad for current task | flushes at task end |
-| Episodic | chronological experiences, importance-scored | permanent |
-| Semantic | stable facts, versioned key-value vault | permanent |
-| Relationship | per-user interaction patterns | permanent |
-| Emotional | affective context, time-decayed | decays |
-
-Retrieval uses resonance weighting — no LLM call, ~15ms average. Intent-based reranking fires only when needed.
-
-### Cache — Execution Memory Engine (EME)
-
-- **System 1** — exact fingerprint match → 2.66ms, zero tokens
-- **System 2** — partial segment match → only the delta goes to the LLM
-- **Retrospector** — quarantines failed plan fragments so bad patterns don't recycle
-
-Ships with 49 pre-warmed segments from real enterprise runs.
-
-### Bus — Experience Loop
-
-Always-on learning. Records outcomes, detects patterns, feeds both memory and EME automatically. Your agent improves on every run without any instrumentation from you.
-
----
-
-## Advanced Usage
-
-### Memory and recall
+### Init
 
 ```python
-# Forget a topic (supersedes matching memories)
-m.forget("Acme Corp contact details")
-
-# Export / import memory (JSON round-trip)
-m.export_memory("backup.json")
-m.import_memory("backup.json")
-
-# Specific facts
-m.learn_fact("preferred_format", "PDF")
-value = m.recall_fact("preferred_format")
-
-# Waste report — which queries your agent repeated and what they cost
-print(m.waste_report)
+m = mnemon.init()                             # global singleton
+m = mnemon.init(tenant_id="acme_corp")        # explicit tenant
+m = mnemon.init(silent=True)                  # suppress session summary
+m = mnemon.init(eme_enabled=False)            # bus + MOTH only
+m = mnemon.init(bus_enabled=False)            # EME + MOTH only
+m = mnemon.get()                              # retrieve the running instance
 ```
 
-### Use only what you need
+### Diagnostics
 
 ```python
-# Via init() shorthand
-m = mnemon.init(use="memory")          # memory only — no caching, no bus
-m = mnemon.init(use="cache")           # EME caching only
-m = mnemon.init(use="bus")             # experience bus only
-m = mnemon.init(use=["memory","cache"])# memory + EME
-
-# Or directly with the async class
-async with Mnemon(tenant_id="x", eme_enabled=False, bus_enabled=False) as m:
-    ...  # memory only
-
-async with Mnemon(tenant_id="x", memory_enabled=False, bus_enabled=False) as m:
-    ...  # cache only
+report = m.drift_report()   # cross-session degradation analysis
+stats  = m.get_stats()      # EME, bus, watchdog, DB stats
+print(m.waste_report)       # repeated queries + cost
 ```
 
-### Production — multi-tenant with security
+CLI:
+```bash
+mnemon doctor   # health check
+mnemon demo     # live demo
+```
+
+### Async
+
+```python
+from mnemon import Mnemon
+
+async with Mnemon(tenant_id="my_company") as m:
+    result = await m.run(
+        goal="weekly security audit for Acme Corp",
+        inputs={"client": "Acme Corp", "week": "Apr 21-25"},
+        generation_fn=my_planning_function,
+    )
+    print(result["cache_level"])
+    print(result["tokens_saved"])
+```
+
+### Production — multi-tenant
 
 ```python
 from mnemon import Mnemon
@@ -317,62 +290,31 @@ m = Mnemon(
 
 Each `tenant_id` gets an isolated SQLite database — no cross-tenant leakage.
 
-### Suppress the session summary
+### From config
 
 ```python
-m = mnemon.init(silent=True)
-```
-
-### Async API
-
-```python
-import asyncio
-from mnemon import Mnemon
-
-async def main():
-    async with Mnemon(tenant_id="my_company") as m:
-        await m.remember("Acme Corp prefers formal PDF reports")
-        result = await m.run(
-            goal="weekly security audit for Acme Corp",
-            inputs={"client": "Acme Corp", "week": "Apr 21-25"},
-            generation_fn=my_planning_function,
-        )
-        print(result["cache_level"])
-        print(result["tokens_saved"])
-
-asyncio.run(main())
-```
-
-### Health and diagnostics
-
-```python
-# CLI health check
-# mnemon doctor
-
-# Programmatic
-report = m.drift_report()       # cross-session degradation analysis
-result = m.auto_correct_drift() # auto-resolve conflicting memories
-stats  = m.get_stats()          # memory counts, cache stats, security config
+m = Mnemon.from_config("./mnemon.config.json")
 ```
 
 ---
 
 ## Fail-Safe
 
-Mnemon never crashes the system it serves.
+Mnemon never crashes the system it wraps.
 
-- Memory retrieval fails → agent runs without context
-- EME fails → `generation_fn` called directly
-- Bus fails → agent continues unmonitored
-- Database unavailable → in-memory fallback
+| What fails | What happens |
+|---|---|
+| EME cache | `generation_fn` called directly |
+| Experience bus | agent continues unmonitored |
+| Database unavailable | in-memory fallback |
 
 All failures are logged, never raised. You can't break your agent by adding Mnemon.
 
 ---
 
-## The Problem, Filed Against the Frameworks
+## Why This Exists
 
-These aren't hypothetical — we documented the issues on the repos before building:
+These aren't hypothetical — we filed these issues before writing a line of Mnemon:
 
 - [CrewAI #4415](https://github.com/crewAIInc/crewAI/issues/4415) — context pollution and DB write contention in multi-agent runs
 - [Dify #32306](https://github.com/langgenius/dify/issues/32306) — redundant reasoning tax in agent nodes
@@ -387,4 +329,6 @@ MIT. Free to use, free to build on.
 
 ---
 
-*Mnemon was Alexander the Great's personal historian — the one whose only job was to ensure nothing was ever forgotten, so every campaign built on the total accumulated knowledge of every campaign before it. Your agents have a Mnemon now.*
+<div align="center">
+<sub>Mnemon was Alexander the Great's personal historian — the one whose only job was to ensure nothing was ever forgotten, so every campaign built on the total accumulated knowledge of every campaign before it.<br>Your agents have a Mnemon now.</sub>
+</div>
