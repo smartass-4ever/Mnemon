@@ -1,0 +1,450 @@
+{
+  "security": [
+    {
+      "label": "A \u2014 cold miss (first run)",
+      "cache_level": "miss",
+      "expected": "miss",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 374.9048709869385,
+      "segments_reused": 0
+    },
+    {
+      "label": "B \u2014 exact repeat, same inputs",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 301,
+      "latency_ms": 5.747795104980469,
+      "segments_reused": 8
+    },
+    {
+      "label": "C \u2014 same goal, different client",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 301,
+      "latency_ms": 4.058361053466797,
+      "segments_reused": 8
+    },
+    {
+      "label": "D \u2014 same goal, different client+scope",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 301,
+      "latency_ms": 5.748748779296875,
+      "segments_reused": 8
+    },
+    {
+      "label": "E \u2014 related goal, rephrased",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 54.146766662597656,
+      "segments_reused": 0
+    },
+    {
+      "label": "F \u2014 same domain, different task",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 60.669898986816406,
+      "segments_reused": 0
+    }
+  ],
+  "support": [
+    {
+      "label": "A \u2014 cold miss",
+      "cache_level": "miss",
+      "expected": "miss",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 315.5937194824219,
+      "segments_reused": 0
+    },
+    {
+      "label": "B \u2014 exact repeat",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 246,
+      "latency_ms": 5.000114440917969,
+      "segments_reused": 6
+    },
+    {
+      "label": "C \u2014 same workflow, different category",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 246,
+      "latency_ms": 3.0012130737304688,
+      "segments_reused": 6
+    },
+    {
+      "label": "D \u2014 same workflow, low priority",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 246,
+      "latency_ms": 3.668546676635742,
+      "segments_reused": 6
+    },
+    {
+      "label": "E \u2014 rephrased goal",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 53.94315719604492,
+      "segments_reused": 0
+    },
+    {
+      "label": "F \u2014 different sub-task",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 58.98022651672363,
+      "segments_reused": 0
+    }
+  ],
+  "etl": [
+    {
+      "label": "A \u2014 cold miss",
+      "cache_level": "miss",
+      "expected": "miss",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 334.1848850250244,
+      "segments_reused": 0
+    },
+    {
+      "label": "B \u2014 exact repeat",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 272,
+      "latency_ms": 5.234241485595703,
+      "segments_reused": 7
+    },
+    {
+      "label": "C \u2014 different source",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 272,
+      "latency_ms": 3.4151077270507812,
+      "segments_reused": 7
+    },
+    {
+      "label": "D \u2014 different destination",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 272,
+      "latency_ms": 3.031492233276367,
+      "segments_reused": 7
+    },
+    {
+      "label": "E \u2014 rephrased goal",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 49.99661445617676,
+      "segments_reused": 0
+    },
+    {
+      "label": "F \u2014 different architecture",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 55.74679374694824,
+      "segments_reused": 0
+    }
+  ],
+  "codereview": [
+    {
+      "label": "A \u2014 cold miss",
+      "cache_level": "miss",
+      "expected": "miss",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 308.5639476776123,
+      "segments_reused": 0
+    },
+    {
+      "label": "B \u2014 exact repeat",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 238,
+      "latency_ms": 6.0024261474609375,
+      "segments_reused": 6
+    },
+    {
+      "label": "C \u2014 different PR",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 238,
+      "latency_ms": 3.999948501586914,
+      "segments_reused": 6
+    },
+    {
+      "label": "D \u2014 different language",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 238,
+      "latency_ms": 2.998828887939453,
+      "segments_reused": 6
+    },
+    {
+      "label": "E \u2014 rephrased goal",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 58.234453201293945,
+      "segments_reused": 0
+    },
+    {
+      "label": "F \u2014 security tilt, same structure",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 57.281494140625,
+      "segments_reused": 0
+    }
+  ],
+  "finance": [
+    {
+      "label": "A \u2014 cold miss",
+      "cache_level": "miss",
+      "expected": "miss",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 390.2742862701416,
+      "segments_reused": 0
+    },
+    {
+      "label": "B \u2014 exact repeat",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 320,
+      "latency_ms": 4.828691482543945,
+      "segments_reused": 8
+    },
+    {
+      "label": "C \u2014 next quarter",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 320,
+      "latency_ms": 5.054235458374023,
+      "segments_reused": 8
+    },
+    {
+      "label": "D \u2014 different entity",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 320,
+      "latency_ms": 5.042076110839844,
+      "segments_reused": 8
+    },
+    {
+      "label": "E \u2014 rephrased goal",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 55.05824089050293,
+      "segments_reused": 0
+    },
+    {
+      "label": "F \u2014 annual vs quarterly",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 60.79435348510742,
+      "segments_reused": 0
+    }
+  ],
+  "content": [
+    {
+      "label": "A \u2014 cold miss",
+      "cache_level": "miss",
+      "expected": "miss",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 367.56181716918945,
+      "segments_reused": 0
+    },
+    {
+      "label": "B \u2014 exact repeat",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 286,
+      "latency_ms": 6.397724151611328,
+      "segments_reused": 7
+    },
+    {
+      "label": "C \u2014 different topic",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 286,
+      "latency_ms": 5.2204132080078125,
+      "segments_reused": 7
+    },
+    {
+      "label": "D \u2014 different channel",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 286,
+      "latency_ms": 5.774021148681641,
+      "segments_reused": 7
+    },
+    {
+      "label": "E \u2014 rephrased goal",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 59.26322937011719,
+      "segments_reused": 0
+    },
+    {
+      "label": "F \u2014 paid vs organic, different tools",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 58.242082595825195,
+      "segments_reused": 0
+    }
+  ],
+  "devops": [
+    {
+      "label": "A \u2014 cold miss",
+      "cache_level": "miss",
+      "expected": "miss",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 413.8658046722412,
+      "segments_reused": 0
+    },
+    {
+      "label": "B \u2014 exact repeat",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 355,
+      "latency_ms": 7.807731628417969,
+      "segments_reused": 9
+    },
+    {
+      "label": "C \u2014 different service",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 355,
+      "latency_ms": 4.6138763427734375,
+      "segments_reused": 9
+    },
+    {
+      "label": "D \u2014 staging deploy",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 355,
+      "latency_ms": 6.160974502563477,
+      "segments_reused": 9
+    },
+    {
+      "label": "E \u2014 rephrased goal",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 59.10515785217285,
+      "segments_reused": 0
+    },
+    {
+      "label": "F \u2014 rollback vs deploy",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 64.62669372558594,
+      "segments_reused": 0
+    }
+  ],
+  "research": [
+    {
+      "label": "A \u2014 cold miss",
+      "cache_level": "miss",
+      "expected": "miss",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 330.4274082183838,
+      "segments_reused": 0
+    },
+    {
+      "label": "B \u2014 exact repeat",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 228,
+      "latency_ms": 3.998279571533203,
+      "segments_reused": 6
+    },
+    {
+      "label": "C \u2014 different topic",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 228,
+      "latency_ms": 4.0988922119140625,
+      "segments_reused": 6
+    },
+    {
+      "label": "D \u2014 different depth",
+      "cache_level": "system1",
+      "expected": "system1",
+      "expected_met": true,
+      "tokens_saved": 228,
+      "latency_ms": 2.057790756225586,
+      "segments_reused": 6
+    },
+    {
+      "label": "E \u2014 rephrased goal",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 49.95989799499512,
+      "segments_reused": 0
+    },
+    {
+      "label": "F \u2014 different intent",
+      "cache_level": "system2",
+      "expected": "?",
+      "expected_met": true,
+      "tokens_saved": 0,
+      "latency_ms": 53.31993103027344,
+      "segments_reused": 0
+    }
+  ]
+}
