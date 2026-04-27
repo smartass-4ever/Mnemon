@@ -90,7 +90,6 @@ class DriftDetector:
         self._db = db
         self._session_calls   = 0
         self._session_hits    = 0
-        self._session_writes  = 0
         self._session_latency: List[float] = []
         self._session_id      = f"session_{time.time():.0f}"
 
@@ -101,10 +100,6 @@ class DriftDetector:
             self._session_hits += 1
         if latency_ms > 0:
             self._session_latency.append(latency_ms)
-
-    def record_memory_write(self):
-        """Call whenever a memory is written."""
-        self._session_writes += 1
 
     async def flush_session(self, session_id: Optional[str] = None, notes: str = ""):
         """Persist current session health. Call at session end or on stop()."""
@@ -118,7 +113,7 @@ class DriftDetector:
                 tenant_id=self.tenant_id,
                 session_id=sid,
                 cache_hit_rate=hit_rate,
-                memory_writes=self._session_writes,
+                memory_writes=0,
                 total_calls=self._session_calls,
                 avg_latency_ms=avg_lat,
                 notes=notes,
@@ -130,7 +125,6 @@ class DriftDetector:
     def _reset_session(self):
         self._session_calls   = 0
         self._session_hits    = 0
-        self._session_writes  = 0
         self._session_latency = []
         self._session_id      = f"session_{time.time():.0f}"
 
@@ -221,15 +215,3 @@ class DriftDetector:
             recommendation=note or "System is healthy.",
         )
 
-    async def get_correction_targets(self, drift_since_ts: float) -> List[str]:
-        """
-        Return memory IDs written after the drift started.
-        These are the candidates for reverification and conflict resolution.
-        """
-        try:
-            return await self._db.fetch_memories_since(
-                self.tenant_id, drift_since_ts, limit=200
-            )
-        except Exception as e:
-            logger.debug(f"DriftDetector.get_correction_targets failed: {e}")
-            return []

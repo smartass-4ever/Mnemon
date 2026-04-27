@@ -75,7 +75,7 @@ from .models import (
     MNEMON_VERSION,
 )
 from .persistence import EROSDatabase
-from .memory import SimpleEmbedder
+from .embedder import SimpleEmbedder
 from .signal_db import SignalDatabase
 
 logger = logging.getLogger(__name__)

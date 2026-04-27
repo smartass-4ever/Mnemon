@@ -508,7 +508,7 @@ def load_fragments(tenant_id: str) -> List[TemplateSegment]:
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-    from ..core.memory import SimpleEmbedder
+    from ..core.embedder import SimpleEmbedder
     embedder = SimpleEmbedder()
 
     segments = []
@@ -994,7 +994,7 @@ def load_templates(tenant_id: str) -> List[Any]:
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-    from ..core.memory import SimpleEmbedder
+    from ..core.embedder import SimpleEmbedder
     from ..core.models import ExecutionTemplate, TemplateSegment, ComputationFingerprint
 
     embedder = SimpleEmbedder()

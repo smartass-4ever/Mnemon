@@ -24,7 +24,7 @@ import logging
 from typing import Any, Optional
 
 from mnemon.moth import MnemonIntegration
-from ._utils import prompt_hash, record_outcome, track_cache_hit
+from ._utils import prompt_hash, track_cache_hit
 from ._eme_bridge import MothCache
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,6 @@ class LangGraphIntegration(MnemonIntegration):
             result = orig_invoke(_self, input, config, **kwargs)
             text   = _extract_graph_outcome(result)
             graph_cache.store(goal, [], hash_key, result, text)
-            record_outcome(m, goal, text)
             return result
 
         async def patched_ainvoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
@@ -97,7 +96,6 @@ class LangGraphIntegration(MnemonIntegration):
             result = await orig_ainvoke(_self, input, config, **kwargs)
             text   = _extract_graph_outcome(result)
             await graph_cache.async_store(goal, [], hash_key, result, text)
-            record_outcome(m, goal, text)
             return result
 
         _GraphBase.invoke  = patched_invoke
@@ -173,7 +171,6 @@ def _make_node_wrapper(node_name: str, original: Any, m: Any, node_cache: MothCa
 
         text = _extract_graph_outcome(result)
         node_cache.store(goal, [node_name], hash_key, result, text)
-        record_outcome(m, goal, text, importance=0.6)
         return result
 
     async def wrapped_ainvoke(state: Any, config: Any = None, **kwargs: Any) -> Any:
@@ -198,7 +195,6 @@ def _make_node_wrapper(node_name: str, original: Any, m: Any, node_cache: MothCa
 
         text = _extract_graph_outcome(result)
         await node_cache.async_store(goal, [node_name], hash_key, result, text)
-        record_outcome(m, goal, text, importance=0.6)
         return result
 
     try:

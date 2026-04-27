@@ -1,25 +1,22 @@
 """
 Mnemon Persistence Layer
 SQLite-backed storage with schema migration framework.
-Inverted index lives in RAM, backed by SQLite for restarts.
 Redis interface stub ready for distributed scale.
 """
 
 import asyncio
 import sqlite3
 import json
-import struct
 import time
 import logging
 from collections import OrderedDict
-from typing import Dict, List, Optional, Any, Set, Tuple
+from typing import Dict, List, Optional, Any
 from dataclasses import asdict
 from pathlib import Path
 
 from .models import (
-    BondedMemory, SemanticFact, FactVersion, ExecutionTemplate,
-    TemplateSegment, ComputationFingerprint, AuditEntry,
-    LLMCallLog, MemoryLayer, RiskLevel, MNEMON_VERSION
+    ExecutionTemplate, TemplateSegment, ComputationFingerprint,
+    AuditEntry, LLMCallLog, MemoryLayer, RiskLevel, MNEMON_VERSION
 )
 
 logger = logging.getLogger(__name__)
@@ -30,88 +27,6 @@ CURRENT_SCHEMA_VERSION = 4
 class SchemaError(Exception):
     pass
 
-
-class InvertedIndex:
-    """
-    In-RAM inverted index mapping tags → set of memory IDs.
-    Partitioned by tenant_id so tenants never bleed into each other.
-    Backed by SQLite for restarts.
-    """
-
-    def __init__(self):
-        self._shards: Dict[str, Dict[str, Set[str]]] = {}
-        self._lock = asyncio.Lock()
-
-    async def update(self, tenant_id: str, memory_id: str, tags: Set[str]):
-        async with self._lock:
-            if tenant_id not in self._shards:
-                self._shards[tenant_id] = {}
-            shard = self._shards[tenant_id]
-            for tag in tags:
-                if tag not in shard:
-                    shard[tag] = set()
-                shard[tag].add(memory_id)
-
-    # Max IDs returned from union fallback — prevents O(n) cosine scan at 10M scale.
-    # Pattern assembly in memory.py applies an additional cap, but capping here too
-    # avoids loading millions of rows from SQLite before the cosine stage.
-    _UNION_CAP = 10_000
-
-    async def intersect(self, tenant_id: str, tags: Set[str]) -> Set[str]:
-        async with self._lock:
-            shard = self._shards.get(tenant_id, {})
-            if not shard or not tags:
-                return set()
-            sets = [shard.get(tag, set()) for tag in tags]
-            if not sets:
-                return set()
-            # True intersection: only memories matching ALL queried tags.
-            # Falls back to union when intersection is empty (sparse index or
-            # single-tag queries) so recall never drops to zero.
-            result = sets[0].copy()
-            for s in sets[1:]:
-                result &= s
-            if not result:
-                # Fallback: union across tags so recall stays non-zero.
-                # Capped at _UNION_CAP to prevent O(n) cosine scan at 10M+ scale.
-                # Stable deterministic subsample: sort by hash so the same memories
-                # surface consistently across calls (not arbitrary slice order).
-                import hashlib as _hl
-                union: Set[str] = set()
-                for s in sets:
-                    union |= s
-                if len(union) > self._UNION_CAP:
-                    union = set(
-                        sorted(union, key=lambda x: _hl.md5(x.encode()).digest())
-                        [:self._UNION_CAP]
-                    )
-                result = union
-            return result
-
-    async def remove(self, tenant_id: str, memory_id: str, tags: Set[str]):
-        async with self._lock:
-            shard = self._shards.get(tenant_id, {})
-            for tag in tags:
-                if tag in shard:
-                    shard[tag].discard(memory_id)
-
-    async def load_from_db(self, db: "EROSDatabase"):
-        """Rebuild RAM index from SQLite on startup."""
-        rows = await db.fetch_all_memory_tags()
-        for tenant_id, memory_id, tags_json in rows:
-            tags = set(json.loads(tags_json))
-            await self.update(tenant_id, memory_id, tags)
-        logger.info(f"Inverted index rebuilt — {sum(len(s) for s in self._shards.values())} tag entries")
-
-    def get_stats(self) -> Dict[str, Any]:
-        total_tags = sum(
-            sum(len(ids) for ids in shard.values())
-            for shard in self._shards.values()
-        )
-        return {
-            "tenants": len(self._shards),
-            "total_tag_entries": total_tags,
-        }
 
 
 class TenantConnectionPool:
@@ -495,273 +410,6 @@ class EROSDatabase:
                 raise
 
     # ──────────────────────────────────────────
-    # MEMORY OPERATIONS
-    # ──────────────────────────────────────────
-
-    async def write_memory(self, memory: BondedMemory):
-        async with self._lock:
-            self._conn.execute("""
-                INSERT OR REPLACE INTO memories VALUES (
-                    :memory_id, :tenant_id, :schema_version, :layer,
-                    :content, :session_id, :activation_tags, :activation_domain,
-                    :activation_signature, :intent_label, :intent_valid,
-                    :intent_signature, :superseded_at, :superseded_by,
-                    :importance, :confidence, :risk_level,
-                    :timestamp, :last_accessed, :access_count,
-                    :cross_layer_refs, :drone_keep_score, :drone_drop_score
-                )
-            """, {
-                "memory_id":           memory.memory_id,
-                "tenant_id":           memory.tenant_id,
-                "schema_version":      memory.schema_version,
-                "layer":               memory.layer.value,
-                "content":             json.dumps(memory.content),
-                "session_id":          memory.session_id,
-                "activation_tags":     json.dumps(list(memory.activation_tags)),
-                "activation_domain":   memory.activation_domain,
-                "activation_signature": json.dumps(memory.activation_signature),
-                "intent_label":        memory.intent_label,
-                "intent_valid":        int(memory.intent_valid),
-                "intent_signature":    json.dumps(memory.intent_signature),
-                "superseded_at":       memory.superseded_at,
-                "superseded_by":       memory.superseded_by,
-                "importance":          memory.importance,
-                "confidence":          memory.confidence,
-                "risk_level":          memory.risk_level.value,
-                "timestamp":           memory.timestamp,
-                "last_accessed":       memory.last_accessed,
-                "access_count":        memory.access_count,
-                "cross_layer_refs":    json.dumps(memory.cross_layer_refs),
-                "drone_keep_score":    memory.drone_keep_score,
-                "drone_drop_score":    memory.drone_drop_score,
-            })
-            self._conn.commit()
-
-    async def fetch_memories(
-        self,
-        tenant_id: str,
-        memory_ids: List[str],
-        include_superseded: bool = False
-    ) -> List[BondedMemory]:
-        if not memory_ids:
-            return []
-        async with self._lock:
-            placeholders = ",".join("?" * len(memory_ids))
-            params = [tenant_id] + memory_ids
-            if not include_superseded:
-                params.append(1)
-                rows = self._conn.execute(
-                    f"SELECT * FROM memories WHERE tenant_id=? AND memory_id IN ({placeholders}) AND intent_valid=?",
-                    params
-                ).fetchall()
-            else:
-                rows = self._conn.execute(
-                    f"SELECT * FROM memories WHERE tenant_id=? AND memory_id IN ({placeholders})",
-                    params
-                ).fetchall()
-        return [self._row_to_memory(r) for r in rows]
-
-    async def fetch_all_memories(
-        self, tenant_id: str, include_superseded: bool = False, limit: int = 50_000
-    ) -> List[BondedMemory]:
-        """Fetch all memories for a tenant — used by export_memory()."""
-        async with self._lock:
-            if include_superseded:
-                rows = self._conn.execute(
-                    "SELECT * FROM memories WHERE tenant_id=? ORDER BY timestamp ASC LIMIT ?",
-                    (tenant_id, limit),
-                ).fetchall()
-            else:
-                rows = self._conn.execute(
-                    "SELECT * FROM memories WHERE tenant_id=? AND superseded_at IS NULL "
-                    "ORDER BY timestamp ASC LIMIT ?",
-                    (tenant_id, limit),
-                ).fetchall()
-        return [self._row_to_memory(r) for r in rows]
-
-    async def fetch_all_memory_tags(self):
-        async with self._lock:
-            rows = self._conn.execute(
-                "SELECT tenant_id, memory_id, activation_tags FROM memories WHERE tenant_id=?",
-                (self.tenant_id,)
-            ).fetchall()
-        return [(r["tenant_id"], r["memory_id"], r["activation_tags"]) for r in rows]
-
-    async def fetch_all_memory_ids(self, tenant_id: str, limit: int = 5000) -> List[str]:
-        """Return up to `limit` active memory IDs for a tenant. Used for semantic fallback scan."""
-        async with self._lock:
-            rows = self._conn.execute(
-                "SELECT memory_id FROM memories WHERE tenant_id=? AND intent_valid=1 LIMIT ?",
-                (tenant_id, limit)
-            ).fetchall()
-        return [r["memory_id"] for r in rows]
-
-    async def fetch_sample_embedding_dim(self) -> Optional[int]:
-        """Return the vector length of the first stored activation_signature, or None."""
-        async with self._lock:
-            row = self._conn.execute(
-                "SELECT activation_signature FROM memories WHERE tenant_id=? "
-                "AND activation_signature != '[]' LIMIT 1",
-                (self.tenant_id,)
-            ).fetchone()
-        if row is None:
-            return None
-        try:
-            sig = json.loads(row["activation_signature"])
-            return len(sig) if sig else None
-        except Exception:
-            return None
-
-    async def update_memory_tags(self, tenant_id: str, memory_id: str, tags: Set[str]):
-        async with self._lock:
-            self._conn.execute(
-                "UPDATE memories SET activation_tags=? WHERE tenant_id=? AND memory_id=?",
-                (json.dumps(list(tags)), tenant_id, memory_id)
-            )
-            self._conn.commit()
-
-    async def update_cross_layer_refs(self, tenant_id: str, memory_id: str, ref_ids: List[str]):
-        """Append causal refs to a memory, deduplicating. Bidirectional writes caller's responsibility."""
-        async with self._lock:
-            row = self._conn.execute(
-                "SELECT cross_layer_refs FROM memories WHERE tenant_id=? AND memory_id=?",
-                (tenant_id, memory_id)
-            ).fetchone()
-            if not row:
-                return
-            existing = set(json.loads(row["cross_layer_refs"]))
-            updated = list(existing | set(ref_ids))
-            self._conn.execute(
-                "UPDATE memories SET cross_layer_refs=? WHERE tenant_id=? AND memory_id=?",
-                (json.dumps(updated), tenant_id, memory_id)
-            )
-            self._conn.commit()
-
-    async def update_drone_scores(
-        self, tenant_id: str, memory_id: str,
-        keep_delta: float = 0.0, drop_delta: float = 0.0
-    ):
-        async with self._lock:
-            self._conn.execute("""
-                UPDATE memories
-                SET drone_keep_score = MAX(0.0, MIN(1.0, drone_keep_score + ?)),
-                    drone_drop_score = MAX(0.0, MIN(1.0, drone_drop_score + ?))
-                WHERE tenant_id=? AND memory_id=?
-            """, (keep_delta, drop_delta, tenant_id, memory_id))
-            self._conn.commit()
-
-    async def supersede_memory(self, tenant_id: str, memory_id: str, new_id: str):
-        async with self._lock:
-            self._conn.execute("""
-                UPDATE memories SET intent_valid=0, superseded_at=?, superseded_by=?
-                WHERE tenant_id=? AND memory_id=?
-            """, (time.time(), new_id, tenant_id, memory_id))
-            self._conn.commit()
-
-    async def delete_tenant_memories(self, tenant_id: str):
-        async with self._lock:
-            self._conn.execute(
-                "DELETE FROM memories WHERE tenant_id=?", (tenant_id,)
-            )
-            self._conn.commit()
-
-    def _row_to_memory(self, row) -> BondedMemory:
-        return BondedMemory(
-            memory_id=row["memory_id"],
-            tenant_id=row["tenant_id"],
-            schema_version=row["schema_version"],
-            layer=MemoryLayer(row["layer"]),
-            content=json.loads(row["content"]),
-            session_id=row["session_id"],
-            activation_tags=set(json.loads(row["activation_tags"])),
-            activation_domain=row["activation_domain"],
-            activation_signature=json.loads(row["activation_signature"]),
-            intent_label=row["intent_label"],
-            intent_valid=bool(row["intent_valid"]),
-            intent_signature=json.loads(row["intent_signature"]),
-            superseded_at=row["superseded_at"],
-            superseded_by=row["superseded_by"],
-            importance=row["importance"],
-            confidence=row["confidence"],
-            risk_level=RiskLevel(row["risk_level"]),
-            timestamp=row["timestamp"],
-            last_accessed=row["last_accessed"],
-            access_count=row["access_count"],
-            cross_layer_refs=json.loads(row["cross_layer_refs"]),
-            drone_keep_score=row["drone_keep_score"],
-            drone_drop_score=row["drone_drop_score"],
-        )
-
-    # ──────────────────────────────────────────
-    # SEMANTIC FACTS
-    # ──────────────────────────────────────────
-
-    async def write_fact(self, fact: SemanticFact):
-        async with self._lock:
-            history_data = [
-                {
-                    "value": v.value,
-                    "confidence": v.confidence,
-                    "recorded_at": v.recorded_at,
-                    "source_session": v.source_session,
-                    "superseded_at": v.superseded_at,
-                }
-                for v in fact.history
-            ]
-            self._conn.execute("""
-                INSERT OR REPLACE INTO semantic_facts VALUES (
-                    :fact_id, :tenant_id, :key, :current_value,
-                    :confidence, :history, :last_updated, :access_count
-                )
-            """, {
-                "fact_id":       fact.fact_id,
-                "tenant_id":     fact.tenant_id,
-                "key":           fact.key,
-                "current_value": json.dumps(fact.current_value),
-                "confidence":    fact.confidence,
-                "history":       json.dumps(history_data),
-                "last_updated":  fact.last_updated,
-                "access_count":  fact.access_count,
-            })
-            self._conn.commit()
-
-    async def fetch_fact(self, tenant_id: str, key: str) -> Optional[SemanticFact]:
-        async with self._lock:
-            row = self._conn.execute(
-                "SELECT * FROM semantic_facts WHERE tenant_id=? AND key=?",
-                (tenant_id, key)
-            ).fetchone()
-        if not row:
-            return None
-        history = [
-            FactVersion(
-                value=v["value"],
-                confidence=v["confidence"],
-                recorded_at=v["recorded_at"],
-                source_session=v["source_session"],
-                superseded_at=v.get("superseded_at"),
-            )
-            for v in json.loads(row["history"])
-        ]
-        return SemanticFact(
-            fact_id=row["fact_id"],
-            tenant_id=row["tenant_id"],
-            key=row["key"],
-            current_value=json.loads(row["current_value"]),
-            confidence=row["confidence"],
-            history=history,
-            last_updated=row["last_updated"],
-            access_count=row["access_count"],
-        )
-
-    async def delete_tenant_facts(self, tenant_id: str):
-        async with self._lock:
-            self._conn.execute(
-                "DELETE FROM semantic_facts WHERE tenant_id=?", (tenant_id,)
-            )
-            self._conn.commit()
-
-    # ──────────────────────────────────────────
     # EXECUTION TEMPLATES (EME)
     # ──────────────────────────────────────────
 
@@ -1010,87 +658,6 @@ class EROSDatabase:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    async def fetch_memories_since(
-        self, tenant_id: str, since_ts: float, limit: int = 200
-    ) -> List[str]:
-        """Return memory_ids written after since_ts — used by drift auto-correction."""
-        async with self._lock:
-            rows = self._conn.execute(
-                "SELECT memory_id FROM memories WHERE tenant_id=? AND timestamp >= ? "
-                "AND intent_valid=1 ORDER BY timestamp ASC LIMIT ?",
-                (tenant_id, since_ts, limit),
-            ).fetchall()
-        return [r["memory_id"] for r in rows]
-
-    # ──────────────────────────────────────────
-    # BELIEF REGISTRY
-    # ──────────────────────────────────────────
-
-    async def get_belief(self, tenant_id: str, key: str) -> Optional[Dict]:
-        async with self._lock:
-            row = self._conn.execute(
-                "SELECT * FROM belief_registry WHERE tenant_id=? AND key=?",
-                (tenant_id, key)
-            ).fetchone()
-        if not row:
-            return None
-        return {
-            "value":   json.loads(row["value"]),
-            "version": row["version"],
-        }
-
-    async def get_belief_version(self, tenant_id: str) -> int:
-        async with self._lock:
-            row = self._conn.execute(
-                "SELECT MAX(version) as v FROM belief_registry WHERE tenant_id=?",
-                (tenant_id,)
-            ).fetchone()
-        return row["v"] or 0
-
-    async def set_belief(
-        self, tenant_id: str, key: str, value: Any,
-        expected_version: int
-    ) -> bool:
-        """Optimistic locking — returns False if version mismatch."""
-        async with self._lock:
-            current_row = self._conn.execute(
-                "SELECT version FROM belief_registry WHERE tenant_id=? AND key=?",
-                (tenant_id, key)
-            ).fetchone()
-
-            current_version = current_row["version"] if current_row else 0
-            if current_row and current_version != expected_version:
-                return False
-
-            new_version = current_version + 1
-            self._conn.execute("""
-                INSERT OR REPLACE INTO belief_registry VALUES (
-                    :tenant_id, :key, :value, :version, :updated_at
-                )
-            """, {
-                "tenant_id":  tenant_id,
-                "key":        key,
-                "value":      json.dumps(value),
-                "version":    new_version,
-                "updated_at": time.time(),
-            })
-            self._conn.commit()
-            return True
-
-    async def get_all_beliefs(self, tenant_id: str) -> Dict[str, Any]:
-        async with self._lock:
-            rows = self._conn.execute(
-                "SELECT key, value, version FROM belief_registry WHERE tenant_id=?",
-                (tenant_id,)
-            ).fetchall()
-        return {
-            r["key"]: {
-                "value":   json.loads(r["value"]),
-                "version": r["version"],
-            }
-            for r in rows
-        }
-
     # ──────────────────────────────────────────
     # AUDIT LOG
     # ──────────────────────────────────────────
@@ -1176,72 +743,15 @@ class EROSDatabase:
         except Exception:
             return False
 
-    async def fetch_recent_by_domain(
-        self, tenant_id: str, domain: str, n: int
-    ) -> List[str]:
-        """
-        Return up to n recent valid memory_ids whose activation_domain
-        matches the given domain. Falls back to any domain if no match
-        or domain is 'general'.
-        """
-        async with self._lock:
-            if domain and domain != "general":
-                rows = self._conn.execute(
-                    "SELECT memory_id FROM memories "
-                    "WHERE tenant_id=? AND intent_valid=1 AND activation_domain=? "
-                    "ORDER BY timestamp DESC LIMIT ?",
-                    (tenant_id, domain, n)
-                ).fetchall()
-            else:
-                rows = self._conn.execute(
-                    "SELECT memory_id FROM memories "
-                    "WHERE tenant_id=? AND intent_valid=1 "
-                    "ORDER BY timestamp DESC LIMIT ?",
-                    (tenant_id, n)
-                ).fetchall()
-        return [r["memory_id"] for r in rows]
-
-    async def fetch_drone_labels(
-        self, tenant_id: str, memory_ids: List[str]
-    ) -> Dict[str, Tuple[str, float]]:
-        """
-        Return {memory_id: (intent_label, drone_keep_score)} for the
-        given ids. Replaces direct _conn access in _drone_evaluate().
-        """
-        if not memory_ids:
-            return {}
-        async with self._lock:
-            placeholders = ",".join("?" * len(memory_ids))
-            rows = self._conn.execute(
-                f"SELECT memory_id, intent_label, drone_keep_score FROM memories "
-                f"WHERE tenant_id=? AND memory_id IN ({placeholders})",
-                [tenant_id] + memory_ids
-            ).fetchall()
-        return {r["memory_id"]: (r["intent_label"], r["drone_keep_score"]) for r in rows}
-
-    async def count_memories(self, tenant_id: str) -> int:
-        """Count valid (non-superseded) memories for a tenant."""
-        async with self._lock:
-            row = self._conn.execute(
-                "SELECT COUNT(*) as c FROM memories WHERE tenant_id=? AND intent_valid=1",
-                (tenant_id,)
-            ).fetchone()
-        return row["c"] if row else 0
-
     def get_stats(self) -> Dict[str, Any]:
-        # sync, no await — safe in asyncio since no yield point means no write can interleave
-        rows = self._conn.execute("""
+        row = self._conn.execute("""
             SELECT
-                (SELECT COUNT(*) FROM memories WHERE tenant_id=?) as memories,
-                (SELECT COUNT(*) FROM semantic_facts WHERE tenant_id=?) as facts,
                 (SELECT COUNT(*) FROM execution_templates WHERE tenant_id=?) as templates,
                 (SELECT COUNT(*) FROM fragment_library WHERE tenant_id=?) as fragments
-        """, (self.tenant_id, self.tenant_id, self.tenant_id, self.tenant_id)).fetchone()
+        """, (self.tenant_id, self.tenant_id)).fetchone()
         return {
-            "memories":  rows["memories"],
-            "facts":     rows["facts"],
-            "templates": rows["templates"],
-            "fragments": rows["fragments"],
+            "templates": row["templates"],
+            "fragments": row["fragments"],
         }
 
 

@@ -327,7 +327,7 @@ async def cmd_doctor(args):
 
     # 2. Embedder quality
     try:
-        from mnemon.core.memory import SimpleEmbedder
+        from mnemon.core.embedder import SimpleEmbedder
         emb = SimpleEmbedder()
         name = emb.backend_name
         dim  = emb.dim
