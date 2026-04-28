@@ -89,19 +89,23 @@ class LangChainIntegration(MnemonIntegration):
         except Exception as e:
             logger.debug(f"Mnemon: LangChain RunnableSequence patch failed — {e}")
 
-        # Patch 2: BaseChatModel.invoke — cache LLM steps for all providers
+        # Patch 2: BaseChatModel.invoke — persistent EME cache for all providers
+        # Uses MothCache (hash + EME semantic) instead of BoundedTTLCache so that
+        # cache survives process restarts and System 2 semantic matching works.
         try:
             from langchain_core.language_models.chat_models import BaseChatModel
             self._original_chat_invoke = BaseChatModel.invoke
             orig_chat_invoke = self._original_chat_invoke
-            llm_cache = BoundedTTLCache(maxsize=500, ttl=3600)
+            llm_cache = MothCache(m, "langchain:llm")
 
             def patched_chat_invoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
-                hash_key = None
+                hash_key = _step_cache_key(_self, input)
+                query = _extract_lc_messages(input)
+                model_name = getattr(_self, "model_name", type(_self).__name__)
                 try:
-                    hash_key = _step_cache_key(_self, input)
-                    cached = llm_cache.get(hash_key)
+                    cached = llm_cache.check(query, [model_name], hash_key)
                     if cached is not None:
+                        cached = _ensure_ai_message(cached)
                         track_cache_hit(m, "langchain:llm")
                         return cached
                 except Exception:
@@ -110,8 +114,8 @@ class LangChainIntegration(MnemonIntegration):
                 result = orig_chat_invoke(_self, input, config, **kwargs)
 
                 try:
-                    if hash_key is not None:
-                        llm_cache[hash_key] = result
+                    text = result.content if hasattr(result, "content") else str(result)
+                    llm_cache.store(query, [model_name], hash_key, result, text[:400])
                 except Exception:
                     pass
 
@@ -119,19 +123,21 @@ class LangChainIntegration(MnemonIntegration):
 
             BaseChatModel.invoke = patched_chat_invoke
 
-            # Patch 2b: BaseChatModel.ainvoke — async chains
+            # Patch 2b: BaseChatModel.ainvoke — async chains with persistent EME
             self._original_chat_ainvoke = BaseChatModel.ainvoke
             orig_chat_ainvoke = self._original_chat_ainvoke
-            ainvoke_cache = BoundedTTLCache(maxsize=500, ttl=3600)
+            ainvoke_cache = MothCache(m, "langchain:llm_async")
 
             async def patched_chat_ainvoke(
                 _self: Any, input: Any, config: Any = None, **kwargs: Any
             ) -> Any:
-                hash_key = None
+                hash_key = _step_cache_key(_self, input)
+                query = _extract_lc_messages(input)
+                model_name = getattr(_self, "model_name", type(_self).__name__)
                 try:
-                    hash_key = _step_cache_key(_self, input)
-                    cached = ainvoke_cache.get(hash_key)
+                    cached = await ainvoke_cache.async_check(query, [model_name], hash_key)
                     if cached is not None:
+                        cached = _ensure_ai_message(cached)
                         track_cache_hit(m, "langchain:llm_async")
                         return cached
                 except Exception:
@@ -140,8 +146,8 @@ class LangChainIntegration(MnemonIntegration):
                 result = await orig_chat_ainvoke(_self, input, config, **kwargs)
 
                 try:
-                    if hash_key is not None:
-                        ainvoke_cache[hash_key] = result
+                    text = result.content if hasattr(result, "content") else str(result)
+                    await ainvoke_cache.async_store(query, [model_name], hash_key, result, text[:400])
                 except Exception:
                     pass
 
@@ -236,3 +242,48 @@ def _is_chat_model(step: Any) -> bool:
         return isinstance(step, BaseChatModel)
     except Exception:
         return False
+
+
+def _extract_lc_messages(input: Any) -> str:
+    """
+    Extract the user query string from any LangChain input format.
+    Handles: plain strings, dicts, ChatPromptValue, list of BaseMessage objects.
+    """
+    if isinstance(input, str):
+        return input[:300]
+    if isinstance(input, dict):
+        return _extract_lc_query(input)
+    # ChatPromptValue or any object with a .messages attribute
+    msgs = None
+    if hasattr(input, "messages"):
+        msgs = input.messages
+    elif isinstance(input, (list, tuple)) and input:
+        msgs = input
+    if msgs:
+        for msg in reversed(msgs):
+            msg_type = getattr(msg, "type", "") or type(msg).__name__.lower()
+            content = getattr(msg, "content", "")
+            if isinstance(content, str) and content.strip():
+                if "human" in msg_type or "user" in msg_type:
+                    return content[:300]
+        # Fallback: last message content regardless of role
+        last = msgs[-1] if msgs else None
+        if last:
+            content = getattr(last, "content", "")
+            if isinstance(content, str):
+                return content[:300]
+    return str(input)[:200]
+
+
+def _ensure_ai_message(cached: Any) -> Any:
+    """
+    Cold-start path: EME returns plain text (object store cleared on restart).
+    Wrap it in AIMessage so LangChain callers get the right type back.
+    """
+    if not isinstance(cached, str):
+        return cached
+    try:
+        from langchain_core.messages import AIMessage
+        return AIMessage(content=cached)
+    except Exception:
+        return cached

@@ -1003,43 +1003,74 @@ class ExecutionMemoryEngine:
     @staticmethod
     def _extract_intent(seg_data: dict) -> str:
         """
-        Rule-based intent extraction from segment data — no LLM, no I/O.
-        Produces a short human-readable phrase that lives in the same semantic
-        space as a user's goal string, fixing the fundamental mismatch where
-        _segment_diff previously compared goal embeddings against raw JSON content.
+        Rule-based intent extraction — no LLM, no I/O.
+
+        GenericAdapter.decompose() always wraps step data as
+        {"id": "seg_N", "content": <actual data>}.  The original version
+        only looked at top-level keys, so it always missed the real fields
+        and fell back to returning the segment ID ("seg_0", "step_1", …)
+        which gave useless embeddings.
+
+        Priority:
+          1. Plain text content  — LLM text response IS the intent phrase
+          2. Structured content dict — extract action / tool / outputs
+          3. Structured top-level keys — rare (user built their own adapter)
+          4. First long string value  — skip IDs, use anything >20 chars
         """
+        import re
         parts: List[str] = []
 
-        for key in ("action", "step", "name", "task", "operation"):
-            val = seg_data.get(key)
-            if isinstance(val, str) and val.strip():
-                parts.append(val.strip())
-                break
+        inner = seg_data.get("content")
 
-        for key in ("tool", "tool_call", "function", "api"):
-            val = seg_data.get(key)
-            if isinstance(val, str) and val.strip():
-                parts.append(f"using {val.strip()}")
-                break
+        # ── Plain text LLM response ───────────────────────────────────────
+        if isinstance(inner, str) and len(inner) > 10:
+            text = re.sub(
+                r"^(step\s*\d+\s*[:\-\.]\s*|\d+\.\s*|#{1,3}\s*)",
+                "", inner.strip(), flags=re.IGNORECASE,
+            )
+            return (text[:200].strip() or inner[:200])
 
-        outputs = seg_data.get("outputs") or seg_data.get("produces") or seg_data.get("returns")
-        if outputs:
-            if isinstance(outputs, list):
-                parts.append(f"produces {', '.join(str(o) for o in outputs[:3])}")
-            elif isinstance(outputs, str):
-                parts.append(f"produces {outputs}")
+        # ── Structured data: search content dict first, then top-level ───
+        sources: List[dict] = []
+        if isinstance(inner, dict):
+            sources.append(inner)
+        sources.append(seg_data)
 
-        for key in ("goal", "description", "objective", "intent"):
-            val = seg_data.get(key)
-            if isinstance(val, str) and val.strip() and val not in parts:
-                parts.append(val.strip())
-                break
+        for src in sources:
+            for key in ("action", "step", "name", "task", "operation"):
+                val = src.get(key)
+                if isinstance(val, str) and val.strip():
+                    parts.append(val.strip())
+                    break
+
+            for key in ("tool", "tool_call", "function", "api"):
+                val = src.get(key)
+                if isinstance(val, str) and val.strip():
+                    parts.append(f"using {val.strip()}")
+                    break
+
+            outputs = src.get("outputs") or src.get("produces") or src.get("returns")
+            if outputs:
+                if isinstance(outputs, list):
+                    parts.append(f"produces {', '.join(str(o) for o in outputs[:3])}")
+                elif isinstance(outputs, str):
+                    parts.append(f"produces {outputs}")
+
+            for key in ("goal", "description", "objective", "intent"):
+                val = src.get(key)
+                if isinstance(val, str) and val.strip() and val not in parts:
+                    parts.append(val.strip())
+                    break
+
+            if parts:
+                break  # found structured data in this source — stop
 
         if parts:
             return " | ".join(parts)
 
+        # ── Fallback: first string long enough to not be an ID ───────────
         for v in seg_data.values():
-            if isinstance(v, str) and len(v) > 3:
+            if isinstance(v, str) and len(v) > 20:
                 return v[:200]
 
         return json.dumps(seg_data, default=str)[:200]

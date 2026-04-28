@@ -33,6 +33,8 @@ from mnemon.core.persistence import EROSDatabase
 from mnemon.core.embedder import SimpleEmbedder
 from mnemon.core.eme import ExecutionMemoryEngine, TemplateAdapter, CostBudget, EMEResult
 from mnemon.core.bus import ExperienceBus
+from mnemon.core.retrospector import Retrospector
+from mnemon.core.system_db import SystemDatabase
 from mnemon.security.manager import SecurityManager, TenantSecurityConfig, scrub_injection
 from mnemon.observability.watchdog import Watchdog
 from mnemon.observability.telemetry import Telemetry
@@ -83,9 +85,11 @@ class Mnemon:
 
         self._telemetry = Telemetry(tenant_id, agent_id) if enable_telemetry else None
 
-        self._eme:      Optional[ExecutionMemoryEngine] = None
-        self._bus:      Optional[ExperienceBus]         = None
-        self._watchdog: Optional[Watchdog]              = None
+        self._eme:          Optional[ExecutionMemoryEngine] = None
+        self._bus:          Optional[ExperienceBus]         = None
+        self._watchdog:     Optional[Watchdog]              = None
+        self._retrospector: Optional[Retrospector]          = None
+        self._system_db:    Optional[SystemDatabase]        = None
         self._prewarm_fragments = prewarm_fragments
 
         if eme_enabled:
@@ -95,6 +99,15 @@ class Mnemon:
             )
         if bus_enabled:
             self._bus = ExperienceBus(tenant_id=tenant_id, db=self._db)
+        if eme_enabled and bus_enabled:
+            import os as _os
+            self._system_db = SystemDatabase(
+                db_path=_os.path.join(db_dir, f"mnemon_system_{tenant_id}.db")
+            )
+            self._retrospector = Retrospector(
+                bus=self._bus, eme=self._eme, memory=None,
+                system_db=self._system_db, llm_client=resolved_llm,
+            )
         if enable_watchdog:
             self._watchdog = Watchdog(
                 tenant_id=tenant_id, db=self._db,
@@ -113,6 +126,8 @@ class Mnemon:
 
     async def start(self):
         await self._db.connect()
+        if self._system_db:
+            await self._system_db.connect()
 
         if self._eme:
             await self._eme.warm()
@@ -149,6 +164,10 @@ class Mnemon:
 
         if self._bus:
             await self._bus.start()
+        if self._retrospector:
+            await self._retrospector.start()
+            if self._eme:
+                self._eme.set_retrospector(self._retrospector)
         if self._watchdog:
             await self._watchdog.start()
         self._started = True
@@ -157,12 +176,16 @@ class Mnemon:
     async def stop(self):
         if self._watchdog:
             await self._watchdog.stop()
+        if self._retrospector:
+            await self._retrospector.stop()
         if self._bus:
             await self._bus.stop()
         try:
             await self._drift.flush_session()
         except Exception:
             pass
+        if self._system_db:
+            await self._system_db.disconnect()
         await self._db.disconnect()
         if self._telemetry:
             self._telemetry.emit_log()

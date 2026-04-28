@@ -9,6 +9,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -73,9 +74,20 @@ def track_cache_hit(
     input_tokens: Optional[int] = None,
     output_tokens: Optional[int] = None,
 ) -> None:
-    """Record a cache hit to MothStats. Never raises."""
+    """Record a cache hit to MothStats and Bus. Never raises."""
     try:
         if hasattr(m, "_stats") and m._stats is not None:
             m._stats.record_hit(source, tokens, model, input_tokens, output_tokens)
+    except Exception:
+        pass
+    # Notify Bus so it has data for pattern detection even on MOTH-intercepted calls
+    try:
+        inner = getattr(m, "_m", None)
+        if inner and getattr(inner, "_bus", None):
+            task_id = f"moth:{source}:{time.time():.0f}"
+            m._run(inner._bus.record_outcome(
+                task_id=task_id, task_type=source,
+                outcome="success", latency_ms=0.0,
+            ))
     except Exception:
         pass
