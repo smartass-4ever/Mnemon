@@ -20,8 +20,10 @@ import importlib.util
 import logging
 from typing import Any, Dict, List, Optional
 
+import time as _time
+
 from mnemon.moth import MnemonIntegration
-from ._utils import extract_query, prompt_hash, track_cache_hit
+from ._utils import extract_query, prompt_hash, track_cache_hit, build_call_evidence, route_evidence
 from ._cache import BoundedTTLCache
 from ._eme_bridge import MothCache
 
@@ -81,6 +83,8 @@ class LangChainIntegration(MnemonIntegration):
 
                 except Exception as e:
                     logger.debug(f"Mnemon: LangChain per-step failed at step {i} — {e}, falling back to whole-chain")
+                    query_str = _extract_lc_query(input)
+                    route_evidence(m, build_call_evidence(m, "langchain", query_str, 0.0, exc=e))
                     current = orig_invoke(_self, input, config, **kwargs)
 
                 return current
@@ -128,6 +132,8 @@ class LangChainIntegration(MnemonIntegration):
                         f"Mnemon: LangChain per-step ainvoke failed at step {i} — {e}, "
                         "falling back to whole-chain"
                     )
+                    query_str = _extract_lc_query(input)
+                    route_evidence(m, build_call_evidence(m, "langchain", query_str, 0.0, exc=e))
                     current = await orig_ainvoke(_self, input, config, **kwargs)
 
                 return current
@@ -159,7 +165,14 @@ class LangChainIntegration(MnemonIntegration):
                 except Exception:
                     pass
 
-                result = orig_chat_invoke(_self, input, config, **kwargs)
+                t0 = _time.time()
+                try:
+                    result = orig_chat_invoke(_self, input, config, **kwargs)
+                except Exception as exc:
+                    lat = (_time.time() - t0) * 1000
+                    route_evidence(m, build_call_evidence(m, "langchain", query, lat, exc=exc))
+                    raise
+                lat = (_time.time() - t0) * 1000
 
                 try:
                     text = result.content if hasattr(result, "content") else str(result)
@@ -167,6 +180,7 @@ class LangChainIntegration(MnemonIntegration):
                 except Exception:
                     pass
 
+                route_evidence(m, build_call_evidence(m, "langchain", query, lat, response=result))
                 return result
 
             BaseChatModel.invoke = patched_chat_invoke
@@ -191,7 +205,14 @@ class LangChainIntegration(MnemonIntegration):
                 except Exception:
                     pass
 
-                result = await orig_chat_ainvoke(_self, input, config, **kwargs)
+                t0 = _time.time()
+                try:
+                    result = await orig_chat_ainvoke(_self, input, config, **kwargs)
+                except Exception as exc:
+                    lat = (_time.time() - t0) * 1000
+                    route_evidence(m, build_call_evidence(m, "langchain", query, lat, exc=exc))
+                    raise
+                lat = (_time.time() - t0) * 1000
 
                 try:
                     text = result.content if hasattr(result, "content") else str(result)
@@ -199,6 +220,7 @@ class LangChainIntegration(MnemonIntegration):
                 except Exception:
                     pass
 
+                route_evidence(m, build_call_evidence(m, "langchain", query, lat, response=result))
                 return result
 
             BaseChatModel.ainvoke = patched_chat_ainvoke

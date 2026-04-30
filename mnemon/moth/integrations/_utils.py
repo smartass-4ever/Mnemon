@@ -345,3 +345,66 @@ def track_cache_hit(
                 m._run(coro)
     except Exception:
         pass
+
+
+# ─────────────────────────────────────────────
+# EVIDENCE ROUTING — shared by all integrations
+# ─────────────────────────────────────────────
+
+def route_evidence(m: Any, evidence: Any) -> None:
+    """Fire a pre-built EvidenceRecord to the Bus. Never raises."""
+    try:
+        inner = getattr(m, "_m", None)
+        if not inner:
+            return
+        bus = getattr(inner, "_bus", None)
+        if not bus:
+            return
+        import asyncio as _asyncio
+        coro = bus.record_evidence(evidence)
+        try:
+            loop = _asyncio.get_running_loop()
+            loop.create_task(coro)
+        except RuntimeError:
+            m._run(coro)
+    except Exception:
+        pass
+
+
+def build_call_evidence(
+    m: Any,
+    framework: str,
+    query: str,
+    latency_ms: float,
+    response: Any = None,
+    exc: Exception = None,
+) -> Any:
+    """
+    Build an EvidenceRecord for a single patched LLM call.
+    Pass either response= (successful call) or exc= (exception).
+    Returns None silently on any error.
+    """
+    try:
+        from mnemon.core.models import EvidenceRecord
+        inner     = getattr(m, "_m", None)
+        tenant_id = getattr(inner, "tenant_id", "unknown") if inner else "unknown"
+        task_id   = hashlib.md5(
+            f"moth:{framework}:{query[:40]}:{time.time():.3f}".encode()
+        ).hexdigest()[:12]
+        goal_hash = hashlib.md5(query.encode()).hexdigest()[:16] if query else None
+
+        if exc is not None:
+            return FeedbackExtractor.from_exception(
+                exc=exc, framework=framework, task_id=task_id,
+                template_id=None, fragment_ids=[], goal_hash=goal_hash,
+                goal_type="llm_call", tenant_id=tenant_id, latency_ms=latency_ms,
+            )
+        if response is not None:
+            return FeedbackExtractor.from_response(
+                response=response, framework=framework, task_id=task_id,
+                template_id=None, fragment_ids=[], goal_hash=goal_hash,
+                goal_type="llm_call", tenant_id=tenant_id, latency_ms=latency_ms,
+            )
+    except Exception:
+        pass
+    return None

@@ -18,8 +18,10 @@ import logging
 import types
 from typing import Any, Dict, List, Optional
 
+import time as _time
+
 from mnemon.moth import MnemonIntegration
-from ._utils import extract_query, prompt_hash, track_cache_hit
+from ._utils import extract_query, prompt_hash, track_cache_hit, build_call_evidence, route_evidence
 from ._eme_bridge import MothCache
 
 logger = logging.getLogger(__name__)
@@ -80,9 +82,17 @@ class OpenAIIntegration(MnemonIntegration):
                 track_cache_hit(m, "openai", total, model, inp, out)
                 return cached
 
-            response = orig_sync(_self, messages=messages, model=model, **kwargs)
+            t0 = _time.time()
+            try:
+                response = orig_sync(_self, messages=messages, model=model, **kwargs)
+            except Exception as exc:
+                lat = (_time.time() - t0) * 1000
+                route_evidence(m, build_call_evidence(m, "openai", query, lat, exc=exc))
+                raise
+            lat = (_time.time() - t0) * 1000
             text = _openai_text(response)
             cache.store(query, [model], hash_key, response, text)
+            route_evidence(m, build_call_evidence(m, "openai", query, lat, response=response))
             return response
 
         async def patched_async_create(
@@ -115,9 +125,17 @@ class OpenAIIntegration(MnemonIntegration):
                 track_cache_hit(m, "openai", total, model, inp, out)
                 return cached
 
-            response = await orig_async(_self, messages=messages, model=model, **kwargs)
+            t0 = _time.time()
+            try:
+                response = await orig_async(_self, messages=messages, model=model, **kwargs)
+            except Exception as exc:
+                lat = (_time.time() - t0) * 1000
+                route_evidence(m, build_call_evidence(m, "openai", query, lat, exc=exc))
+                raise
+            lat = (_time.time() - t0) * 1000
             text = _openai_text(response)
             await cache.async_store(query, [model], hash_key, response, text)
+            route_evidence(m, build_call_evidence(m, "openai", query, lat, response=response))
             return response
 
         _mod.Completions.create      = patched_create
