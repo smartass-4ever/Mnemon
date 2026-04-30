@@ -574,6 +574,8 @@ class ExecutionMemoryEngine:
         # Reset at the top of run() — asyncio-safe (single-threaded event loop).
         self._trace_frags_buf: List[str] = []
         self._trace_gen_buf:   List[str] = []
+        # Segment objects from _try_system2 guided path — read by _guided_generation.
+        self._guided_segments_buf: List[TemplateSegment] = []
 
     def set_retrospector(self, retrospector) -> None:
         """Attach a Retrospector instance. Call before the first run()."""
@@ -675,6 +677,8 @@ class ExecutionMemoryEngine:
         Tries System 1 → System 2 → full generation.
         Caches successful results automatically.
         """
+        run_start = time.time()
+
         fp = ComputationFingerprint.build(
             goal=goal,
             input_schema=self._schema_of(inputs),
@@ -686,6 +690,7 @@ class ExecutionMemoryEngine:
         # Reset per-call fragment/generation buffers for retrospector tracing.
         self._trace_frags_buf = []
         self._trace_gen_buf   = []
+        self._guided_segments_buf = []
 
         # ── SYSTEM 1: Exact Match ──────────────
         result = await self._try_system1(fp, inputs, goal)
@@ -717,6 +722,10 @@ class ExecutionMemoryEngine:
         # ── RETROSPECTOR TRACE ─────────────────
         if self.retrospector:
             try:
+                _outcome_map = {
+                    "system1": "success", "system2": "success",
+                    "system2_guided": "success", "miss": "miss", "error": "failure",
+                }
                 trace = DecisionTrace(
                     trace_id=hashlib.md5(
                         f"{self.tenant_id}:{task_id}:{time.time()}".encode()
@@ -732,8 +741,8 @@ class ExecutionMemoryEngine:
                     segments_generated=list(self._trace_gen_buf),
                     tools_called=capabilities,
                     step_outcomes={},
-                    overall_outcome=result.status,
-                    latency_ms=result.latency_saved_ms,
+                    overall_outcome=_outcome_map.get(result.status, "miss"),
+                    latency_ms=(time.time() - run_start) * 1000,
                     timestamp=time.time(),
                 )
                 asyncio.create_task(self.retrospector.submit_trace(trace))
@@ -923,6 +932,9 @@ class ExecutionMemoryEngine:
         if pending_gaps:
             gap_positions = {g.position for g in pending_gaps}
             resolved_segs = [s for i, s in enumerate(all_segments) if i not in gap_positions]
+            # Stash full segment objects so _guided_generation can build the brief
+            # and stitch without re-fetching from DB.
+            self._guided_segments_buf = list(all_segments)
             return EMEResult(
                 status="system2_guided",
                 template=self.adapter.reconstruct(all_segments),
@@ -1270,6 +1282,170 @@ class ExecutionMemoryEngine:
             return f"generate: {seg_preview} (context: {ctx})"
         return f"generate: {seg_preview}"
 
+    def _build_guided_brief(
+        self,
+        all_segments: List[TemplateSegment],
+        pending_gaps: List[GapFillRequest],
+    ) -> Dict:
+        """
+        Build a structured generation directive from segment metadata.
+        No LLM, no I/O — pure code using intent/outputs already stored on each segment.
+
+        Matched segments are represented as capsules (intent + outputs only).
+        Full content stays in Mnemon memory and is unfurled during stitching —
+        never sent to the user's LLM, so their context window only grows by
+        the size of the capsule summaries, not the cached content.
+        """
+        gap_positions = {g.position for g in pending_gaps}
+
+        pre_filled = []
+        for i, seg in enumerate(all_segments):
+            if i not in gap_positions:
+                pre_filled.append({
+                    "position": i,
+                    "capsule_id": seg.segment_id,
+                    "intent": seg.intent or f"step_{i}",
+                    "outputs": list(seg.outputs) if seg.outputs else [],
+                })
+
+        gaps_to_fill = []
+        for gap in pending_gaps:
+            receives = []
+            prev_idx = gap.position - 1
+            if prev_idx >= 0 and prev_idx < len(all_segments) and prev_idx not in gap_positions:
+                prev_seg = all_segments[prev_idx]
+                receives = list(prev_seg.outputs) if prev_seg.outputs else []
+            gaps_to_fill.append({
+                "position": gap.position,
+                "receives": receives,
+                "hint": gap.hint,
+            })
+
+        return {
+            "pre_filled": pre_filled,
+            "gaps_to_fill": gaps_to_fill,
+            "total_steps": len(all_segments),
+            "instruction": (
+                "pre_filled steps are already cached — do NOT regenerate them. "
+                "Generate ONLY the steps listed in gaps_to_fill. "
+                "Return strictly as JSON: {\"<position>\": <step_content>} "
+                "with one key per gap position and nothing else."
+            ),
+        }
+
+    def _parse_gap_fills(
+        self,
+        output: Any,
+        pending_gaps: List[GapFillRequest],
+        all_segments: List[TemplateSegment],
+    ) -> Optional[Dict[int, Any]]:
+        """
+        Three-tier robust parser for gap-fill output.
+
+        Tier 1: output is or parses as JSON {"position": content}
+        Tier 2: find the first embedded JSON object in text that satisfies all gaps
+        Tier 3: positional decomposition via adapter — take segments at gap positions
+        Returns None on all-tier failure — caller falls back to full generation.
+        Never raises; every tier is individually guarded.
+        """
+        import re
+
+        def _extract_from_dict(d: dict) -> Optional[Dict[int, Any]]:
+            result = {}
+            for g in pending_gaps:
+                if str(g.position) in d:
+                    result[g.position] = d[str(g.position)]
+                elif g.position in d:
+                    result[g.position] = d[g.position]
+            return result if len(result) == len(pending_gaps) else None
+
+        # Tier 1a: output is already a dict
+        if isinstance(output, dict):
+            r = _extract_from_dict(output)
+            if r is not None:
+                return r
+
+        # Serialise for text-based tiers
+        output_str = json.dumps(output, default=str) if isinstance(output, (dict, list)) else str(output)
+
+        # Tier 1b: strict JSON parse of the full string
+        try:
+            parsed = json.loads(output_str)
+            if isinstance(parsed, dict):
+                r = _extract_from_dict(parsed)
+                if r is not None:
+                    return r
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Tier 2: scan for any embedded JSON object that satisfies all gaps
+        try:
+            for match in re.finditer(r'\{[^{}]+\}', output_str, re.DOTALL):
+                try:
+                    parsed = json.loads(match.group())
+                    if isinstance(parsed, dict):
+                        r = _extract_from_dict(parsed)
+                        if r is not None:
+                            return r
+                except (json.JSONDecodeError, ValueError):
+                    continue
+        except Exception:
+            pass
+
+        # Tier 3: positional decomposition — decompose the full output and
+        # lift content at each gap position
+        try:
+            segs_data = self.adapter.decompose(output)
+            if len(segs_data) >= len(all_segments):
+                result = {}
+                for g in pending_gaps:
+                    if g.position < len(segs_data):
+                        sd = segs_data[g.position]
+                        result[g.position] = sd.get("content", sd) if isinstance(sd, dict) else sd
+                if len(result) == len(pending_gaps):
+                    return result
+        except Exception:
+            pass
+
+        return None
+
+    def _stitch_plan(
+        self,
+        all_segments: List[TemplateSegment],
+        gap_fills: Dict[int, Any],
+        pending_gaps: List[GapFillRequest],
+    ) -> List[TemplateSegment]:
+        """
+        Unfurl capsules + splice generated gap fills into the final segment list.
+
+        Capsule positions: full cached TemplateSegment objects already in all_segments
+        — nothing to do, they were never sent to the user's LLM.
+        Gap positions: build fresh TemplateSegments from parsed fill content,
+        embed their intent so future System 2 calls can match against them.
+        """
+        stitched = list(all_segments)
+        for gap in pending_gaps:
+            fill_content = gap_fills[gap.position]
+            content_str = json.dumps(fill_content, default=str)
+            intent = self._extract_intent(
+                fill_content if isinstance(fill_content, dict) else {"content": fill_content}
+            )
+            sig = self._embed_sync(intent, full=False)
+            stitched[gap.position] = TemplateSegment(
+                segment_id=hashlib.md5(
+                    f"{self.tenant_id}:gap:{gap.segment_id}:{time.time()}".encode()
+                ).hexdigest()[:16],
+                tenant_id=self.tenant_id,
+                content=fill_content,
+                fingerprint=hashlib.md5(content_str.encode()).hexdigest()[:16],
+                signature=sig,
+                intent=intent,
+                is_generated=True,
+                confidence=0.85,
+                success_rate=1.0,
+            )
+        return stitched
+
     async def _guided_generation(
         self,
         partial_result: "EMEResult",
@@ -1282,60 +1458,87 @@ class ExecutionMemoryEngine:
         fp: ComputationFingerprint,
     ) -> Optional["EMEResult"]:
         """
-        System 2 guided generation.
-        Matched segments + gap descriptions are injected into the user's
-        generation_fn context. Their LLM fills the gaps as part of its
-        normal call — zero Mnemon LLM cost. Filled segments are extracted
-        positionally and added to the fragment library for future runs.
+        System 2 guided generation — structured brief + robust parse + deterministic stitch.
+
+        1. _build_guided_brief: capsule refs for matched segs (intent+outputs only),
+           explicit positional gap directive, JSON output contract — zero LLM.
+        2. generation_fn call: user's LLM receives a clear, minimal brief; their
+           context window grows only by capsule summaries, not full cached content.
+        3. _parse_gap_fills: 3-tier parser (strict JSON → embedded JSON → positional).
+           On all-tier failure, falls back to the raw output as a full miss —
+           never returns a corrupt or partially-stitched plan.
+        4. _stitch_plan: unfurls capsules (cached content restored from memory),
+           splices generated fills, builds final TemplateSegments with intent embeddings.
+        5. _validate_stitched: dependency check before caching.
         """
         pending_gaps = partial_result.pending_gaps
-        gap_positions = {g.position for g in pending_gaps}
+        all_segments = self._guided_segments_buf
 
-        partial_segs = self.adapter.decompose(partial_result.template)
-        matched_contents = [
-            (partial_segs[i].get("content", partial_segs[i]) if isinstance(partial_segs[i], dict) else partial_segs[i])
-            for i in range(len(partial_segs))
-            if i not in gap_positions
-        ]
-
+        brief = self._build_guided_brief(all_segments, pending_gaps)
         enriched = dict(context)
-        enriched["_mnemon_partial_plan"] = {
-            "matched_segments": matched_contents,
-            "gaps": [
-                {
-                    "position": g.position,
-                    "hint": g.hint,
-                    "surrounding": g.surrounding_context,
-                }
-                for g in pending_gaps
-            ],
-            "total_steps": len(partial_segs),
-            "instruction": (
-                "matched_segments are already cached — do not regenerate them. "
-                "Generate the complete plan; fill every listed gap."
-            ),
-        }
+        enriched["_mnemon_brief"] = brief
 
         try:
-            template = await generation_fn(goal, inputs, enriched, capabilities, constraints)
+            raw_output = await generation_fn(goal, inputs, enriched, capabilities, constraints)
         except Exception as e:
             logger.error(f"Guided generation failed: {e}")
             return None
 
-        await self._cache_template(goal, template, fp, capabilities)
-        await self._extract_gap_fragments(template, pending_gaps)
+        gap_fills = self._parse_gap_fills(raw_output, pending_gaps, all_segments)
 
-        # tokens_saved=0: generation_fn still makes a full LLM call on this run.
-        # The value of system2_guided is entirely in future runs — gap fragments
-        # are now stored, so next time this goal can hit system1 or system2 fully.
+        if gap_fills is None:
+            # All three parse tiers exhausted — treat as a full miss.
+            # Still cache the raw output so subsequent identical calls hit System 1.
+            logger.warning("Guided generation: all parse tiers failed — caching raw output as full miss")
+            await self._cache_template(goal, raw_output, fp, capabilities)
+            return EMEResult(
+                status="miss",
+                template=raw_output,
+                template_id=None,
+                segments_reused=0,
+                segments_generated=len(all_segments),
+                cache_level="miss",
+            )
+
+        stitched_segments = self._stitch_plan(all_segments, gap_fills, pending_gaps)
+
+        is_valid = await self._validate_stitched(stitched_segments, capabilities, constraints)
+        if not is_valid:
+            logger.warning("Guided generation: stitched plan failed dependency validation — caching raw output as full miss")
+            await self._cache_template(goal, raw_output, fp, capabilities)
+            return EMEResult(
+                status="miss",
+                template=raw_output,
+                template_id=None,
+                segments_reused=0,
+                segments_generated=len(all_segments),
+                cache_level="miss",
+            )
+
+        final_template = self.adapter.reconstruct(stitched_segments)
+        await self._cache_template(goal, final_template, fp, capabilities)
+
+        # Register generated gap segments in the fragment library so future
+        # calls with similar gaps hit Tier 1/2 at zero cost.
+        for gap in pending_gaps:
+            if gap.position < len(stitched_segments):
+                seg = stitched_segments[gap.position]
+                if seg.signature:
+                    await self._fragment_index.add(self.tenant_id, seg.segment_id, seg.signature)
+                    self._fragment_map[seg.segment_id] = seg
+                    await self._write_behind.enqueue(seg)
+                    self._trace_gen_buf.append(seg.segment_id)
+
+        gap_positions = {g.position for g in pending_gaps}
+        cached_segs = [s for i, s in enumerate(stitched_segments) if i not in gap_positions]
         return EMEResult(
             status="system2_guided",
-            template=template,
+            template=final_template,
             template_id=None,
             segments_reused=partial_result.segments_reused,
             segments_generated=len(pending_gaps),
-            tokens_saved=0,
-            latency_saved_ms=0.0,
+            tokens_saved=self._seg_tokens(cached_segs),
+            latency_saved_ms=partial_result.segments_reused * 2500,
             fragments_used=partial_result.fragments_used,
             cache_level="system2_guided",
             validation_passed=True,
