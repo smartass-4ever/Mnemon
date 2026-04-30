@@ -24,7 +24,6 @@ from typing import Any, List, Optional
 from mnemon.moth import MnemonIntegration
 from ._utils import extract_query, prompt_hash, track_cache_hit
 from ._eme_bridge import MothCache
-from ._cache import BoundedTTLCache
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +47,11 @@ class AnthropicIntegration(MnemonIntegration):
         self._original_sync  = _mod.Messages.create
         self._original_async = _mod.AsyncMessages.create
 
-        m                = mnemon
-        orig_sync        = self._original_sync
-        orig_async       = self._original_async
-        cache            = MothCache(m, "anthropic")
-        stream_txt_cache = BoundedTTLCache(maxsize=500, ttl=3600)
+        m           = mnemon
+        orig_sync   = self._original_sync
+        orig_async  = self._original_async
+        cache       = MothCache(m, "anthropic")
+        stream_cache = MothCache(m, "anthropic:stream")
 
         def patched_create(
             _self: Any,
@@ -68,7 +67,7 @@ class AnthropicIntegration(MnemonIntegration):
 
             # ── streaming path ────────────────────────────────────────────────
             if is_stream:
-                cached_text = stream_txt_cache.get(hash_key)
+                cached_text = stream_cache.check(query, [model], hash_key)
                 if cached_text is not None:
                     track_cache_hit(m, "anthropic")
                     return _SyntheticAnthropicStream(cached_text, model)
@@ -78,7 +77,7 @@ class AnthropicIntegration(MnemonIntegration):
                     system=system, **kwargs,
                 )
                 return _CapturingAnthropicStream(
-                    real_stream, stream_txt_cache, hash_key, m
+                    real_stream, stream_cache, hash_key, query, model, m
                 )
 
             # ── non-streaming path ────────────────────────────────────────────
@@ -109,7 +108,7 @@ class AnthropicIntegration(MnemonIntegration):
 
             # ── streaming path ────────────────────────────────────────────────
             if is_stream:
-                cached_text = stream_txt_cache.get(hash_key)
+                cached_text = await stream_cache.async_check(query, [model], hash_key)
                 if cached_text is not None:
                     track_cache_hit(m, "anthropic")
                     return _SyntheticAnthropicStream(cached_text, model)
@@ -119,7 +118,7 @@ class AnthropicIntegration(MnemonIntegration):
                     system=system, **kwargs,
                 )
                 return _AsyncCapturingAnthropicStream(
-                    real_stream, stream_txt_cache, hash_key, m
+                    real_stream, stream_cache, hash_key, query, model, m
                 )
 
             # ── non-streaming path ────────────────────────────────────────────
@@ -211,12 +210,17 @@ class _SyntheticAnthropicStream:
 
 
 class _CapturingAnthropicStream:
-    """Wraps a real sync Anthropic stream. Captures text and stores to cache on exhaustion."""
+    """Wraps a real sync Anthropic stream. Captures text and stores to MothCache on exhaustion."""
 
-    def __init__(self, stream: Any, cache: BoundedTTLCache, hash_key: str, m: Any) -> None:
+    def __init__(
+        self, stream: Any, cache: MothCache, hash_key: str,
+        query: str, model: str, m: Any,
+    ) -> None:
         self._stream   = stream
         self._cache    = cache
         self._hash_key = hash_key
+        self._query    = query
+        self._model    = model
         self._m        = m
         self._chunks: list = []
 
@@ -236,7 +240,7 @@ class _CapturingAnthropicStream:
         text = "".join(self._chunks)
         if text:
             try:
-                self._cache[self._hash_key] = text
+                self._cache.store(self._query, [self._model], self._hash_key, text, text)
             except Exception:
                 pass
 
@@ -253,7 +257,8 @@ class _CapturingAnthropicStream:
         return getattr(self._stream, "get_final_message", lambda: None)()
 
     def __enter__(self):
-        self._stream.__enter__() if hasattr(self._stream, "__enter__") else None
+        if hasattr(self._stream, "__enter__"):
+            self._stream.__enter__()
         return self
 
     def __exit__(self, *args):
@@ -262,12 +267,17 @@ class _CapturingAnthropicStream:
 
 
 class _AsyncCapturingAnthropicStream:
-    """Async variant of _CapturingAnthropicStream."""
+    """Async variant of _CapturingAnthropicStream. Stores to MothCache on exhaustion."""
 
-    def __init__(self, stream: Any, cache: BoundedTTLCache, hash_key: str, m: Any) -> None:
+    def __init__(
+        self, stream: Any, cache: MothCache, hash_key: str,
+        query: str, model: str, m: Any,
+    ) -> None:
         self._stream   = stream
         self._cache    = cache
         self._hash_key = hash_key
+        self._query    = query
+        self._model    = model
         self._m        = m
         self._chunks: list = []
 
@@ -287,7 +297,9 @@ class _AsyncCapturingAnthropicStream:
             text = "".join(self._chunks)
             if text:
                 try:
-                    self._cache[self._hash_key] = text
+                    await self._cache.async_store(
+                        self._query, [self._model], self._hash_key, text, text
+                    )
                 except Exception:
                     pass
 
@@ -300,6 +312,15 @@ class _AsyncCapturingAnthropicStream:
                 return await result
             return result
         return None
+
+    async def __aenter__(self):
+        if hasattr(self._stream, "__aenter__"):
+            await self._stream.__aenter__()
+        return self
+
+    async def __aexit__(self, *args):
+        if hasattr(self._stream, "__aexit__"):
+            await self._stream.__aexit__(*args)
 
 
 # ── Non-streaming helpers ─────────────────────────────────────────────────────

@@ -238,6 +238,7 @@ class EMEResult:
     cache_level: str = "miss"
     validation_passed: bool = True
     pending_gaps: List[GapFillRequest] = field(default_factory=list)
+    fragment_ids_used: List[str] = field(default_factory=list)
 
 
 # ─────────────────────────────────────────────
@@ -577,6 +578,10 @@ class ExecutionMemoryEngine:
         # Segment objects from _try_system2 guided path — read by _guided_generation.
         self._guided_segments_buf: List[TemplateSegment] = []
 
+        # Per-run context for reputation-weighted assembly
+        self._run_framework: str = "unknown"
+        self._run_goal_type: str = "general"
+
     def set_retrospector(self, retrospector) -> None:
         """Attach a Retrospector instance. Call before the first run()."""
         self.retrospector = retrospector
@@ -691,6 +696,9 @@ class ExecutionMemoryEngine:
         self._trace_frags_buf = []
         self._trace_gen_buf   = []
         self._guided_segments_buf = []
+
+        self._run_framework = context.get("_mnemon_framework", "unknown") if context else "unknown"
+        self._run_goal_type = context.get("_mnemon_goal_type", "general") if context else "general"
 
         # ── SYSTEM 1: Exact Match ──────────────
         result = await self._try_system1(fp, inputs, goal)
@@ -907,6 +915,7 @@ class ExecutionMemoryEngine:
                 tokens_saved=tokens_saved,
                 latency_saved_ms=len(matched) * 2500,
                 cache_level="system2",
+                fragment_ids_used=list(self._trace_frags_buf),
             )
 
         # Gap fill for unmatched segments
@@ -918,8 +927,12 @@ class ExecutionMemoryEngine:
         for idx in unmatched_indices:
             seg = all_segments[idx]
             window = self._window(all_segments, idx, window_size=2)
+            prev_frag_id = (
+                all_segments[idx - 1].segment_id if idx > 0 else None
+            )
             filled, used_fragment, gap_request = await self._fill_gap(
-                seg, goal, window, memory_context, context, idx
+                seg, goal, window, memory_context, context, idx,
+                prev_fragment_id=prev_frag_id,
             )
             if gap_request is not None:
                 pending_gaps.append(gap_request)
@@ -946,6 +959,7 @@ class ExecutionMemoryEngine:
                 fragments_used=fragments_used,
                 cache_level="system2_guided",
                 pending_gaps=pending_gaps,
+                fragment_ids_used=list(self._trace_frags_buf),
             )
 
         stitched_template = self.adapter.reconstruct(all_segments)
@@ -979,6 +993,7 @@ class ExecutionMemoryEngine:
             fragments_used=fragments_used,
             cache_level="system2",
             validation_passed=True,
+            fragment_ids_used=list(self._trace_frags_buf),
         )
 
     def _system1_reverse(self) -> Dict[str, str]:
@@ -1216,14 +1231,18 @@ class ExecutionMemoryEngine:
         memory_context: Optional[Dict],
         execution_context: Dict,
         position: int = 0,
+        prev_fragment_id: Optional[str] = None,
     ) -> Tuple[TemplateSegment, bool, Optional[GapFillRequest]]:
         """
-        Two-tier fragment lookup. Returns (segment, used_fragment, gap_request).
-        gap_request is non-None only for Tier 3 — deferred to user's generation_fn.
+        Three-tier fragment lookup with reputation × edge-strength weighting.
 
-        Tier 1: exact fragment match (≥0.98)  — zero LLM, zero cost
-        Tier 2: similar fragment (≥0.80)      — use directly, zero LLM, zero cost
-        Tier 3: no fragment match             — GapFillRequest, user's LLM fills it
+        Scoring: adjusted_sim = cosine×0.60 + reputation×0.30 + edge_strength×0.10
+        Reputation and edge weights are time-decayed — recent evidence dominates.
+        Quarantined fragments are skipped before scoring.
+
+        Tier 1: adjusted_sim ≥ FRAGMENT_EXACT_THRESHOLD  — zero cost
+        Tier 2: adjusted_sim ≥ FRAGMENT_SIMILAR_THRESHOLD — zero cost
+        Tier 3: no match — GapFillRequest, user's LLM fills it
         """
         seg_str = json.dumps(segment.content, default=str) if segment.content else ""
         seg_sig = self._embed_sync(seg_str, full=False)
@@ -1232,41 +1251,67 @@ class ExecutionMemoryEngine:
             self.tenant_id, seg_sig, k=ANN_CANDIDATE_K
         )
 
+        # Batch-fetch reputations and edges for all candidates at once
+        cand_ids = [seg_id for seg_id, _ in candidates]
+        reputations: Dict[str, float] = {}
+        if self.signal_db and cand_ids:
+            try:
+                reputations = await self.signal_db.get_reputation_batch(
+                    cand_ids, self._run_framework, self._run_goal_type
+                )
+            except Exception:
+                pass
+
         best_frag: Optional[TemplateSegment] = None
-        best_sim = 0.0
+        best_adj  = 0.0
 
         for seg_id, sim in candidates:
             frag = self._fragment_map.get(seg_id)
             if frag is None:
                 continue
 
+            # Skip quarantined fragments
             if self.retrospector:
                 try:
-                    sys_db = self.retrospector.system_db
-                    if await sys_db.is_quarantined(frag.segment_id, self.tenant_id):
+                    if await self.retrospector.system_db.is_quarantined(
+                        frag.segment_id, self.tenant_id
+                    ):
                         continue
                 except Exception:
                     pass
 
-            if sim >= FRAGMENT_EXACT_THRESHOLD:
-                # Tier 1: exact hit — zero cost
+            # Reputation weight (time-decayed, defaults to 0.5 neutral)
+            rep = reputations.get(seg_id, 0.5)
+
+            # Edge strength from previous fragment (Hebbian synapse)
+            edge = 0.5
+            if self.signal_db and prev_fragment_id:
+                try:
+                    edge = await self.signal_db.get_edge_strength(
+                        prev_fragment_id, seg_id, self._run_framework
+                    )
+                except Exception:
+                    pass
+
+            # Combined score: cosine dominates, reputation and edge refine
+            adjusted = sim * 0.60 + rep * 0.30 + edge * 0.10
+
+            if adjusted >= FRAGMENT_EXACT_THRESHOLD:
                 frag.use_count += 1
                 await self._write_behind.enqueue(frag)
                 self._trace_frags_buf.append(frag.segment_id)
                 return frag, True, None
 
-            if sim > best_sim:
-                best_sim = sim
+            if adjusted > best_adj:
+                best_adj  = adjusted
                 best_frag = frag
 
-        if best_frag and best_sim >= FRAGMENT_SIMILAR_THRESHOLD:
-            # Tier 2: similar fragment — use directly, no LLM adaptation
+        if best_frag and best_adj >= FRAGMENT_SIMILAR_THRESHOLD:
             best_frag.use_count += 1
             await self._write_behind.enqueue(best_frag)
             self._trace_frags_buf.append(best_frag.segment_id)
             return best_frag, True, None
 
-        # Tier 3: no fragment match — defer to user's generation_fn
         gap_request = GapFillRequest(
             position=position,
             segment_id=segment.segment_id,

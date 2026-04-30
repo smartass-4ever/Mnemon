@@ -49,6 +49,32 @@ CREATE TABLE IF NOT EXISTS proven_intents (
     boost_weight    REAL DEFAULT 0.0,
     last_updated    REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS fragment_reputation (
+    fragment_id      TEXT NOT NULL,
+    framework        TEXT NOT NULL,
+    goal_type        TEXT NOT NULL DEFAULT 'general',
+    success_count    INTEGER DEFAULT 0,
+    failure_count    INTEGER DEFAULT 0,
+    wrong_plan_count INTEGER DEFAULT 0,
+    near_miss_count  INTEGER DEFAULT 0,
+    reputation_score REAL DEFAULT 0.5,
+    last_updated     REAL NOT NULL,
+    known_issues     TEXT DEFAULT '[]',
+    PRIMARY KEY (fragment_id, framework, goal_type)
+);
+
+CREATE TABLE IF NOT EXISTS fragment_edges (
+    from_fragment_id TEXT NOT NULL,
+    to_fragment_id   TEXT NOT NULL,
+    framework        TEXT NOT NULL,
+    strength         REAL DEFAULT 0.5,
+    success_count    INTEGER DEFAULT 0,
+    failure_count    INTEGER DEFAULT 0,
+    last_updated     REAL NOT NULL,
+    known_issues     TEXT DEFAULT '[]',
+    PRIMARY KEY (from_fragment_id, to_fragment_id, framework)
+);
 """
 
 # Minimum evidence before collective boost kicks in
@@ -349,3 +375,181 @@ class SignalDatabase:
         except Exception as e:
             logger.debug(f"get_vocab_weights failed (non-critical): {e}")
         return result
+
+    # ──────────────────────────────────────────
+    # FRAGMENT REPUTATION
+    # ──────────────────────────────────────────
+
+    async def update_fragment_reputation(
+        self,
+        fragment_id: str,
+        framework: str,
+        goal_type: str,
+        outcome: str,           # "success"|"failure"|"wrong_plan"|"near_miss"
+        issue: Optional[str] = None,
+    ):
+        """
+        Upsert reputation row and recompute time-decayed reputation_score.
+        Score uses exponential moving average with α=0.3 so recent outcomes
+        dominate but history is not discarded.
+        """
+        try:
+            import json as _json
+            async with self._lock:
+                row = self._conn.execute(
+                    "SELECT * FROM fragment_reputation WHERE fragment_id=? AND framework=? AND goal_type=?",
+                    (fragment_id, framework, goal_type),
+                ).fetchone()
+                now = time.time()
+                if row:
+                    sc  = row["success_count"]  + (1 if outcome == "success" else 0)
+                    fc  = row["failure_count"]  + (1 if outcome == "failure" else 0)
+                    wpc = row["wrong_plan_count"]+ (1 if outcome == "wrong_plan" else 0)
+                    nmc = row["near_miss_count"] + (1 if outcome == "near_miss" else 0)
+                    issues = _json.loads(row["known_issues"] or "[]")
+                    if issue and issue not in issues:
+                        issues.append(issue)
+                        issues = issues[-10:]    # cap at 10
+                    # EMA reputation: success=1.0, near_miss=0.6, wrong_plan=0.2, failure=0.0
+                    _outcome_val = {"success": 1.0, "near_miss": 0.6, "wrong_plan": 0.2, "failure": 0.0}
+                    alpha = 0.3
+                    new_score = row["reputation_score"] * (1 - alpha) + _outcome_val.get(outcome, 0.0) * alpha
+                    self._conn.execute(
+                        "UPDATE fragment_reputation SET success_count=?, failure_count=?, "
+                        "wrong_plan_count=?, near_miss_count=?, reputation_score=?, "
+                        "last_updated=?, known_issues=? "
+                        "WHERE fragment_id=? AND framework=? AND goal_type=?",
+                        (sc, fc, wpc, nmc, new_score, now, _json.dumps(issues),
+                         fragment_id, framework, goal_type),
+                    )
+                else:
+                    _outcome_val = {"success": 1.0, "near_miss": 0.6, "wrong_plan": 0.2, "failure": 0.0}
+                    init_score = _outcome_val.get(outcome, 0.5)
+                    self._conn.execute(
+                        "INSERT INTO fragment_reputation VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (fragment_id, framework, goal_type,
+                         1 if outcome == "success" else 0,
+                         1 if outcome == "failure" else 0,
+                         1 if outcome == "wrong_plan" else 0,
+                         1 if outcome == "near_miss" else 0,
+                         init_score, now,
+                         _json.dumps([issue] if issue else [])),
+                    )
+                self._conn.commit()
+        except Exception as e:
+            logger.debug(f"update_fragment_reputation failed (non-critical): {e}")
+
+    async def get_fragment_reputation(
+        self, fragment_id: str, framework: str, goal_type: str
+    ) -> float:
+        """
+        Returns time-decayed reputation score [0,1].
+        Half-life = 30 days: old reputation fades, recent evidence dominates.
+        Returns 0.5 (neutral) if no data.
+        """
+        try:
+            async with self._lock:
+                row = self._conn.execute(
+                    "SELECT reputation_score, last_updated FROM fragment_reputation "
+                    "WHERE fragment_id=? AND framework=? AND goal_type=?",
+                    (fragment_id, framework, goal_type),
+                ).fetchone()
+            if not row:
+                return 0.5
+            age_days = (time.time() - row["last_updated"]) / 86400
+            decay = 0.5 ** (age_days / 30)
+            # Decay toward 0.5 (neutral) not toward 0
+            return row["reputation_score"] * decay + 0.5 * (1 - decay)
+        except Exception as e:
+            logger.debug(f"get_fragment_reputation failed (non-critical): {e}")
+            return 0.5
+
+    async def get_reputation_batch(
+        self, fragment_ids: List[str], framework: str, goal_type: str
+    ) -> Dict[str, float]:
+        """Batch reputation fetch — avoids N individual queries in _fill_gap."""
+        if not fragment_ids:
+            return {}
+        result = {fid: 0.5 for fid in fragment_ids}
+        try:
+            async with self._lock:
+                placeholders = ",".join("?" * len(fragment_ids))
+                rows = self._conn.execute(
+                    f"SELECT fragment_id, reputation_score, last_updated FROM fragment_reputation "
+                    f"WHERE fragment_id IN ({placeholders}) AND framework=? AND goal_type=?",
+                    (*fragment_ids, framework, goal_type),
+                ).fetchall()
+            now = time.time()
+            for row in rows:
+                age_days = (now - row["last_updated"]) / 86400
+                decay = 0.5 ** (age_days / 30)
+                result[row["fragment_id"]] = row["reputation_score"] * decay + 0.5 * (1 - decay)
+        except Exception as e:
+            logger.debug(f"get_reputation_batch failed (non-critical): {e}")
+        return result
+
+    # ──────────────────────────────────────────
+    # FRAGMENT EDGES (synaptic weights)
+    # ──────────────────────────────────────────
+
+    async def update_edge_strength(
+        self,
+        from_id: str,
+        to_id: str,
+        framework: str,
+        success: bool,
+        issue: Optional[str] = None,
+    ):
+        """
+        Update synaptic strength between two adjacent fragments.
+        EMA with α=0.2 — edges are stable but do respond to consistent failure.
+        """
+        try:
+            import json as _json
+            async with self._lock:
+                row = self._conn.execute(
+                    "SELECT * FROM fragment_edges WHERE from_fragment_id=? AND to_fragment_id=? AND framework=?",
+                    (from_id, to_id, framework),
+                ).fetchone()
+                now = time.time()
+                outcome_val = 1.0 if success else 0.0
+                if row:
+                    sc  = row["success_count"] + (1 if success else 0)
+                    fc  = row["failure_count"] + (0 if success else 1)
+                    issues = _json.loads(row["known_issues"] or "[]")
+                    if issue and not success and issue not in issues:
+                        issues.append(issue)
+                        issues = issues[-5:]
+                    alpha = 0.2
+                    new_strength = row["strength"] * (1 - alpha) + outcome_val * alpha
+                    self._conn.execute(
+                        "UPDATE fragment_edges SET success_count=?, failure_count=?, "
+                        "strength=?, last_updated=?, known_issues=? "
+                        "WHERE from_fragment_id=? AND to_fragment_id=? AND framework=?",
+                        (sc, fc, new_strength, now, _json.dumps(issues),
+                         from_id, to_id, framework),
+                    )
+                else:
+                    self._conn.execute(
+                        "INSERT INTO fragment_edges VALUES (?,?,?,?,?,?,?,?)",
+                        (from_id, to_id, framework, outcome_val,
+                         1 if success else 0, 0 if success else 1,
+                         now, _json.dumps([issue] if issue and not success else [])),
+                    )
+                self._conn.commit()
+        except Exception as e:
+            logger.debug(f"update_edge_strength failed (non-critical): {e}")
+
+    async def get_edge_strength(self, from_id: str, to_id: str, framework: str) -> float:
+        """Returns edge strength [0,1]. Returns 0.5 (neutral) if no data."""
+        try:
+            async with self._lock:
+                row = self._conn.execute(
+                    "SELECT strength FROM fragment_edges "
+                    "WHERE from_fragment_id=? AND to_fragment_id=? AND framework=?",
+                    (from_id, to_id, framework),
+                ).fetchone()
+            return row["strength"] if row else 0.5
+        except Exception as e:
+            logger.debug(f"get_edge_strength failed (non-critical): {e}")
+            return 0.5

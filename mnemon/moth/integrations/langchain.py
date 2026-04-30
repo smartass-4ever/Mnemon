@@ -32,11 +32,12 @@ class LangChainIntegration(MnemonIntegration):
     name = "langchain"
 
     def __init__(self) -> None:
-        self._original_runnable_invoke: Optional[Any] = None
-        self._original_chain_call:      Optional[Any] = None
-        self._original_chat_invoke:     Optional[Any] = None
-        self._original_chat_ainvoke:    Optional[Any] = None
-        self._mnemon:                   Optional[Any] = None
+        self._original_runnable_invoke:  Optional[Any] = None
+        self._original_runnable_ainvoke: Optional[Any] = None
+        self._original_chain_call:       Optional[Any] = None
+        self._original_chat_invoke:      Optional[Any] = None
+        self._original_chat_ainvoke:     Optional[Any] = None
+        self._mnemon:                    Optional[Any] = None
 
     def is_available(self) -> bool:
         return (
@@ -85,6 +86,53 @@ class LangChainIntegration(MnemonIntegration):
                 return current
 
             RunnableSequence.invoke = patched_invoke
+
+            # Patch 1b: RunnableSequence.ainvoke — async LCEL chains
+            self._original_runnable_ainvoke = RunnableSequence.ainvoke
+            orig_ainvoke = self._original_runnable_ainvoke
+
+            async def patched_ainvoke(
+                _self: Any, input: Any, config: Any = None, **kwargs: Any
+            ) -> Any:
+                steps = getattr(_self, "steps", None)
+                if not steps:
+                    return await orig_ainvoke(_self, input, config, **kwargs)
+
+                current = input
+                try:
+                    for i, step in enumerate(steps):
+                        if _is_chat_model(step):
+                            current = (
+                                await step.ainvoke(current, config)
+                                if config is not None
+                                else await step.ainvoke(current)
+                            )
+                            continue
+
+                        step_key = _step_cache_key(step, current)
+                        cached = step_cache.get(step_key)
+                        if cached is not None:
+                            track_cache_hit(m, f"langchain:step_{i}")
+                            current = cached
+                            continue
+
+                        current = (
+                            await step.ainvoke(current, config)
+                            if config is not None
+                            else await step.ainvoke(current)
+                        )
+                        step_cache[step_key] = current
+
+                except Exception as e:
+                    logger.debug(
+                        f"Mnemon: LangChain per-step ainvoke failed at step {i} — {e}, "
+                        "falling back to whole-chain"
+                    )
+                    current = await orig_ainvoke(_self, input, config, **kwargs)
+
+                return current
+
+            RunnableSequence.ainvoke = patched_ainvoke
 
         except Exception as e:
             logger.debug(f"Mnemon: LangChain RunnableSequence patch failed — {e}")
@@ -185,9 +233,12 @@ class LangChainIntegration(MnemonIntegration):
 
     def unpatch(self) -> None:
         try:
-            if self._original_runnable_invoke is not None:
+            if self._original_runnable_invoke is not None or self._original_runnable_ainvoke is not None:
                 from langchain_core.runnables.base import RunnableSequence
-                RunnableSequence.invoke = self._original_runnable_invoke
+                if self._original_runnable_invoke is not None:
+                    RunnableSequence.invoke = self._original_runnable_invoke
+                if self._original_runnable_ainvoke is not None:
+                    RunnableSequence.ainvoke = self._original_runnable_ainvoke
 
             if self._original_chat_invoke is not None:
                 from langchain_core.language_models.chat_models import BaseChatModel
@@ -203,10 +254,11 @@ class LangChainIntegration(MnemonIntegration):
         except Exception as e:
             logger.debug(f"Mnemon: LangChain unpatch failed — {e}")
         finally:
-            self._original_runnable_invoke = None
-            self._original_chat_invoke     = None
-            self._original_chat_ainvoke    = None
-            self._original_chain_call      = None
+            self._original_runnable_invoke  = None
+            self._original_runnable_ainvoke = None
+            self._original_chat_invoke      = None
+            self._original_chat_ainvoke     = None
+            self._original_chain_call       = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

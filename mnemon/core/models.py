@@ -277,4 +277,71 @@ class DecisionTrace:
     timestamp:            float
 
 
+# ─────────────────────────────────────────────
+# EVIDENCE RECORD (Bus + Retrospector)
+# ─────────────────────────────────────────────
+
+@dataclass
+class EvidenceRecord:
+    """
+    Rich feedback signal assembled by FeedbackExtractor and routed through the Bus.
+    Carries everything the Retrospector needs to diagnose, attribute, and prescribe.
+    """
+    task_id:           str
+    tenant_id:         str
+    template_id:       Optional[str]
+    fragment_ids_used: List[str]
+    framework:         str           # "langchain"|"langgraph"|"crewai"|"autogen"|"anthropic"|"openai"|"unknown"
+    outcome:           str           # "success"|"failure"|"wrong_plan"|"near_miss"
+    failure_class:     Optional[str] # "exception"|"tool_error"|"validation"|"retry"|"max_iter"|"schema"|"wrong_plan"|"manual"|None
+    error_type:        Optional[str]
+    error_message:     Optional[str]
+    failed_step:       Optional[int]
+    cascade_root:      Optional[int]
+    tool_name:         Optional[str]
+    framework_context: Dict[str, Any] = field(default_factory=dict)
+    goal_hash:         Optional[str] = None
+    goal_type:         Optional[str] = None
+    latency_ms:        float = 0.0
+    timestamp:         float = field(default_factory=time.time)
+    is_retry:          bool = False
+    retry_diff:        Optional[List] = None
+
+
+# ─────────────────────────────────────────────
+# FRAGMENT REPUTATION
+# ─────────────────────────────────────────────
+
+@dataclass
+class FragmentReputation:
+    """Per-fragment reliability score keyed by (framework, goal_type). Time-decayed."""
+    fragment_id:      str
+    framework:        str
+    goal_type:        str
+    success_count:    int   = 0
+    failure_count:    int   = 0
+    wrong_plan_count: int   = 0
+    near_miss_count:  int   = 0
+    reputation_score: float = 0.5
+    last_updated:     float = field(default_factory=time.time)
+    known_issues:     List[str] = field(default_factory=list)
+
+
+# ─────────────────────────────────────────────
+# FRAGMENT EDGE (synaptic weight)
+# ─────────────────────────────────────────────
+
+@dataclass
+class FragmentEdge:
+    """Synaptic strength between two adjacent fragments. Hebbian: fire together, wire together."""
+    from_fragment_id: str
+    to_fragment_id:   str
+    framework:        str
+    strength:         float = 0.5
+    success_count:    int   = 0
+    failure_count:    int   = 0
+    last_updated:     float = field(default_factory=time.time)
+    known_issues:     List[str] = field(default_factory=list)
+
+
 MNEMON_VERSION = "1.0.6"

@@ -1,6 +1,13 @@
 """
 Shared utilities for all moth integrations.
 All functions are fail-safe — they never raise.
+
+FeedbackExtractor: framework-aware signal extractor. Builds EvidenceRecords from:
+  - Hard crashes (exceptions, with framework-specific error type mapping)
+  - Tool errors (is_error blocks in Anthropic/OpenAI responses)
+  - Validation failures (OutputParserException, PydanticValidationError, etc.)
+  - Wrong plans (max_iter hits, graph routing errors, schema mismatches)
+  - Soft failure language in LLM output text
 """
 
 from __future__ import annotations
@@ -10,7 +17,7 @@ import json
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from mnemon import MnemonSync
@@ -23,8 +30,7 @@ def prompt_hash(messages: List[Dict], system: Optional[str], model: str) -> str:
     try:
         key = json.dumps(
             {"m": messages, "s": system or "", "model": model},
-            sort_keys=True,
-            default=str,
+            sort_keys=True, default=str,
         )
         return hashlib.md5(key.encode()).hexdigest()
     except Exception:
@@ -34,15 +40,12 @@ def prompt_hash(messages: List[Dict], system: Optional[str], model: str) -> str:
 def extract_query(messages: List[Dict], system: Optional[str] = None) -> str:
     """
     Extract the intent signal for EME semantic matching.
-    Uses system prompt + last user message together — the system prompt
-    describes what the agent is trying to do, the last user message is the task.
-    Returns "" if no meaningful signal can be extracted.
+    Uses system prompt + last user message — system describes what the agent
+    is doing, last user message is the task.
     """
     parts: List[str] = []
-
     if system and isinstance(system, str):
         parts.append(system[:200])
-
     try:
         for msg in reversed(messages):
             if isinstance(msg, dict):
@@ -62,9 +65,235 @@ def extract_query(messages: List[Dict], system: Optional[str] = None) -> str:
                         break
     except Exception:
         pass
-
     return " ".join(parts).strip()[:350]
 
+
+# ─────────────────────────────────────────────
+# FEEDBACK EXTRACTOR
+# ─────────────────────────────────────────────
+
+class FeedbackExtractor:
+    """
+    Framework-aware feedback signal extractor.
+    Builds EvidenceRecords from framework exceptions and response scanning.
+    All methods are classmethods — no instance state, no bleed between calls.
+    """
+
+    # Soft failure language in LLM output text
+    _SOFT_FAIL_RE = re.compile(
+        r"i (was unable|couldn'?t|cannot|failed) to"
+        r"|error (occurred|happened|encountered)"
+        r"|the tool (returned|produced) an? error"
+        r"|unable to (complete|execute|perform|process)"
+        r"|(unfortunately|sorry)[,\s]",
+        re.IGNORECASE,
+    )
+
+    # Framework exception class names → failure_class
+    _ERROR_MAP: Dict[str, str] = {
+        "OutputParserException":     "validation",
+        "OutputParserError":         "validation",
+        "ValidationError":           "schema",
+        "PydanticValidationError":   "schema",
+        "GraphRecursionError":       "max_iter",
+        "NodeInterrupt":             "wrong_plan",
+        "InvalidUpdateError":        "schema",
+        "TaskRepeatedAttemptError":  "max_iter",
+        "ToolException":             "tool_error",
+        "ToolExecutionError":        "tool_error",
+        "TimeoutError":              "exception",
+        "asyncio.TimeoutError":      "exception",
+    }
+
+    @classmethod
+    def from_exception(
+        cls,
+        exc: Exception,
+        framework: str,
+        task_id: str,
+        template_id: Optional[str],
+        fragment_ids: List[str],
+        goal_hash: Optional[str],
+        goal_type: Optional[str],
+        tenant_id: str,
+        latency_ms: float,
+        failed_step: Optional[int] = None,
+    ) -> Any:
+        """Build EvidenceRecord from a caught exception."""
+        try:
+            from mnemon.core.models import EvidenceRecord
+        except ImportError:
+            return None
+        error_type    = type(exc).__name__
+        failure_class = cls._ERROR_MAP.get(error_type, "exception")
+        if failed_step is None:
+            failed_step = cls._step_from_exc(exc)
+        return EvidenceRecord(
+            task_id=task_id,
+            tenant_id=tenant_id,
+            template_id=template_id,
+            fragment_ids_used=fragment_ids,
+            framework=framework,
+            outcome="failure",
+            failure_class=failure_class,
+            error_type=error_type,
+            error_message=str(exc)[:500],
+            failed_step=failed_step,
+            cascade_root=None,
+            tool_name=cls._tool_from_exc(exc),
+            goal_hash=goal_hash,
+            goal_type=goal_type,
+            latency_ms=latency_ms,
+            timestamp=time.time(),
+        )
+
+    @classmethod
+    def from_response(
+        cls,
+        response: Any,
+        framework: str,
+        task_id: str,
+        template_id: Optional[str],
+        fragment_ids: List[str],
+        goal_hash: Optional[str],
+        goal_type: Optional[str],
+        tenant_id: str,
+        latency_ms: float,
+    ) -> Any:
+        """
+        Scan a successful response for embedded failure signals.
+        Returns EvidenceRecord with outcome="success" if clean,
+        "wrong_plan" if framework signals found, "failure" if hard error in response.
+        """
+        try:
+            from mnemon.core.models import EvidenceRecord
+        except ImportError:
+            return None
+        failure_class, error_type, error_msg, tool_name, failed_step = (
+            cls._scan_response(response, framework)
+        )
+        outcome = "success"
+        if failure_class:
+            outcome = "wrong_plan" if failure_class not in ("exception",) else "failure"
+        return EvidenceRecord(
+            task_id=task_id,
+            tenant_id=tenant_id,
+            template_id=template_id,
+            fragment_ids_used=fragment_ids,
+            framework=framework,
+            outcome=outcome,
+            failure_class=failure_class,
+            error_type=error_type,
+            error_message=error_msg,
+            failed_step=failed_step,
+            cascade_root=None,
+            tool_name=tool_name,
+            goal_hash=goal_hash,
+            goal_type=goal_type,
+            latency_ms=latency_ms,
+            timestamp=time.time(),
+        )
+
+    @classmethod
+    def _scan_response(
+        cls, response: Any, framework: str
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[int]]:
+        """
+        Scan response for embedded failure signals.
+        Returns (failure_class, error_type, error_msg, tool_name, failed_step).
+        All None if response is clean.
+        """
+        try:
+            # Anthropic — scan content blocks for tool_result is_error
+            if hasattr(response, "content") and isinstance(response.content, list):
+                for i, block in enumerate(response.content):
+                    if hasattr(block, "type") and block.type == "tool_result":
+                        if getattr(block, "is_error", False):
+                            return (
+                                "tool_error", "tool_result_error",
+                                str(getattr(block, "content", ""))[:300],
+                                getattr(block, "tool_use_id", None),
+                                i,
+                            )
+
+            # OpenAI dict response
+            if isinstance(response, dict):
+                for i, tc in enumerate(response.get("tool_calls") or []):
+                    if isinstance(tc, dict):
+                        result = tc.get("result") or tc.get("output", "")
+                        if isinstance(result, dict) and result.get("error"):
+                            return (
+                                "tool_error", "tool_call_error",
+                                str(result.get("error", ""))[:300],
+                                tc.get("function", {}).get("name"),
+                                i,
+                            )
+                finish = (
+                    response.get("finish_reason")
+                    or (response.get("choices") or [{}])[0].get("finish_reason")
+                )
+                if finish in ("content_filter", "function_call_error"):
+                    return ("wrong_plan", finish, f"finish_reason={finish}", None, None)
+
+            # Soft failure language in text
+            text = cls._extract_text(response)
+            if text and cls._SOFT_FAIL_RE.search(text):
+                return ("wrong_plan", "soft_failure_language", text[:200], None, None)
+
+        except Exception:
+            pass
+        return (None, None, None, None, None)
+
+    @classmethod
+    def _extract_text(cls, response: Any) -> str:
+        try:
+            if isinstance(response, str):
+                return response
+            if hasattr(response, "content"):
+                c = response.content
+                if isinstance(c, str):
+                    return c
+                if isinstance(c, list):
+                    return " ".join(
+                        getattr(b, "text", "") or (b.get("text", "") if isinstance(b, dict) else "")
+                        for b in c
+                    )
+            if isinstance(response, dict):
+                choices = response.get("choices", [])
+                if choices:
+                    return choices[0].get("message", {}).get("content", "")
+        except Exception:
+            pass
+        return ""
+
+    @classmethod
+    def _step_from_exc(cls, exc: Exception) -> Optional[int]:
+        try:
+            msg = str(exc)
+            m = re.search(r"step[_\s]?(\d+)", msg, re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+            m = re.search(r"node[_\s]?(\d+)", msg, re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def _tool_from_exc(cls, exc: Exception) -> Optional[str]:
+        try:
+            m = re.search(r"tool[_\s]?['\"]?(\w+)['\"]?", str(exc), re.IGNORECASE)
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+        return None
+
+
+# ─────────────────────────────────────────────
+# CACHE HIT TRACKING
+# ─────────────────────────────────────────────
 
 def track_cache_hit(
     m: Any,
@@ -73,6 +302,7 @@ def track_cache_hit(
     model: Optional[str] = None,
     input_tokens: Optional[int] = None,
     output_tokens: Optional[int] = None,
+    latency_ms: float = 0.0,
 ) -> None:
     """Record a cache hit to MothStats and Bus. Never raises."""
     try:
@@ -80,14 +310,38 @@ def track_cache_hit(
             m._stats.record_hit(source, tokens, model, input_tokens, output_tokens)
     except Exception:
         pass
-    # Notify Bus so it has data for pattern detection even on MOTH-intercepted calls
     try:
         inner = getattr(m, "_m", None)
         if inner and getattr(inner, "_bus", None):
-            task_id = f"moth:{source}:{time.time():.0f}"
-            m._run(inner._bus.record_outcome(
-                task_id=task_id, task_type=source,
-                outcome="success", latency_ms=0.0,
-            ))
+            try:
+                from mnemon.core.models import EvidenceRecord
+            except ImportError:
+                return
+            task_id  = f"moth:{source}:{time.time():.0f}"
+            evidence = EvidenceRecord(
+                task_id=task_id,
+                tenant_id=getattr(inner, "tenant_id", "unknown"),
+                template_id=None,
+                fragment_ids_used=[],
+                framework=source,
+                outcome="success",
+                failure_class=None,
+                error_type=None,
+                error_message=None,
+                failed_step=None,
+                cascade_root=None,
+                tool_name=None,
+                goal_hash=None,
+                goal_type=source,
+                latency_ms=latency_ms,
+                timestamp=time.time(),
+            )
+            import asyncio as _asyncio
+            coro = inner._bus.record_evidence(evidence)
+            try:
+                loop = _asyncio.get_running_loop()
+                loop.create_task(coro)
+            except RuntimeError:
+                m._run(coro)
     except Exception:
         pass

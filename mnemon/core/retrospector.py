@@ -1,10 +1,20 @@
 """
-Mnemon Retrospector
-Post-hoc decision analysis: traces EME decisions, detects failure patterns,
-quarantines bad fragments, and emits corrective signals via the bus.
+Mnemon Retrospector — Failure Analyst (v2)
 
-Never imports from or writes to EROSDatabase directly.
-Every method has try/except — Retrospector failure must never affect EME or bus.
+Receives full EvidenceRecords from the Bus (real data, not phantom signals).
+Also receives DecisionTraces from EME via submit_trace().
+
+Pipeline:
+  _diagnose()          — precise attribution using cascade_root/failed_step/failure_class
+                         instead of always blaming the last fragment
+  _correlate()         — confirm pattern (≥2 failures, same fragment + reason)
+  _update_reputation() — update fragment reputation + edge weights on EVERY evidence
+                         (not just confirmed patterns — each failure is a data point)
+  _prescribe()         — quarantine / framework-incompatibility / edge penalty
+                         only after pattern confirmed, with confidence-gated quarantine
+
+No LLM calls — _compress_finding() haiku call replaced with code classification table.
+Every method fully guarded — Retrospector failure never affects EME or Bus.
 
 Architecture by Mahika Jadhav (smartass-4ever).
 """
@@ -13,10 +23,11 @@ import asyncio
 import hashlib
 import logging
 import time
-from typing import Optional
+from typing import Dict, List, Optional
 
 from .models import (
     DecisionTrace,
+    EvidenceRecord,
     ExperienceSignal,
     MemoryLayer,
     RiskLevel,
@@ -26,22 +37,43 @@ from .system_db import SystemDatabase
 
 logger = logging.getLogger(__name__)
 
-# Number of failed traces referencing the same fragment to confirm a pattern
 PATTERN_CONFIRM_THRESHOLD = 2
+
+# Quarantine TTL by failure class — severity determines duration
+_QUARANTINE_TTL: Dict[str, int] = {
+    "exception":   168,   # 7 days — hard crash
+    "tool_error":   72,   # 3 days
+    "validation":   48,   # 2 days
+    "schema":       48,
+    "max_iter":     24,   # 1 day — fragile, not broken
+    "retry":        12,   # 12 hours
+    "wrong_plan":   96,   # 4 days
+    "manual":      168,
+    "default":     168,
+}
+
+# Code-based signal classification — replaces haiku call
+_FAILURE_CLASS_TO_SIGNAL: Dict[str, str] = {
+    "exception":   SignalType.FAILURE.value,
+    "tool_error":  SignalType.ANOMALY.value,
+    "validation":  SignalType.PATTERN_FOUND.value,
+    "schema":      SignalType.PATTERN_FOUND.value,
+    "max_iter":    SignalType.DEGRADATION.value,
+    "retry":       SignalType.DEGRADATION.value,
+    "wrong_plan":  SignalType.PATTERN_FOUND.value,
+    "manual":      SignalType.FAILURE.value,
+}
 
 
 class Retrospector:
     """
-    Post-hoc decision auditor.
+    Failure Analyst — diagnoses, correlates, prescribes, updates fragment reputation.
 
-    Lifecycle:
-        await retrospector.start()   # starts hourly quarantine-expiry loop
-        await retrospector.stop()    # cancels background task
+    Two entry points:
+      submit_trace(trace)        — from EME after every run
+      analyse_evidence(evidence) — from Bus after framework signal
 
-    Primary entry point:
-        await retrospector.submit_trace(trace)   # called by EME via create_task
-
-    All public methods are fully guarded — any exception is caught and logged.
+    Both converge on: _diagnose → _correlate → _update_reputation → _prescribe.
     """
 
     def __init__(
@@ -51,11 +83,13 @@ class Retrospector:
         memory,
         system_db: SystemDatabase,
         llm_client=None,
+        signal_db=None,
     ):
         self.bus       = bus
         self.eme       = eme
         self.memory    = memory
         self.system_db = system_db
+        self.signal_db = signal_db
         self.llm       = llm_client
 
         self._running = False
@@ -89,14 +123,13 @@ class Retrospector:
             logger.error(f"Retrospector stop failed: {e}")
 
     # ──────────────────────────────────────────
-    # TRACE SUBMISSION
+    # ENTRY POINT 1 — from EME
     # ──────────────────────────────────────────
 
     async def submit_trace(self, trace: DecisionTrace):
         """
-        Persist a decision trace and trigger retrospective analysis when the
-        overall outcome indicates a failure. Called by EME via create_task —
-        must never raise.
+        Persist a decision trace. On failure, build a minimal EvidenceRecord
+        and route through the full analysis pipeline.
         """
         try:
             await self.system_db.write_trace({
@@ -113,11 +146,59 @@ class Retrospector:
                 "latency_ms":           trace.latency_ms,
                 "timestamp":            trace.timestamp,
             })
-
-            if trace.overall_outcome in ("fail", "failure", "error"):
-                await self._analyse_failure(trace)
+            if trace.overall_outcome == "failure":
+                await self.analyse_evidence(EvidenceRecord(
+                    task_id=trace.task_id,
+                    tenant_id=trace.tenant_id,
+                    template_id=None,
+                    fragment_ids_used=trace.fragment_ids_used,
+                    framework="unknown",
+                    outcome="failure",
+                    failure_class="manual",
+                    error_type=None,
+                    error_message=None,
+                    failed_step=self._step_from_outcomes(trace.step_outcomes),
+                    cascade_root=None,
+                    tool_name=None,
+                    goal_hash=trace.goal_hash,
+                    goal_type=None,
+                    latency_ms=trace.latency_ms,
+                    timestamp=trace.timestamp,
+                ))
         except Exception as e:
             logger.error(f"submit_trace failed (non-fatal): {e}")
+
+    def _step_from_outcomes(self, step_outcomes: Dict) -> Optional[int]:
+        try:
+            for i, (_, outcome) in enumerate(step_outcomes.items()):
+                if outcome in ("fail", "timeout"):
+                    return i
+        except Exception:
+            pass
+        return None
+
+    # ──────────────────────────────────────────
+    # ENTRY POINT 2 — from Bus
+    # ──────────────────────────────────────────
+
+    async def analyse_evidence(self, evidence: EvidenceRecord):
+        """Full analysis pipeline. Must never raise."""
+        try:
+            diagnosis = await self._diagnose(evidence)
+            if not diagnosis:
+                return
+
+            # Update reputation on every evidence — each data point matters
+            await self._update_reputation(evidence, diagnosis["fragment_id"])
+
+            pattern_confirmed = await self._correlate(
+                diagnosis["fragment_id"], evidence.tenant_id, evidence.failure_class
+            )
+            if pattern_confirmed:
+                await self._prescribe(evidence, diagnosis)
+
+        except Exception as e:
+            logger.error(f"analyse_evidence failed (non-fatal): {e}")
 
     # ──────────────────────────────────────────
     # BUS CALLBACK
@@ -125,217 +206,237 @@ class Retrospector:
 
     async def _on_bus_signal(self, signal: ExperienceSignal):
         """
-        Tier 1 bus callback registered via register_retrospector().
-        Currently logs SUCCESS signals for positive correlation tracking.
+        Tier 1 bus pattern signals (DEGRADATION, PATTERN_FOUND, ANOMALY, RECOVERY).
+        These are aggregate pattern alerts — individual failure routing happens via
+        analyse_evidence(). Just log here; no fragment_id available to act on.
         """
         try:
-            if signal.signal_type != SignalType.SUCCESS:
-                return
-            logger.debug(
-                f"Retrospector: SUCCESS signal {signal.signal_id} "
-                f"tenant={signal.tenant_id}"
+            logger.info(
+                f"Retrospector: bus signal [{signal.signal_type.value}] "
+                f"task_type={signal.content.get('task_type')} "
+                f"reason={signal.content.get('reason')} "
+                f"framework={signal.content.get('framework', 'unknown')}"
             )
         except Exception as e:
             logger.error(f"_on_bus_signal failed (non-fatal): {e}")
 
     # ──────────────────────────────────────────
-    # FAILURE ANALYSIS PIPELINE
+    # DIAGNOSIS
     # ──────────────────────────────────────────
 
-    async def _analyse_failure(self, trace: DecisionTrace):
-        """Full retrospective pipeline for a failed trace."""
+    async def _diagnose(self, evidence: EvidenceRecord) -> Optional[Dict]:
+        """
+        Attribute failure to specific fragment with confidence score.
+
+        Priority:
+          1. cascade_root (Bus confirmed root cause) — confidence 0.95
+          2. failed_step (framework told us position) — confidence 0.90
+          3. failure_class inference (tool/schema signals) — confidence 0.60-0.65
+          4. last fragment fallback — confidence 0.40, logged as uncertain
+        """
         try:
-            cause = await self._locate_cause(trace)
-            suspect_frag_id = cause.get("suspect_fragment_id")
-            if not suspect_frag_id:
-                return
+            frags = evidence.fragment_ids_used
+            if not frags:
+                return None
 
-            pattern_confirmed = await self._correlate_patterns(
-                suspect_frag_id, trace.tenant_id
+            if evidence.cascade_root is not None:
+                idx = min(evidence.cascade_root, len(frags) - 1)
+                return {"fragment_id": frags[idx], "step": evidence.cascade_root,
+                        "confidence": 0.95, "method": "cascade_root",
+                        "reason": f"cascade root at step {evidence.cascade_root}"}
+
+            if evidence.failed_step is not None:
+                idx = min(evidence.failed_step, len(frags) - 1)
+                return {"fragment_id": frags[idx], "step": evidence.failed_step,
+                        "confidence": 0.90, "method": "failed_step",
+                        "reason": f"{evidence.failure_class} at step {evidence.failed_step}"}
+
+            if evidence.failure_class == "tool_error" and evidence.tool_name:
+                return {"fragment_id": frags[-1], "step": len(frags) - 1,
+                        "confidence": 0.60, "method": "tool_inference",
+                        "reason": f"tool_error on {evidence.tool_name}"}
+
+            if evidence.failure_class in ("validation", "schema"):
+                return {"fragment_id": frags[-1], "step": len(frags) - 1,
+                        "confidence": 0.65, "method": "schema_inference",
+                        "reason": f"{evidence.failure_class} failure on output"}
+
+            return {"fragment_id": frags[-1], "step": len(frags) - 1,
+                    "confidence": 0.40, "method": "last_fragment_fallback",
+                    "reason": "no step information available"}
+
+        except Exception as e:
+            logger.error(f"_diagnose failed (non-fatal): {e}")
+            return None
+
+    # ──────────────────────────────────────────
+    # CORRELATION
+    # ──────────────────────────────────────────
+
+    async def _correlate(
+        self, fragment_id: str, tenant_id: str, failure_class: Optional[str]
+    ) -> bool:
+        """Confirm pattern: ≥ PATTERN_CONFIRM_THRESHOLD failures for this fragment + tenant."""
+        try:
+            traces = await self.system_db.fetch_traces_by_fragment(fragment_id)
+            failed = [
+                t for t in traces
+                if t.get("tenant_id") == tenant_id
+                and t.get("overall_outcome") == "failure"
+            ]
+            confirmed = len(failed) >= PATTERN_CONFIRM_THRESHOLD
+            if confirmed:
+                logger.info(
+                    f"Pattern confirmed: fragment={fragment_id} failures={len(failed)} "
+                    f"tenant={tenant_id} failure_class={failure_class}"
+                )
+            return confirmed
+        except Exception as e:
+            logger.error(f"_correlate failed (non-fatal): {e}")
+            return False
+
+    # ──────────────────────────────────────────
+    # REPUTATION UPDATE — every evidence, not just confirmed patterns
+    # ──────────────────────────────────────────
+
+    async def _update_reputation(self, evidence: EvidenceRecord, fragment_id: str):
+        """
+        Update fragment reputation and edge weights on every evidence record.
+        On success: strengthen ALL edges in the plan (Hebbian).
+        On failure: weaken the edge leading to the failed fragment.
+        """
+        if not self.signal_db:
+            return
+        try:
+            fw        = evidence.framework or "unknown"
+            gt        = evidence.goal_type  or "general"
+            outcome   = evidence.outcome
+            issue     = evidence.failure_class or ""
+
+            await self.signal_db.update_fragment_reputation(
+                fragment_id=fragment_id,
+                framework=fw,
+                goal_type=gt,
+                outcome=outcome,
+                issue=issue if outcome != "success" else None,
             )
-            if not pattern_confirmed:
-                return
 
-            pattern_row = {
-                "fragment_id": suspect_frag_id,
-                "tenant_id":   trace.tenant_id,
-                "failed_step": cause.get("failed_step"),
-                "outcome":     trace.overall_outcome,
-            }
-            signal_type_str = await self._compress_finding(pattern_row)
+            frags = evidence.fragment_ids_used
+            if outcome == "success":
+                # Strengthen all edges in the successful plan
+                for i in range(len(frags) - 1):
+                    asyncio.create_task(
+                        self.signal_db.update_edge_strength(
+                            from_id=frags[i], to_id=frags[i + 1],
+                            framework=fw, success=True, issue=None,
+                        )
+                    )
+            else:
+                # Weaken the edge leading into the failed fragment
+                if fragment_id in frags:
+                    idx = frags.index(fragment_id)
+                    if idx > 0:
+                        asyncio.create_task(
+                            self.signal_db.update_edge_strength(
+                                from_id=frags[idx - 1], to_id=fragment_id,
+                                framework=fw, success=False, issue=issue,
+                            )
+                        )
+        except Exception as e:
+            logger.error(f"_update_reputation failed (non-fatal): {e}")
 
+    # ──────────────────────────────────────────
+    # PRESCRIPTION — only on confirmed patterns
+    # ──────────────────────────────────────────
+
+    async def _prescribe(self, evidence: EvidenceRecord, diagnosis: Dict):
+        """
+        After pattern confirmed:
+          confidence ≥ 0.70 → full quarantine with failure-class TTL
+          confidence < 0.70 → soft-flag only (finding written, no quarantine)
+        Broadcasts corrective signal with fragment_id so downstream components
+        (EME, future Moth checks) can act on it.
+        """
+        try:
+            fragment_id   = diagnosis["fragment_id"]
+            confidence    = diagnosis["confidence"]
+            failure_class = evidence.failure_class or "default"
+            framework     = evidence.framework or "unknown"
+            ttl           = _QUARANTINE_TTL.get(failure_class, _QUARANTINE_TTL["default"])
+
+            if confidence >= 0.70:
+                await self.system_db.quarantine(
+                    item_type="fragment",
+                    item_id=fragment_id,
+                    tenant_id=evidence.tenant_id,
+                    reason=(
+                        f"{failure_class} confirmed via {diagnosis['method']} "
+                        f"(conf={confidence:.2f}): {diagnosis['reason']}"
+                    ),
+                    confidence=confidence,
+                    ttl_hours=ttl,
+                )
+                logger.info(
+                    f"Fragment quarantined: {fragment_id} reason={failure_class} "
+                    f"framework={framework} ttl={ttl}h conf={confidence:.2f}"
+                )
+            else:
+                logger.info(
+                    f"Fragment soft-flagged (conf={confidence:.2f} < 0.70): "
+                    f"{fragment_id} reason={failure_class}"
+                )
+
+            signal_type_str = _FAILURE_CLASS_TO_SIGNAL.get(failure_class, SignalType.ANOMALY.value)
             try:
                 signal_type = SignalType(signal_type_str)
             except ValueError:
                 signal_type = SignalType.ANOMALY
 
-            summary = (
-                f"Fragment {suspect_frag_id} linked to repeated failures "
-                f"in tenant {trace.tenant_id}. "
-                f"First bad step: {cause.get('failed_step')}."
-            )
-            await self._apply_signal(
-                signal_type, suspect_frag_id, trace.tenant_id, summary
-            )
-        except Exception as e:
-            logger.error(f"_analyse_failure failed (non-fatal): {e}")
-
-    async def _locate_cause(self, trace: DecisionTrace) -> dict:
-        """
-        Pure math — scan step_outcomes for the first failed/timeout step and
-        map it to the fragment that was in use at that position.
-
-        Returns dict with keys 'failed_step' and 'suspect_fragment_id'.
-        """
-        try:
-            failed_step = None
-            for step_id, outcome in trace.step_outcomes.items():
-                if outcome in ("fail", "timeout"):
-                    failed_step = step_id
-                    break
-
-            if not trace.fragment_ids_used:
-                return {"failed_step": failed_step, "suspect_fragment_id": None}
-
-            if failed_step is None:
-                # No individual step failed but overall outcome was failure.
-                # Point at the last fragment used as the most likely culprit.
-                suspect = trace.fragment_ids_used[-1]
-                return {"failed_step": None, "suspect_fragment_id": suspect}
-
-            # Map failed step index → fragment at same position in the used list.
-            step_ids = list(trace.step_outcomes.keys())
-            step_idx = step_ids.index(failed_step)
-            idx = min(step_idx, len(trace.fragment_ids_used) - 1)
-            suspect = trace.fragment_ids_used[idx]
-
-            return {"failed_step": failed_step, "suspect_fragment_id": suspect}
-        except Exception as e:
-            logger.error(f"_locate_cause failed (non-fatal): {e}")
-            return {}
-
-    async def _correlate_patterns(
-        self, suspect_fragment_id: str, tenant_id: str
-    ) -> bool:
-        """
-        Fetch traces that used this fragment over the last 7 days.
-        Returns True when >= PATTERN_CONFIRM_THRESHOLD of them are failures
-        for this tenant, confirming a repeatable pattern.
-        """
-        try:
-            traces = await self.system_db.fetch_traces_by_fragment(suspect_fragment_id)
-            failed = [
-                t for t in traces
-                if t.get("tenant_id") == tenant_id
-                and t.get("overall_outcome") in ("fail", "failure", "error")
-            ]
-            confirmed = len(failed) >= PATTERN_CONFIRM_THRESHOLD
-            if confirmed:
-                logger.info(
-                    f"Pattern confirmed: fragment={suspect_fragment_id} "
-                    f"appeared in {len(failed)} failures for tenant={tenant_id}"
-                )
-            return confirmed
-        except Exception as e:
-            logger.error(f"_correlate_patterns failed (non-fatal): {e}")
-            return False
-
-    async def _compress_finding(self, pattern_row: dict) -> str:
-        """
-        Single claude-haiku-4-5 call to classify the corrective signal type.
-        Returns a SignalType value string. Falls back to 'anomaly' on any error.
-        max_tokens=100 — this must stay cheap.
-        """
-        try:
-            if not self.llm:
-                return SignalType.ANOMALY.value
-
-            prompt = (
-                "An AI execution-cache fragment caused repeated task failures.\n"
-                f"Fragment ID : {pattern_row.get('fragment_id')}\n"
-                f"Failed step : {pattern_row.get('failed_step')}\n"
-                f"Outcome     : {pattern_row.get('outcome')}\n\n"
-                "Classify this event as exactly one of:\n"
-                "  anomaly | degradation | failure | pattern_found\n"
-                "Reply with only the single classification word."
-            )
-            response = await self.llm.complete(
-                prompt=prompt,
-                model="claude-haiku-4-5-20251001",
-                max_tokens=100,
-            )
-            result = response.strip().lower()
-            valid = {st.value for st in SignalType}
-            return result if result in valid else SignalType.ANOMALY.value
-        except Exception as e:
-            logger.error(f"_compress_finding failed (non-fatal): {e}")
-            return SignalType.ANOMALY.value
-
-    async def _apply_signal(
-        self,
-        signal_type: SignalType,
-        affected_id: str,
-        tenant_id: str,
-        summary: str,
-    ):
-        """
-        Quarantine the suspect fragment, write a finding record, and emit a
-        corrective signal on the bus so the rest of the system learns.
-        """
-        try:
-            await self.system_db.quarantine(
-                item_type="fragment",
-                item_id=affected_id,
-                tenant_id=tenant_id,
-                reason=summary,
-                confidence=0.85,
-                ttl_hours=168,
-            )
-
             finding_id = hashlib.md5(
-                f"{tenant_id}:{affected_id}:{time.time()}".encode()
+                f"{evidence.tenant_id}:{fragment_id}:{time.time()}".encode()
             ).hexdigest()[:16]
 
             await self.system_db.write_finding({
                 "finding_id":  finding_id,
-                "tenant_id":   tenant_id,
+                "tenant_id":   evidence.tenant_id,
                 "signal_type": signal_type.value,
-                "affected_id": affected_id,
-                "summary":     summary,
-                "created_at":  time.time(),
+                "affected_id": fragment_id,
+                "summary": (
+                    f"Fragment {fragment_id} linked to {failure_class} failures "
+                    f"framework={framework} tenant={evidence.tenant_id}. "
+                    f"Diagnosis: {diagnosis['reason']} (conf={confidence:.2f})"
+                ),
+                "created_at": time.time(),
             })
 
             if self.bus:
-                signal = ExperienceSignal(
+                await self.bus.broadcast_signal(ExperienceSignal(
                     signal_id=finding_id,
-                    tenant_id=tenant_id,
+                    tenant_id=evidence.tenant_id,
                     session_id="retrospector",
                     timestamp=time.time(),
                     signal_type=signal_type,
                     layer=MemoryLayer.EPISODIC,
                     content={
-                        "fragment_id": affected_id,
-                        "summary":     summary,
-                        "source":      "retrospector",
+                        "fragment_id":   fragment_id,
+                        "failure_class": failure_class,
+                        "framework":     framework,
+                        "confidence":    confidence,
+                        "method":        diagnosis["method"],
+                        "summary":       diagnosis["reason"],
+                        "source":        "retrospector",
                     },
                     importance=0.9,
                     risk_level=RiskLevel.HIGH,
-                )
-                await self.bus.broadcast_signal(signal)
-
-            logger.info(
-                f"Applied {signal_type.value} signal: fragment={affected_id} "
-                f"tenant={tenant_id}"
-            )
+                ))
         except Exception as e:
-            logger.error(f"_apply_signal failed (non-fatal): {e}")
+            logger.error(f"_prescribe failed (non-fatal): {e}")
 
     # ──────────────────────────────────────────
     # BACKGROUND LOOP
     # ──────────────────────────────────────────
 
     async def _quarantine_check_loop(self):
-        """Runs every hour, removing quarantine entries that have expired."""
         while self._running:
             try:
                 await asyncio.sleep(3600)

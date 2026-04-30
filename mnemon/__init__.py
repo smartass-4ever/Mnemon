@@ -35,6 +35,7 @@ from mnemon.core.eme import ExecutionMemoryEngine, TemplateAdapter, CostBudget, 
 from mnemon.core.bus import ExperienceBus
 from mnemon.core.retrospector import Retrospector
 from mnemon.core.system_db import SystemDatabase
+from mnemon.core.signal_db import SignalDatabase
 from mnemon.security.manager import SecurityManager, TenantSecurityConfig, scrub_injection
 from mnemon.observability.watchdog import Watchdog
 from mnemon.observability.telemetry import Telemetry
@@ -90,6 +91,7 @@ class Mnemon:
         self._watchdog:     Optional[Watchdog]              = None
         self._retrospector: Optional[Retrospector]          = None
         self._system_db:    Optional[SystemDatabase]        = None
+        self._signal_db:    Optional[SignalDatabase]        = None
         self._prewarm_fragments = prewarm_fragments
 
         if eme_enabled:
@@ -104,9 +106,13 @@ class Mnemon:
             self._system_db = SystemDatabase(
                 db_path=_os.path.join(db_dir, f"mnemon_system_{tenant_id}.db")
             )
+            self._signal_db = SignalDatabase(
+                db_path=_os.path.join(db_dir, f"mnemon_signal_{tenant_id}.db")
+            )
             self._retrospector = Retrospector(
                 bus=self._bus, eme=self._eme, memory=None,
                 system_db=self._system_db, llm_client=resolved_llm,
+                signal_db=self._signal_db,
             )
         if enable_watchdog:
             self._watchdog = Watchdog(
@@ -128,6 +134,8 @@ class Mnemon:
         await self._db.connect()
         if self._system_db:
             await self._system_db.connect()
+        if self._signal_db:
+            await self._signal_db.connect()
 
         if self._eme:
             await self._eme.warm()
@@ -166,6 +174,8 @@ class Mnemon:
             await self._bus.start()
         if self._retrospector:
             await self._retrospector.start()
+            if self._bus:
+                self._bus.register_retrospector(self._retrospector)
             if self._eme:
                 self._eme.set_retrospector(self._retrospector)
         if self._watchdog:
@@ -174,6 +184,9 @@ class Mnemon:
         logger.info(f"Mnemon {MNEMON_VERSION} started — tenant={self.tenant_id}")
 
     async def stop(self):
+        if not self._started:
+            return
+        self._started = False
         if self._watchdog:
             await self._watchdog.stop()
         if self._retrospector:
@@ -184,12 +197,18 @@ class Mnemon:
             await self._drift.flush_session()
         except Exception:
             pass
+        if self._eme:
+            try:
+                await self._eme._write_behind.flush_now()
+            except Exception:
+                pass
+        if self._signal_db:
+            await self._signal_db.disconnect()
         if self._system_db:
             await self._system_db.disconnect()
         await self._db.disconnect()
         if self._telemetry:
             self._telemetry.emit_log()
-        self._started = False
         if not self._silent:
             import sys as _sys
             parts = []
@@ -263,11 +282,27 @@ class Mnemon:
 
         if self._bus:
             try:
+                from mnemon.core.models import EvidenceRecord
                 outcome = "success" if eme_result and eme_result.template else "failure"
-                await self._bus.record_outcome(
-                    task_id=task_id, task_type=task_type,
-                    outcome=outcome, latency_ms=latency_ms,
-                )
+                frag_ids = (eme_result.fragment_ids_used if eme_result else []) or []
+                await self._bus.record_evidence(EvidenceRecord(
+                    task_id=task_id,
+                    tenant_id=self.tenant_id,
+                    template_id=eme_result.template_id if eme_result else None,
+                    fragment_ids_used=frag_ids,
+                    framework=context.get("_mnemon_framework", "unknown") if context else "unknown",
+                    outcome=outcome,
+                    failure_class=None if outcome == "success" else "manual",
+                    error_type=None,
+                    error_message=None,
+                    failed_step=None,
+                    cascade_root=None,
+                    tool_name=None,
+                    goal_hash=None,
+                    goal_type=task_type,
+                    latency_ms=latency_ms,
+                    timestamp=time.time(),
+                ))
             except Exception as e:
                 logger.debug(f"Bus record failed: {e}")
 
@@ -306,6 +341,22 @@ class Mnemon:
             "task_id":          task_id,
             "session_id":       session_id,
         }
+
+    async def mark_failure(self, task_id: str) -> None:
+        """Signal that a previously returned template failed in production."""
+        if self._eme:
+            try:
+                await self._eme.mark_failure(task_id)
+            except Exception as e:
+                logger.debug(f"mark_failure failed (non-critical): {e}")
+        if self._bus:
+            try:
+                await self._bus.record_outcome(
+                    task_id=task_id, task_type="manual_failure",
+                    outcome="failure", latency_ms=0.0,
+                )
+            except Exception:
+                pass
 
     async def delete_all_data(self):
         await self._db.delete_tenant_all(self.tenant_id)

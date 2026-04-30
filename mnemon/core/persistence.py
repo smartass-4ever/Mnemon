@@ -21,7 +21,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 
 class SchemaError(Exception):
@@ -206,6 +206,7 @@ class EROSDatabase:
             1: self._migration_v1_to_v2,
             2: self._migration_v2_to_v3,
             3: self._migration_v3_to_v4,
+            4: self._migration_v4_to_v5,
         }
 
         for v in range(current, CURRENT_SCHEMA_VERSION):
@@ -409,6 +410,17 @@ class EROSDatabase:
             if "duplicate column" not in str(e).lower():
                 raise
 
+    async def _migration_v4_to_v5(self):
+        """Add intent column to fragment_library for cross-session drone prompts."""
+        try:
+            self._conn.execute(
+                "ALTER TABLE fragment_library ADD COLUMN intent TEXT DEFAULT ''"
+            )
+            self._conn.commit()
+        except Exception as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+
     # ──────────────────────────────────────────
     # EXECUTION TEMPLATES (EME)
     # ──────────────────────────────────────────
@@ -421,6 +433,7 @@ class EROSDatabase:
                     "content":      s.content,
                     "fingerprint":  s.fingerprint,
                     "signature":    s.signature,
+                    "intent":       s.intent,
                     "dependencies": s.dependencies,
                     "outputs":      s.outputs,
                     "domain_tags":  list(s.domain_tags),
@@ -551,6 +564,7 @@ class EROSDatabase:
                 content=s["content"],
                 fingerprint=s["fingerprint"],
                 signature=s.get("signature", []),
+                intent=s.get("intent", ""),
                 dependencies=s.get("dependencies", []),
                 outputs=s.get("outputs", []),
                 domain_tags=set(s.get("domain_tags", [])),
@@ -585,9 +599,12 @@ class EROSDatabase:
     async def write_fragment(self, segment: TemplateSegment):
         async with self._lock:
             self._conn.execute("""
-                INSERT OR REPLACE INTO fragment_library VALUES (
+                INSERT OR REPLACE INTO fragment_library (
+                    segment_id, tenant_id, content, fingerprint,
+                    signature, domain_tags, success_rate, use_count, confidence, intent
+                ) VALUES (
                     :segment_id, :tenant_id, :content, :fingerprint,
-                    :signature, :domain_tags, :success_rate, :use_count, :confidence
+                    :signature, :domain_tags, :success_rate, :use_count, :confidence, :intent
                 )
             """, {
                 "segment_id":   segment.segment_id,
@@ -599,6 +616,7 @@ class EROSDatabase:
                 "success_rate": segment.success_rate,
                 "use_count":    segment.use_count,
                 "confidence":   segment.confidence,
+                "intent":       segment.intent,
             })
             self._conn.commit()
 
@@ -615,6 +633,7 @@ class EROSDatabase:
                 content=json.loads(r["content"]),
                 fingerprint=r["fingerprint"],
                 signature=json.loads(r["signature"]),
+                intent=r["intent"] if "intent" in r.keys() else "",
                 domain_tags=set(json.loads(r["domain_tags"])),
                 success_rate=r["success_rate"],
                 use_count=r["use_count"],
