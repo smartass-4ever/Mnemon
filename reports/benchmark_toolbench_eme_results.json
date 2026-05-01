@@ -1,0 +1,205 @@
+{
+  "benchmark": "Mnemon EME \u2014 Real Production Workload Simulation",
+  "dataset": "bitext/Bitext-customer-support-llm-chatbot-training-dataset (HuggingFace, 27k queries)",
+  "summary": {
+    "total_calls": 1350,
+    "system1_hits": 568,
+    "system2_hits": 329,
+    "misses": 453,
+    "hit_rate": 0.6644,
+    "tokens_saved": 190140,
+    "cost_saved_usd": 2.8521,
+    "avg_latency_ms": 72.3
+  },
+  "by_category": {
+    "cancel_order": {
+      "n": 50,
+      "system1": 50,
+      "system2": 0,
+      "misses": 0,
+      "hit_rate": 1.0
+    },
+    "change_order": {
+      "n": 50,
+      "system1": 27,
+      "system2": 17,
+      "misses": 6,
+      "hit_rate": 0.88
+    },
+    "change_shipping_address": {
+      "n": 50,
+      "system1": 27,
+      "system2": 7,
+      "misses": 16,
+      "hit_rate": 0.68
+    },
+    "check_cancellation_fee": {
+      "n": 50,
+      "system1": 27,
+      "system2": 11,
+      "misses": 12,
+      "hit_rate": 0.76
+    },
+    "check_invoice": {
+      "n": 50,
+      "system1": 27,
+      "system2": 8,
+      "misses": 15,
+      "hit_rate": 0.7
+    },
+    "check_payment_methods": {
+      "n": 50,
+      "system1": 27,
+      "system2": 7,
+      "misses": 16,
+      "hit_rate": 0.68
+    },
+    "check_refund_policy": {
+      "n": 50,
+      "system1": 27,
+      "system2": 7,
+      "misses": 16,
+      "hit_rate": 0.68
+    },
+    "complaint": {
+      "n": 50,
+      "system1": 27,
+      "system2": 9,
+      "misses": 14,
+      "hit_rate": 0.72
+    },
+    "contact_customer_service": {
+      "n": 50,
+      "system1": 27,
+      "system2": 8,
+      "misses": 15,
+      "hit_rate": 0.7
+    },
+    "contact_human_agent": {
+      "n": 50,
+      "system1": 27,
+      "system2": 6,
+      "misses": 17,
+      "hit_rate": 0.66
+    },
+    "create_account": {
+      "n": 50,
+      "system1": 27,
+      "system2": 14,
+      "misses": 9,
+      "hit_rate": 0.82
+    },
+    "delete_account": {
+      "n": 50,
+      "system1": 27,
+      "system2": 12,
+      "misses": 11,
+      "hit_rate": 0.78
+    },
+    "delivery_options": {
+      "n": 50,
+      "system1": 28,
+      "system2": 2,
+      "misses": 20,
+      "hit_rate": 0.6
+    },
+    "delivery_period": {
+      "n": 50,
+      "system1": 27,
+      "system2": 1,
+      "misses": 22,
+      "hit_rate": 0.56
+    },
+    "edit_account": {
+      "n": 50,
+      "system1": 28,
+      "system2": 5,
+      "misses": 17,
+      "hit_rate": 0.66
+    },
+    "get_invoice": {
+      "n": 50,
+      "system1": 27,
+      "system2": 7,
+      "misses": 16,
+      "hit_rate": 0.68
+    },
+    "get_refund": {
+      "n": 50,
+      "system1": 27,
+      "system2": 10,
+      "misses": 13,
+      "hit_rate": 0.74
+    },
+    "newsletter_subscription": {
+      "n": 50,
+      "system1": 27,
+      "system2": 15,
+      "misses": 8,
+      "hit_rate": 0.84
+    },
+    "payment_issue": {
+      "n": 50,
+      "system1": 27,
+      "system2": 18,
+      "misses": 5,
+      "hit_rate": 0.9
+    },
+    "place_order": {
+      "n": 50,
+      "system1": 27,
+      "system2": 2,
+      "misses": 21,
+      "hit_rate": 0.58
+    },
+    "recover_password": {
+      "n": 50,
+      "system1": 0,
+      "system2": 22,
+      "misses": 28,
+      "hit_rate": 0.44
+    },
+    "registration_problems": {
+      "n": 50,
+      "system1": 0,
+      "system2": 28,
+      "misses": 22,
+      "hit_rate": 0.56
+    },
+    "review": {
+      "n": 50,
+      "system1": 0,
+      "system2": 8,
+      "misses": 42,
+      "hit_rate": 0.16
+    },
+    "set_up_shipping_address": {
+      "n": 50,
+      "system1": 0,
+      "system2": 32,
+      "misses": 18,
+      "hit_rate": 0.64
+    },
+    "switch_account": {
+      "n": 50,
+      "system1": 0,
+      "system2": 16,
+      "misses": 34,
+      "hit_rate": 0.32
+    },
+    "track_order": {
+      "n": 50,
+      "system1": 2,
+      "system2": 34,
+      "misses": 14,
+      "hit_rate": 0.72
+    },
+    "track_refund": {
+      "n": 50,
+      "system1": 1,
+      "system2": 23,
+      "misses": 26,
+      "hit_rate": 0.48
+    }
+  }
+}
