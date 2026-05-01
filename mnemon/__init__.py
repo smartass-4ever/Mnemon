@@ -23,6 +23,8 @@ import atexit
 import hashlib
 import logging
 import os
+
+from mnemon.core.models import MNEMON_VERSION as __version__
 import time
 from typing import Any, Callable, Dict, List, Optional
 
