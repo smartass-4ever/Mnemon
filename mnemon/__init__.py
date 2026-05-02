@@ -536,6 +536,11 @@ class MnemonSync:
         return self._loop.run_until_complete(coro)
 
     def run(self, goal: str, inputs: dict, generation_fn, **kwargs) -> dict:
+        import inspect
+        if not inspect.iscoroutinefunction(generation_fn):
+            _sync_fn = generation_fn
+            async def generation_fn(*args, **kw):
+                return _sync_fn(*args, **kw)
         return self._run(self._m.run(goal=goal, inputs=inputs, generation_fn=generation_fn, **kwargs))
 
     def get_stats(self) -> dict:

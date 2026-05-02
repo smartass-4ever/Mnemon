@@ -204,7 +204,8 @@ class Watchdog:
         if not self.bus:
             return HealthCheckResult("queue_depth", True, 0, QUEUE_DEPTH_ALERT, "No bus configured", "info")
 
-        depth = self.bus._queue.qsize()
+        # Bus uses _history deque (not a queue) since v2 refactor
+        depth = len(getattr(self.bus, "_history", []))
         passed = depth < QUEUE_DEPTH_ALERT
 
         return HealthCheckResult(
@@ -212,7 +213,7 @@ class Watchdog:
             passed=passed,
             value=depth,
             threshold=QUEUE_DEPTH_ALERT,
-            message=f"Bus queue depth: {depth}",
+            message=f"Bus history depth: {depth}",
             severity="warning" if not passed else "info",
         )
 
