@@ -205,6 +205,11 @@ m = mnemon.get()
 ### Run a cached plan
 
 ```python
+async def your_planning_function(goal, inputs, context, capabilities, constraints):
+    # Called only on a cache miss — put your LLM call here
+    response = await llm.generate(goal, inputs)
+    return response
+
 result = m.run(
     goal="weekly security audit for Acme Corp",
     inputs={"client": "Acme Corp", "week": "Apr 21-25"},
