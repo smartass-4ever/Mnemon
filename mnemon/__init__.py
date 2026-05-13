@@ -65,6 +65,7 @@ class Mnemon:
         watchdog_webhook: Optional[str] = None,
         enable_telemetry: bool = True,
         prewarm_fragments: bool = True,
+        prewarm_templates: bool = True,
         silent: bool = False,
     ):
         self.tenant_id   = tenant_id
@@ -94,7 +95,8 @@ class Mnemon:
         self._retrospector: Optional[Retrospector]          = None
         self._system_db:    Optional[SystemDatabase]        = None
         self._signal_db:    Optional[SignalDatabase]        = None
-        self._prewarm_fragments = prewarm_fragments
+        self._prewarm_fragments  = prewarm_fragments
+        self._prewarm_templates  = prewarm_templates
 
         if eme_enabled:
             self._eme = ExecutionMemoryEngine(
@@ -143,7 +145,7 @@ class Mnemon:
             await self._eme.warm()
             if self._prewarm_fragments:
                 try:
-                    from mnemon.fragments.library import load_fragments, load_templates
+                    from mnemon.fragments.library import load_fragments
                     existing = await self._db.fetch_fragments(self.tenant_id)
                     if len(existing) == 0:
                         frags = load_fragments(self.tenant_id)
@@ -157,6 +159,7 @@ class Mnemon:
                         logger.info(f"Pre-warmed {len(frags)} fragments loaded")
                 except Exception as e:
                     logger.debug(f"Fragment pre-warm skipped: {e}")
+            if self._prewarm_templates:
                 try:
                     from mnemon.fragments.library import load_templates
                     existing_tmpl = await self._db.fetch_prewarmed_templates(self.tenant_id)
@@ -333,8 +336,10 @@ class Mnemon:
                 total_segs = (eme_result.segments_reused or 0) + (eme_result.segments_generated or 0)
                 self._session_future_tokens += total_segs * 250
 
+        output = eme_result.template if eme_result else None
         return {
-            "template":         eme_result.template if eme_result else None,
+            "output":           output,
+            "template":         output,   # alias kept for backwards compat
             "cache_level":      eme_result.cache_level if eme_result else "error",
             "segments_reused":  eme_result.segments_reused if eme_result else 0,
             "tokens_saved":     eme_result.tokens_saved if eme_result else 0,
@@ -375,6 +380,7 @@ class Mnemon:
             eme_enabled=config.get("eme_enabled", True),
             bus_enabled=config.get("bus_enabled", True),
             prewarm_fragments=config.get("prewarm_fragments", True),
+            prewarm_templates=config.get("prewarm_templates", True),
             enable_watchdog=config.get("enable_watchdog", False),
             enable_telemetry=config.get("enable_telemetry", True),
             silent=config.get("silent", False),
@@ -639,6 +645,7 @@ def init(
 
     kwargs.setdefault("eme_enabled", True)
     kwargs.setdefault("bus_enabled", True)
+    kwargs.setdefault("prewarm_templates", False)
 
     m = MnemonSync(
         tenant_id=resolved_tenant,

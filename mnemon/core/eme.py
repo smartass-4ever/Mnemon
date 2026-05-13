@@ -85,6 +85,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 
 SYSTEM2_THRESHOLD_DEFAULT  = 0.70   # minimum overall similarity for System 2
+MIN_GOAL_SIMILARITY        = 0.60   # goal embedding must be at least this similar for System 2
 FRAGMENT_EXACT_THRESHOLD   = 0.98   # fragment library exact hit
 FRAGMENT_SIMILAR_THRESHOLD = 0.80   # fragment library similar hit (LLM adapts)
 SEGMENT_MATCH_THRESHOLD    = 0.72   # per-segment intent similarity — clear match
@@ -153,7 +154,9 @@ class GenericAdapter(TemplateAdapter):
         return [{"id": "seg_0", "content": template}]
 
     def reconstruct(self, segments: List[TemplateSegment]) -> Any:
-        return {"nodes": [s.content for s in segments], "type": "eros_template"}
+        if len(segments) == 1:
+            return segments[0].content
+        return [s.content for s in segments]
 
     def extract_signature(self, template: Any, goal: str) -> ComputationFingerprint:
         # Derive a structural schema from the template so that templates with the
@@ -867,6 +870,9 @@ class ExecutionMemoryEngine:
 
         for t in templates:
             if not t.embedding:
+                continue
+            goal_sim = SimpleEmbedder.cosine_similarity(goal_embedding, t.embedding)
+            if goal_sim < MIN_GOAL_SIMILARITY:
                 continue
             score = self._multi_component_similarity(
                 fp, t.fingerprint, goal_embedding, t.embedding,
@@ -1806,7 +1812,18 @@ class ExecutionMemoryEngine:
 
     def _hydrate(self, template: ExecutionTemplate, inputs: Dict) -> Any:
         """Instantiate cached template with current variable values."""
-        plan_str = json.dumps([s.content for s in template.segments], default=str)
+        segs = template.segments
+        if len(segs) == 1:
+            # Single-segment: return content directly so type is preserved.
+            # Multi-segment wraps in a list (plans, DAGs, step sequences).
+            content_str = json.dumps(segs[0].content, default=str)
+            for key, value in inputs.items():
+                content_str = content_str.replace(f"${{{key}}}", str(value))
+            try:
+                return json.loads(content_str)
+            except json.JSONDecodeError:
+                return content_str
+        plan_str = json.dumps([s.content for s in segs], default=str)
         for key, value in inputs.items():
             plan_str = plan_str.replace(f"${{{key}}}", str(value))
         try:

@@ -225,12 +225,19 @@ For any expensive recurring computation that isn't a direct framework call.
 
 ```python
 import mnemon
+from anthropic import Anthropic
 
+client = Anthropic()
 m = mnemon.init()
 
 def generate_report(goal, inputs, context, capabilities, constraints):
-    # put your LLM call here — only runs when there's no cached result
-    return your_llm_call(goal, inputs)
+    # only runs on a cache miss — put your real LLM call here
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": goal}],
+    )
+    return response.content[0].text
 
 result = m.run(
     goal="weekly security audit for Acme Corp",
@@ -238,9 +245,10 @@ result = m.run(
     generation_fn=generate_report,
 )
 
+print(result["output"])            # your actual result — the return value of generation_fn
 print(result["cache_level"])       # "system1" | "system2" | "miss"
-print(result["tokens_saved"])      # 1250
-print(result["latency_saved_ms"])  # 20000.0
+print(result["tokens_saved"])      # 1250 on a cache hit, 0 on first run
+print(result["latency_saved_ms"])  # 20000.0 on a cache hit
 ```
 
 `generation_fn` also accepts `async def` — both work.
@@ -293,6 +301,7 @@ async with Mnemon(tenant_id="my_company") as m:
         inputs={"client": "Acme Corp", "week": "Apr 21-25"},
         generation_fn=my_planning_function,
     )
+    print(result["output"])         # your actual result
     print(result["cache_level"])
     print(result["tokens_saved"])
 ```
