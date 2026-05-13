@@ -128,9 +128,9 @@ class SimpleEmbedder:
             self._backend = HashProjectionEmbedder()
             self.dim = 64
             self.backend_name = "hash-projection"
-            logger.warning(
-                "Mnemon embedder: using hash-projection fallback (64-dim, ~56%% recall). "
-                "Upgrade for production quality: pip install mnemon-ai[full]"
+            logger.info(
+                "Mnemon embedder: using hash-projection fallback (64-dim). "
+                "Upgrade for better System 2 recall: pip install mnemon-ai[full]"
             )
 
     def embed(self, text: str) -> List[float]:
