@@ -197,43 +197,60 @@ mnemon demo
 
 ## Quickstart
 
+### Path 1 — zero code changes (recommended)
+
+Already using Anthropic SDK, OpenAI, LangChain, LangGraph, CrewAI, or AutoGen?
+Add two lines. Everything else stays the same.
+
+```python
+import mnemon
+mnemon.init()   # auto-detects installed frameworks and patches them
+
+# your existing code — completely unchanged
+from anthropic import Anthropic
+client = Anthropic()
+response = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Generate weekly security report for Acme Corp"}]
+)
+```
+
+Mnemon intercepts the call, checks its cache, and returns a cached response instantly on repeat runs — no API call made, no tokens spent.
+
+### Path 2 — explicit caching with `m.run()`
+
+For any expensive recurring computation that isn't a direct framework call.
+`generation_fn` is your real logic — only called on a cache miss.
+
 ```python
 import mnemon
 
 m = mnemon.init()
-# Auto-detects your project name, creates a local SQLite DB,
-# patches installed frameworks, starts the Bus.
-# Access the same instance from anywhere:
-m = mnemon.get()
-```
 
-### Run a cached plan
-
-```python
-async def your_planning_function(goal, inputs, context, capabilities, constraints):
-    # Called only on a cache miss — put your LLM call here
-    response = await llm.generate(goal, inputs)
-    return response
+def generate_report(goal, inputs, context, capabilities, constraints):
+    # put your LLM call here — only runs when there's no cached result
+    return your_llm_call(goal, inputs)
 
 result = m.run(
     goal="weekly security audit for Acme Corp",
     inputs={"client": "Acme Corp", "week": "Apr 21-25"},
-    generation_fn=your_planning_function,
+    generation_fn=generate_report,
 )
 
 print(result["cache_level"])       # "system1" | "system2" | "miss"
 print(result["tokens_saved"])      # 1250
 print(result["latency_saved_ms"])  # 20000.0
-print(result["segments_reused"])   # how many plan segments came from cache
 ```
 
-`generation_fn` receives `(goal, inputs, context, capabilities, constraints)` and returns your plan. It's only called on a cache miss.
+`generation_fn` also accepts `async def` — both work.
 
 ### See what you've saved
 
 ```python
-print(m.waste_report)   # repeated queries and their cumulative cost
-print(m.get_stats())    # EME stats, bus signals, security config
+m = mnemon.get()             # retrieve the running instance from anywhere
+print(m.waste_report)        # repeated queries and their cumulative cost
+print(m.get_stats())         # EME stats, bus signals, DB stats
 ```
 
 ---
