@@ -499,7 +499,7 @@ class MnemonSync:
                 )
             if plans_cached > 0:
                 future_tokens = self._m._session_future_tokens
-                future_cost   = future_tokens * 0.000015
+                future_cost   = future_tokens * 0.000003
                 parts.append(
                     f"{plans_cached} plan(s) cached → "
                     f"next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})"
@@ -583,7 +583,7 @@ class MnemonSync:
                     )
                 if plans_cached > 0:
                     future_tokens = self._m._session_future_tokens
-                    future_cost   = future_tokens * 0.000015
+                    future_cost   = future_tokens * 0.000003
                     parts.append(
                         f"{plans_cached} plan(s) cached → "
                         f"next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})"

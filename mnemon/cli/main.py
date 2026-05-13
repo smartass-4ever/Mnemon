@@ -75,12 +75,13 @@ async def cmd_demo(args):
         ]
 
     with tempfile.TemporaryDirectory() as tmp:
-        async with Mnemon(tenant_id="demo", db_dir=tmp, enable_telemetry=False) as m:
+        async with Mnemon(tenant_id="demo", db_dir=tmp, enable_telemetry=False, silent=True) as m:
             frags = load_fragments("demo")
             for frag in frags:
                 await m._db.write_fragment(frag)
-            if m._eme:
-                m._eme._fragments = frags
+                if m._eme and frag.signature:
+                    await m._eme._fragment_index.add("demo", frag.segment_id, frag.signature)
+                    m._eme._fragment_map[frag.segment_id] = frag
 
             print("  Scenario: your agent runs the same class of task repeatedly.")
             print("  Goal: 'generate weekly security report'\n")

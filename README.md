@@ -60,7 +60,7 @@ It works in two modes:
 
 Failed segments are quarantined by the Retrospector — bad patterns can't recycle into future plans.
 
-Ships with 49 pre-warmed segments from real enterprise runs so the cache starts warm on day one.
+Ships with 100 pre-warmed segments from real enterprise runs so the cache starts warm on day one.
 
 ### 2. Experience Bus — a learning loop that never stops
 
@@ -105,9 +105,14 @@ This is the loop: **EME saves the work. Bus learns from it. Both get better.**
 
 ### What your session looks like
 
+First run (cache miss — plan is stored):
+```
+Mnemon: 1 plan(s) cached → next run saves ~1,250 tokens (~$0.0038)
+```
+
+Every run after (cache hit):
 ```
 Mnemon: ~1,250 tokens saved · ~$0.0038 · 20.0s faster
-Mnemon: 3 plan(s) cached → next run saves ~3,750 tokens (~$0.0113)
 ```
 
 Full runs, methodology, and raw data: [`reports/`](reports/)
