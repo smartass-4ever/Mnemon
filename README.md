@@ -172,12 +172,18 @@ Every other library makes your prompt slightly better. Mnemon eliminates the LLM
 pip install mnemon-ai
 ```
 
+**No API key needed to start:**
+```bash
+mnemon demo     # see it working in 30 seconds
+mnemon doctor   # health check
+```
+
 ```bash
 pip install mnemon-ai[embeddings]   # sentence-transformers — recommended for production
 pip install mnemon-ai[full]         # embeddings + all LLM providers
 ```
 
-Set one environment variable (used only for gap-fill — retrieval never calls the LLM):
+**Optional:** set an API key to enable System 2 gap-fill (only needed for partial segment regeneration):
 
 ```bash
 export GROQ_API_KEY=gsk_...      # pip install mnemon-ai[groq]   ← free tier, start here
@@ -187,11 +193,6 @@ export GOOGLE_API_KEY=AIza...    # pip install mnemon-ai[google]
 ```
 
 Mnemon detects the key automatically.
-
-**No API key? Try the demo:**
-```bash
-mnemon demo
-```
 
 ---
 
