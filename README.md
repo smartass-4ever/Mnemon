@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Downloads](https://img.shields.io/pypi/dm/mnemon-ai)](https://pypi.org/project/mnemon-ai/)
 
-[Install](#install) · [Quickstart](#quickstart) · [Benchmarks](#the-numbers) · [API](#api)
+[Quickstart](#quickstart) · [Benchmarks](#the-numbers) · [How it works](#two-things-that-fix-this) · [Install](#install) · [API](#api)
 
 </div>
 
@@ -39,6 +39,112 @@ Every agent framework — LangChain, CrewAI, AutoGen, LangGraph — is **statele
 Your agent generates a security report for Acme Corp every Monday. Every Monday it starts from zero: re-reads the same context, re-reasons through the same structure, re-generates the same plan. You pay full LLM price each time. It never gets faster. It never gets smarter.
 
 > **You built a smart agent. You got an amnesiac that invoices you twice.**
+
+---
+
+## Quickstart
+
+### Path 1 — zero code changes (recommended)
+
+Already using Anthropic SDK, OpenAI, LangChain, LangGraph, CrewAI, or AutoGen?
+Add two lines. Everything else stays the same.
+
+```python
+import mnemon
+mnemon.init()   # auto-detects installed frameworks and patches them
+
+# your existing code — completely unchanged
+from anthropic import Anthropic
+client = Anthropic()
+response = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Generate weekly security report for Acme Corp"}]
+)
+```
+
+Mnemon intercepts the call, checks its cache, and returns a cached response instantly on repeat runs — no API call made, no tokens spent.
+
+### Path 2 — explicit caching with `m.run()`
+
+For any expensive recurring computation that isn't a direct framework call.
+`generation_fn` is your real logic — only called on a cache miss.
+
+```python
+import mnemon
+from anthropic import Anthropic
+
+client = Anthropic()
+m = mnemon.init()
+
+def generate_report(goal, inputs, context, capabilities, constraints):
+    # only runs on a cache miss — put your real LLM call here
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": goal}],
+    )
+    return response.content[0].text
+
+result = m.run(
+    goal="weekly security audit for Acme Corp",
+    inputs={"client": "Acme Corp", "week": "Apr 21-25"},
+    generation_fn=generate_report,
+)
+
+print(result["output"])            # your actual result — the return value of generation_fn
+print(result["cache_level"])       # "system1" | "system2" | "miss"
+print(result["tokens_saved"])      # 1250 on a cache hit, 0 on first run
+print(result["latency_saved_ms"])  # 20000.0 on a cache hit
+```
+
+`generation_fn` also accepts `async def` — both work.
+
+### See what you've saved
+
+```python
+m = mnemon.get()             # retrieve the running instance from anywhere
+print(m.waste_report)        # repeated queries and their cumulative cost
+print(m.get_stats())         # EME stats, bus signals, DB stats
+```
+
+---
+
+## The Numbers
+
+### Execution cache — EME benchmarks
+
+| | |
+|---|---|
+| System 1 hit (exact match) | **2.66ms** |
+| Fresh LLM generation | ~20,000ms |
+| Speedup | **7,500×** |
+| 50 concurrent agents, burst | 0 LLM calls · 0.18s total |
+| Tokens saved (50 agents) | 62,500 |
+| Cost saved (50 agents) | $0.94 |
+
+### At scale (80% System 1 + 15% System 2 hit rate)
+
+| Daily plans | Monthly cost saved |
+|---|---|
+| 100 | $56 |
+| 1,000 | $503 |
+| 10,000 | $5,034 |
+| 100,000 | **$50,344** |
+
+### What your session looks like
+
+First run (cache miss — plan is stored):
+```
+Mnemon: 1 plan(s) cached → next run saves ~1,250 tokens (~$0.0038)
+```
+
+Every run after (cache hit):
+```
+Mnemon: ~1,250 tokens saved · ~$0.0038 · 20.0s faster
+```
+
+Full runs, methodology, and raw data: [`reports/`](reports/)
 
 ---
 
@@ -78,44 +184,6 @@ What it detects:
 What it does with that intelligence: feeds it back to the EME. Success patterns strengthen the fragment library. Failure patterns trigger quarantine. The cache gets smarter on every run — not just bigger.
 
 This is the loop: **EME saves the work. Bus learns from it. Both get better.**
-
----
-
-## The Numbers
-
-### Execution cache — EME benchmarks
-
-| | |
-|---|---|
-| System 1 hit (exact match) | **2.66ms** |
-| Fresh LLM generation | ~20,000ms |
-| Speedup | **7,500×** |
-| 50 concurrent agents, burst | 0 LLM calls · 0.18s total |
-| Tokens saved (50 agents) | 62,500 |
-| Cost saved (50 agents) | $0.94 |
-
-### At scale (80% System 1 + 15% System 2 hit rate)
-
-| Daily plans | Monthly cost saved |
-|---|---|
-| 100 | $56 |
-| 1,000 | $503 |
-| 10,000 | $5,034 |
-| 100,000 | **$50,344** |
-
-### What your session looks like
-
-First run (cache miss — plan is stored):
-```
-Mnemon: 1 plan(s) cached → next run saves ~1,250 tokens (~$0.0038)
-```
-
-Every run after (cache hit):
-```
-Mnemon: ~1,250 tokens saved · ~$0.0038 · 20.0s faster
-```
-
-Full runs, methodology, and raw data: [`reports/`](reports/)
 
 ---
 
@@ -193,74 +261,6 @@ export GOOGLE_API_KEY=AIza...    # pip install mnemon-ai[google]
 ```
 
 Mnemon detects the key automatically.
-
----
-
-## Quickstart
-
-### Path 1 — zero code changes (recommended)
-
-Already using Anthropic SDK, OpenAI, LangChain, LangGraph, CrewAI, or AutoGen?
-Add two lines. Everything else stays the same.
-
-```python
-import mnemon
-mnemon.init()   # auto-detects installed frameworks and patches them
-
-# your existing code — completely unchanged
-from anthropic import Anthropic
-client = Anthropic()
-response = client.messages.create(
-    model="claude-sonnet-4-6",
-    max_tokens=1024,
-    messages=[{"role": "user", "content": "Generate weekly security report for Acme Corp"}]
-)
-```
-
-Mnemon intercepts the call, checks its cache, and returns a cached response instantly on repeat runs — no API call made, no tokens spent.
-
-### Path 2 — explicit caching with `m.run()`
-
-For any expensive recurring computation that isn't a direct framework call.
-`generation_fn` is your real logic — only called on a cache miss.
-
-```python
-import mnemon
-from anthropic import Anthropic
-
-client = Anthropic()
-m = mnemon.init()
-
-def generate_report(goal, inputs, context, capabilities, constraints):
-    # only runs on a cache miss — put your real LLM call here
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": goal}],
-    )
-    return response.content[0].text
-
-result = m.run(
-    goal="weekly security audit for Acme Corp",
-    inputs={"client": "Acme Corp", "week": "Apr 21-25"},
-    generation_fn=generate_report,
-)
-
-print(result["output"])            # your actual result — the return value of generation_fn
-print(result["cache_level"])       # "system1" | "system2" | "miss"
-print(result["tokens_saved"])      # 1250 on a cache hit, 0 on first run
-print(result["latency_saved_ms"])  # 20000.0 on a cache hit
-```
-
-`generation_fn` also accepts `async def` — both work.
-
-### See what you've saved
-
-```python
-m = mnemon.get()             # retrieve the running instance from anywhere
-print(m.waste_report)        # repeated queries and their cumulative cost
-print(m.get_stats())         # EME stats, bus signals, DB stats
-```
 
 ---
 
