@@ -155,7 +155,7 @@ def _make_node_wrapper(node_name: str, original: Any, m: Any, node_cache: MothCa
 
     def wrapped_invoke(state: Any, config: Any = None, **kwargs: Any) -> Any:
         goal     = f"{node_name}: {_extract_graph_goal(state)}"
-        hash_key = f"{node_name}:{prompt_hash([{'content': str(state)}], None, node_name)}"
+        hash_key = f"{node_name}:{prompt_hash([{'content': _extract_graph_goal(state)}], None, node_name)}"
 
         cached = node_cache.check(goal, [node_name], hash_key)
         if cached is not None:
@@ -175,7 +175,7 @@ def _make_node_wrapper(node_name: str, original: Any, m: Any, node_cache: MothCa
 
     async def wrapped_ainvoke(state: Any, config: Any = None, **kwargs: Any) -> Any:
         goal     = f"{node_name}: {_extract_graph_goal(state)}"
-        hash_key = f"{node_name}:{prompt_hash([{'content': str(state)}], None, node_name)}"
+        hash_key = f"{node_name}:{prompt_hash([{'content': _extract_graph_goal(state)}], None, node_name)}"
 
         cached = await node_cache.async_check(goal, [node_name], hash_key)
         if cached is not None:
@@ -245,7 +245,8 @@ def _extract_graph_goal(state: Any) -> str:
 
 def _graph_cache_key(graph: Any, state: Any) -> str:
     graph_id = getattr(graph, "name", type(graph).__name__)
-    return f"{graph_id}:{prompt_hash([{'content': str(state)}], None, graph_id)}"
+    goal = _extract_graph_goal(state)
+    return f"{graph_id}:{prompt_hash([{'content': goal}], None, graph_id)}"
 
 
 def _extract_graph_outcome(result: Any) -> str:
