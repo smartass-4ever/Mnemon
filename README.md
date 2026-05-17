@@ -150,7 +150,7 @@ Mnemon: ~1,250 tokens saved · ~$0.0038 · 20.0s faster
 
 Full runs, methodology, and raw data: [`reports/`](reports/)
 
-> **Independent validation:** Stanford researchers published [*Agentic Plan Caching: Test-Time Memory for Fast and Cost-Efficient LLM Agents*](https://arxiv.org/abs/2506.14852) at NeurIPS 2025, independently arriving at the same approach and measuring 50.31% cost reduction. Mnemon is the production implementation — one import, works today.
+> **Academic validation:** Stanford researchers published [*Agentic Plan Caching: Test-Time Memory for Fast and Cost-Efficient LLM Agents*](https://arxiv.org/abs/2506.14852) at NeurIPS 2025, measuring 50.31% cost reduction with the same approach. Mnemon is the production implementation of this idea — one import, works today.
 
 ---
 
