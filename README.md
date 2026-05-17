@@ -25,6 +25,8 @@ Mnemon gives your agent two things:
 
 One line of code. No infrastructure. No changes to your existing agent.
 
+**Built for:** agentic workflows that repeat · production AI agents with high API costs · teams optimizing LLM infrastructure spend · LangChain, CrewAI, AutoGen, and LangGraph pipelines running at scale.
+
 ```python
 import mnemon
 m = mnemon.init()
@@ -37,6 +39,8 @@ m = mnemon.init()
 Every agent framework — LangChain, CrewAI, AutoGen, LangGraph — is **stateless by default**.
 
 Your agent generates a security report for Acme Corp every Monday. Every Monday it starts from zero: re-reads the same context, re-reasons through the same structure, re-generates the same plan. You pay full LLM price each time. It never gets faster. It never gets smarter.
+
+This is the core problem with agentic workflow cost optimization: every run is treated as the first run. Token usage doesn't decrease. API costs don't decrease. Latency doesn't decrease. You scale your agent, you scale your bill.
 
 > **You built a smart agent. You got an amnesiac that invoices you twice.**
 
@@ -146,7 +150,7 @@ Mnemon: ~1,250 tokens saved · ~$0.0038 · 20.0s faster
 
 Full runs, methodology, and raw data: [`reports/`](reports/)
 
-> **Independent validation:** Stanford researchers published [*Agentic Plan Caching: Test-Time Memory for Fast and Cost-Efficient LLM Agents*](https://arxiv.org/abs/2506.14852) at NeurIPS 2025, independently arriving at the same approach and measuring 46.62% cost reduction. Mnemon is the production implementation — one import, works today.
+> **Independent validation:** Stanford researchers published [*Agentic Plan Caching: Test-Time Memory for Fast and Cost-Efficient LLM Agents*](https://arxiv.org/abs/2506.14852) at NeurIPS 2025, independently arriving at the same approach and measuring 50.31% cost reduction. Mnemon is the production implementation — one import, works today.
 
 ---
 
