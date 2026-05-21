@@ -337,13 +337,31 @@ class Mnemon:
                 self._session_future_tokens += max(total_segs * 250, 500)
 
         output = eme_result.template if eme_result else None
+        cache_level = eme_result.cache_level if eme_result else "error"
+        tokens_saved = eme_result.tokens_saved if eme_result else 0
+        latency_saved_ms = eme_result.latency_saved_ms if eme_result else 0
+
+        if not self._silent:
+            import sys as _sys
+            if cache_level in ("system1", "system2"):
+                cost = tokens_saved * 0.000003
+                secs = latency_saved_ms / 1000
+                msg = f"Mnemon: cache hit · {tokens_saved:,} tokens saved · ~${cost:.4f}"
+                if secs > 0:
+                    msg += f" · {secs:.1f}s faster"
+            elif cache_level in ("miss", "system2_guided"):
+                msg = "Mnemon: first run — plan cached, next run will be instant"
+            else:
+                msg = "Mnemon: ran (no cache)"
+            print(msg, file=_sys.stderr, flush=True)
+
         return {
             "output":           output,
             "template":         output,   # alias kept for backwards compat
-            "cache_level":      eme_result.cache_level if eme_result else "error",
+            "cache_level":      cache_level,
             "segments_reused":  eme_result.segments_reused if eme_result else 0,
-            "tokens_saved":     eme_result.tokens_saved if eme_result else 0,
-            "latency_saved_ms": eme_result.latency_saved_ms if eme_result else 0,
+            "tokens_saved":     tokens_saved,
+            "latency_saved_ms": latency_saved_ms,
             "latency_ms":       latency_ms,
             "task_id":          task_id,
             "session_id":       session_id,

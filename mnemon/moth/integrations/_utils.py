@@ -306,6 +306,18 @@ def track_cache_hit(
 ) -> None:
     """Record a cache hit to MothStats and Bus. Never raises."""
     try:
+        silent = getattr(m, "_kwargs", {}).get("silent", False)
+        if not silent:
+            import sys as _sys
+            total_tokens = (input_tokens or 0) + (output_tokens or 0) if (input_tokens or output_tokens) else (tokens or 0)
+            cost = total_tokens * 0.000003
+            msg = f"Mnemon: cache hit [{source}]"
+            if total_tokens:
+                msg += f" · {total_tokens:,} tokens saved · ~${cost:.4f}"
+            print(msg, file=_sys.stderr, flush=True)
+    except Exception:
+        pass
+    try:
         if hasattr(m, "_stats") and m._stats is not None:
             m._stats.record_hit(source, tokens, model, input_tokens, output_tokens)
     except Exception:
