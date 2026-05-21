@@ -125,8 +125,10 @@ class MothStats:
                     for h in self._history
                 ],
             }
-            with open(self._persist_path, "w") as f:
+            tmp_path = self._persist_path + ".tmp"
+            with open(tmp_path, "w") as f:
                 json.dump(data, f)
+            os.replace(tmp_path, self._persist_path)
         except Exception:
             pass
 

@@ -5,6 +5,7 @@ Redis interface stub ready for distributed scale.
 """
 
 import asyncio
+import os
 import sqlite3
 import json
 import time
@@ -158,6 +159,20 @@ class EROSDatabase:
         self._lock = asyncio.Lock()
 
     async def connect(self):
+        if self.db_path != ":memory:":
+            db_dir = str(Path(self.db_path).parent)
+            try:
+                Path(db_dir).mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                raise RuntimeError(
+                    f"Mnemon cannot create database directory '{db_dir}': {e}. "
+                    "Check that the path exists and is writable, or set db_dir to a writable location."
+                ) from e
+            if not os.access(db_dir, os.W_OK):
+                raise RuntimeError(
+                    f"Mnemon database directory '{db_dir}' is not writable. "
+                    "Check permissions or set db_dir to a writable location."
+                )
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")

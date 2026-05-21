@@ -158,7 +158,7 @@ class Mnemon:
                                 self._eme._fragment_map[frag.segment_id] = frag
                         logger.info(f"Pre-warmed {len(frags)} fragments loaded")
                 except Exception as e:
-                    logger.debug(f"Fragment pre-warm skipped: {e}")
+                    logger.info(f"Fragment pre-warm skipped: {e}")
             if self._prewarm_templates:
                 try:
                     from mnemon.fragments.library import load_templates
@@ -173,7 +173,7 @@ class Mnemon:
                                 )
                         logger.info(f"Pre-warmed {len(tmpls)} templates loaded")
                 except Exception as e:
-                    logger.debug(f"Template pre-warm skipped: {e}")
+                    logger.info(f"Template pre-warm skipped: {e}")
 
         if self._bus:
             await self._bus.start()
@@ -309,7 +309,7 @@ class Mnemon:
                     timestamp=time.time(),
                 ))
             except Exception as e:
-                logger.debug(f"Bus record failed: {e}")
+                logger.warning(f"Bus record failed: {e}")
 
         try:
             cache_hit = bool(eme_result and eme_result.cache_level in ("system1", "system2"))
@@ -334,7 +334,7 @@ class Mnemon:
             if eme_result.cache_level in ("miss", "system2_guided"):
                 self._session_plans_cached  += 1
                 total_segs = (eme_result.segments_reused or 0) + (eme_result.segments_generated or 0)
-                self._session_future_tokens += total_segs * 250
+                self._session_future_tokens += max(total_segs * 250, 500)
 
         output = eme_result.template if eme_result else None
         return {
@@ -451,7 +451,7 @@ class MnemonSync:
     def __init__(self, **kwargs):
         self._kwargs = kwargs
         self._m: Optional[Mnemon] = None
-        self._loop = asyncio.new_event_loop()
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._moth = None
         from mnemon.moth.stats import MothStats
         _db_dir    = kwargs.get("db_dir", ".")
@@ -460,6 +460,7 @@ class MnemonSync:
         self._stats = MothStats(persist_path=_stats_path)
 
     def __enter__(self):
+        self._loop = asyncio.new_event_loop()
         self._m = Mnemon(**self._kwargs)
         self._loop.run_until_complete(self._m.start())
         try:
@@ -468,8 +469,13 @@ class MnemonSync:
             activated = self._moth.activate(self)
             if activated:
                 logger.info(f"Mnemon moth activated: {', '.join(activated)}")
+            else:
+                logger.warning(
+                    "Mnemon started but no frameworks detected — caching is inactive. "
+                    "Install a supported framework (langchain, crewai, langgraph) or use m.run() directly."
+                )
         except Exception as e:
-            logger.debug(f"Mnemon moth failed to start: {e}")
+            logger.warning(f"Mnemon moth failed to start: {e} — framework auto-patching disabled")
         return self
 
     def __exit__(self, *args):
@@ -479,9 +485,11 @@ class MnemonSync:
             except Exception:
                 pass
         self._m._silent = True
-        self._loop.run_until_complete(self._m.stop())
-        _cancel_all_tasks(self._loop)
-        self._loop.close()
+        if self._loop is not None:
+            self._loop.run_until_complete(self._m.stop())
+            _cancel_all_tasks(self._loop)
+            self._loop.close()
+            self._loop = None
         silent = self._kwargs.get("silent", False)
         if not silent:
             import sys as _sys
@@ -562,7 +570,7 @@ class MnemonSync:
             except Exception:
                 pass
             self._moth = None
-        if self._m is not None:
+        if self._m is not None and self._loop is not None:
             self._m._silent = True
             self._loop.run_until_complete(self._m.stop())
             _cancel_all_tasks(self._loop)
@@ -597,6 +605,7 @@ class MnemonSync:
                 if parts:
                     print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stderr, flush=True)
             self._loop.close()
+            self._loop = None
             self._m = None
 
 
@@ -609,7 +618,12 @@ def _detect_tenant_id() -> str:
     env = os.environ.get("MNEMON_TENANT")
     if env:
         return env
-    return os.path.basename(os.getcwd()) or "default"
+    derived = os.path.basename(os.getcwd()) or "default"
+    logger.info(
+        f"Mnemon tenant auto-detected as '{derived}' from cwd. "
+        "Set MNEMON_TENANT env var to pin a specific tenant."
+    )
+    return derived
 
 
 def _detect_adapter() -> Optional[TemplateAdapter]:

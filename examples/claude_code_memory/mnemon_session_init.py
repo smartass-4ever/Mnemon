@@ -14,7 +14,7 @@ import tempfile
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
-MNEMON_SCRIPT = r"C:\Users\MAHIKA\.claude\mnemon_claude.py"
+MNEMON_SCRIPT = os.path.join(os.path.expanduser("~"), ".claude", "mnemon_claude.py")
 GUARD_DIR     = tempfile.gettempdir()
 
 
