@@ -344,4 +344,4 @@ class FragmentEdge:
     known_issues:     List[str] = field(default_factory=list)
 
 
-MNEMON_VERSION = "1.0.6"
+MNEMON_VERSION = "1.0.7"
