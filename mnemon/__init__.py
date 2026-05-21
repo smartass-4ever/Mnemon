@@ -363,7 +363,7 @@ class Mnemon:
                         "  aren't dropping, drop a line at mahikajadhav22@gmail.com — I can look at your logs directly."
                     )
                 else:
-                    msg = "Mnemon: first run — plan cached, next run will be instant"
+                    msg = "Mnemon: new input — cached, next run will be instant"
             else:
                 msg = "Mnemon: ran (no cache)"
             print(msg, file=_sys.stderr, flush=True)
