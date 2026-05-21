@@ -6,6 +6,7 @@ Redis interface stub ready for distributed scale.
 
 import asyncio
 import os
+import re
 import sqlite3
 import json
 import time
@@ -149,6 +150,11 @@ class EROSDatabase:
     """
 
     def __init__(self, tenant_id: str, db_dir: str = "."):
+        if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', tenant_id):
+            raise ValueError(
+                f"Invalid tenant_id '{tenant_id}'. "
+                "Only alphanumeric characters, hyphens, and underscores are allowed (max 64 chars)."
+            )
         self.tenant_id = tenant_id
         self.db_dir = db_dir
         if db_dir == ":memory:":

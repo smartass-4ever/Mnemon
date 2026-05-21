@@ -629,7 +629,7 @@ def _detect_tenant_id() -> str:
 def _detect_adapter() -> Optional[TemplateAdapter]:
     try:
         import crewai  # noqa: F401
-        from mnemon.adapters.crewai import CrewAIAdapter
+        from mnemon._future.adapters.crewai import CrewAIAdapter
         return CrewAIAdapter()
     except ImportError:
         pass
