@@ -350,7 +350,11 @@ class Mnemon:
                 if secs > 0:
                     msg += f" · {secs:.1f}s faster"
             elif cache_level in ("miss", "system2_guided"):
-                msg = "Mnemon: first run — plan cached, next run will be instant"
+                msg = (
+                    "Mnemon: first run — plan cached, next run will be instant\n"
+                    "  Thank you for installing Mnemon! If your agent is loop-locking or token costs\n"
+                    "  aren't dropping, drop a line at mahikajadhav22@gmail.com — I can look at your logs directly."
+                )
             else:
                 msg = "Mnemon: ran (no cache)"
             print(msg, file=_sys.stderr, flush=True)
