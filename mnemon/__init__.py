@@ -74,6 +74,7 @@ class Mnemon:
         self.bus_enabled = bus_enabled
 
         self._embedder = SimpleEmbedder()
+        self._db_dir   = db_dir
         self._db       = EROSDatabase(tenant_id=tenant_id, db_dir=db_dir)
 
         resolved_llm = llm_client if llm_client is not None else auto_client()
@@ -350,11 +351,19 @@ class Mnemon:
                 if secs > 0:
                     msg += f" · {secs:.1f}s faster"
             elif cache_level in ("miss", "system2_guided"):
-                msg = (
-                    "Mnemon: first run — plan cached, next run will be instant\n"
-                    "  Thank you for installing Mnemon! If your agent is loop-locking or token costs\n"
-                    "  aren't dropping, drop a line at mahikajadhav22@gmail.com — I can look at your logs directly."
-                )
+                flag = _os.path.join(self._db_dir, f".mnemon_welcomed_{self.tenant_id}")
+                if not _os.path.exists(flag):
+                    try:
+                        open(flag, "w").close()
+                    except OSError:
+                        pass
+                    msg = (
+                        "Mnemon: first run — plan cached, next run will be instant\n"
+                        "  Thank you for installing Mnemon! If your agent is loop-locking or token costs\n"
+                        "  aren't dropping, drop a line at mahikajadhav22@gmail.com — I can look at your logs directly."
+                    )
+                else:
+                    msg = "Mnemon: first run — plan cached, next run will be instant"
             else:
                 msg = "Mnemon: ran (no cache)"
             print(msg, file=_sys.stderr, flush=True)
