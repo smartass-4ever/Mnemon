@@ -351,8 +351,8 @@ class Mnemon:
                 if secs > 0:
                     msg += f" · {secs:.1f}s faster"
             elif cache_level in ("miss", "system2_guided"):
-                flag = _os.path.join(self._db_dir, f".mnemon_welcomed_{self.tenant_id}")
-                if not _os.path.exists(flag):
+                flag = os.path.join(self._db_dir, f".mnemon_welcomed_{self.tenant_id}")
+                if not os.path.exists(flag):
                     try:
                         open(flag, "w").close()
                     except OSError:

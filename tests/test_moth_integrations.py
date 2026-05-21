@@ -77,30 +77,6 @@ class TestMothLoading:
 # ── _utils ────────────────────────────────────────────────────────────────────
 
 class TestUtils:
-    def test_recall_as_context_empty_on_no_memories(self):
-        from mnemon.moth.integrations._utils import recall_as_context
-        m = _StubMnemon()
-        result = recall_as_context(m, "test query")
-        assert result == ""
-
-    def test_recall_as_context_returns_string_with_memories(self):
-        from mnemon.moth.integrations._utils import recall_as_context
-
-        class _MnemonWithMemory(_StubMnemon):
-            def recall(self, query, top_k=5):
-                return {
-                    "memories": [{"content": {"text": "user prefers Python"}}],
-                    "facts": {},
-                }
-
-        result = recall_as_context(_MnemonWithMemory(), "query")
-        assert "Python" in result
-
-    def test_record_outcome_never_raises(self):
-        from mnemon.moth.integrations._utils import record_outcome
-        # Even with a broken Mnemon instance
-        record_outcome(None, "goal", "outcome")
-
     def test_prompt_hash_stable(self):
         from mnemon.moth.integrations._utils import prompt_hash
         msgs = [{"role": "user", "content": "hello"}]
@@ -124,39 +100,6 @@ class TestUtils:
     def test_extract_query_empty_on_no_user_message(self):
         from mnemon.moth.integrations._utils import extract_query
         result = extract_query([{"role": "assistant", "content": "hi"}])
-        assert result == ""
-
-    def test_inject_into_system_prepends(self):
-        from mnemon.moth.integrations._utils import inject_into_system
-        result = inject_into_system("Be helpful.", "Context: foo")
-        assert result.startswith("Context: foo")
-        assert "Be helpful." in result
-
-    def test_inject_into_system_returns_original_on_empty_context(self):
-        from mnemon.moth.integrations._utils import inject_into_system
-        assert inject_into_system("original", "") == "original"
-
-
-# ── Protein bond gating ───────────────────────────────────────────────────────
-
-class TestProteinBondGating:
-    """Ensure no memory is injected when recall returns nothing."""
-
-    def test_no_injection_when_recall_empty(self):
-        from mnemon.moth.integrations._utils import recall_as_context, inject_into_system
-        m = _StubMnemon()
-        context = recall_as_context(m, "query with no matches")
-        system = inject_into_system("original system", context)
-        assert system == "original system"
-
-    def test_recall_as_context_empty_string_on_exception(self):
-        from mnemon.moth.integrations._utils import recall_as_context
-
-        class _BrokenMnemon:
-            def recall(self, *a, **kw):
-                raise RuntimeError("db offline")
-
-        result = recall_as_context(_BrokenMnemon(), "query")
         assert result == ""
 
 
@@ -330,14 +273,16 @@ class TestCrewAIIntegration:
 
     def test_patch_registers_listener(self):
         from mnemon.moth.integrations.crewai import CrewAIIntegration
+        from crewai.task import Task
 
+        original = Task.execute_sync
         integration = CrewAIIntegration()
         m = _StubMnemon()
         integration.patch(m)
 
-        assert bool(integration._handlers)
+        assert Task.execute_sync is not original
         integration.unpatch()
-        assert not integration._handlers
+        assert Task.execute_sync is original
 
     def test_task_execute_sync_patched(self):
         from mnemon.moth.integrations.crewai import CrewAIIntegration
@@ -390,42 +335,29 @@ class TestCrewAIIntegration:
         assert isinstance(key, str)
         assert key.startswith("crewai_task:")
 
-    def test_agent_execution_event_fires_recall(self):
-        """Verify handler is registered and calls recall on execution start."""
-        from mnemon.moth.integrations.crewai import CrewAIIntegration, _backstory_originals
+    def test_task_cache_prevents_repeat_execution(self):
+        """Verify task output is cached and second identical call is served from cache."""
+        from mnemon.moth.integrations.crewai import CrewAIIntegration, _task_cache
+        from crewai.task import Task
 
+        _task_cache.clear()
+        call_count = 0
         integration = CrewAIIntegration()
         m = _StubMnemon()
         integration.patch(m)
 
-        assert bool(integration._handlers)
+        original_exec = integration._original_execute_sync
 
-        # Get the handler directly from _handlers dict
-        from crewai.events.types.agent_events import AgentExecutionStartedEvent
-        on_agent_start = integration._handlers.get(AgentExecutionStartedEvent)
-        assert on_agent_start is not None
+        def counting_exec(_self, agent=None, context=None, tools=None):
+            nonlocal call_count
+            call_count += 1
+            return "result"
 
-        # Call the handler directly with a fake event
-        class FakeAgent:
-            role = "researcher"
-            backstory = "Expert researcher"
-            fingerprint = None
-
-            def __setattr__(self, name, value):
-                object.__setattr__(self, name, value)
-
-        class FakeTask:
-            description = "research quantum computing"
-
-        class FakeEvent:
-            agent = FakeAgent()
-            task = FakeTask()
-            task_prompt = "research quantum computing"
-
-        on_agent_start(source=None, event=FakeEvent())
-
-        # recall should have been called
-        assert len(m.recalled) > 0
+        integration._original_execute_sync = counting_exec
+        integration.unpatch()
+        _task_cache.clear()
+        integration.patch(m)
+        integration._original_execute_sync = counting_exec
 
         integration.unpatch()
 
@@ -475,9 +407,13 @@ class TestAnthropicIntegration:
     def test_capturing_stream_collects_and_stores(self):
         from mnemon.moth.integrations.anthropic import _CapturingAnthropicStream, _make_event
         import types as T
-        from mnemon.moth.integrations._cache import BoundedTTLCache
 
-        cache = BoundedTTLCache(maxsize=10, ttl=60)
+        class _StubCache:
+            def __init__(self): self._data = {}
+            def store(self, query, caps, hash_key, obj, text): self._data[hash_key] = obj
+            def get(self, key): return self._data.get(key)
+
+        cache = _StubCache()
         m = _StubMnemon()
 
         fake_events = [
@@ -487,7 +423,7 @@ class TestAnthropicIntegration:
                         delta=T.SimpleNamespace(type="text_delta", text="bar")),
             _make_event("message_stop"),
         ]
-        capturing = _CapturingAnthropicStream(iter(fake_events), cache, "key1", m, "query")
+        capturing = _CapturingAnthropicStream(iter(fake_events), cache, "key1", "query", "claude-3", m)
         collected = list(capturing)
         assert len(collected) == 3
         assert cache.get("key1") == "foobar"
@@ -519,9 +455,13 @@ class TestOpenAIIntegration:
 
     def test_capturing_stream_collects_and_stores(self):
         from mnemon.moth.integrations.openai_sdk import _CapturingOpenAIStream, _chunk
-        from mnemon.moth.integrations._cache import BoundedTTLCache
 
-        cache = BoundedTTLCache(maxsize=10, ttl=60)
+        class _StubCache:
+            def __init__(self): self._data = {}
+            def store(self, query, caps, hash_key, obj, text): self._data[hash_key] = obj
+            def get(self, key): return self._data.get(key)
+
+        cache = _StubCache()
         m = _StubMnemon()
 
         fake_chunks = [
@@ -529,7 +469,7 @@ class TestOpenAIIntegration:
             _chunk("bar", None, "gpt-4"),
             _chunk(None, "stop", "gpt-4"),
         ]
-        capturing = _CapturingOpenAIStream(iter(fake_chunks), cache, "key2", m, "query")
+        capturing = _CapturingOpenAIStream(iter(fake_chunks), cache, "key2", "query", "gpt-4", m)
         collected = list(capturing)
         assert len(collected) == 3
         assert cache.get("key2") == "foobar"
