@@ -113,6 +113,28 @@ async def test_eme_system1_cache():
     print("  ✓ EME System 1 cache hit")
 
 
+async def test_run_does_not_raise_on_miss_with_silent_false():
+    # Regression: v1.0.8 used `_os` (undefined) instead of `os` in the
+    # miss branch of the console-print block, crashing every first run.
+    import uuid
+    eros = Mnemon(
+        tenant_id=f"reg_{uuid.uuid4().hex[:8]}",
+        agent_id="test_agent",
+        db_dir="/tmp",
+        silent=False,
+        prewarm_fragments=False,
+    )
+    await eros.start()
+
+    async def gen(goal, inputs, context, caps, constraints):
+        return [{"id": "s1", "action": "do"}]
+
+    result = await eros.run(goal=f"unique_goal_{uuid.uuid4().hex}", inputs={}, generation_fn=gen)
+    assert result["cache_level"] == "miss"
+    await eros.stop()
+    print("  ✓ run() with silent=False on cache miss does not raise NameError")
+
+
 async def test_eme_different_goals_miss():
     eros = await make_eros(eme_enabled=False)
     calls = []
