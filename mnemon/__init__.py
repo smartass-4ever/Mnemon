@@ -483,6 +483,7 @@ class MnemonSync:
         self._kwargs = kwargs
         self._m: Optional[Mnemon] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._loop_thread = None   # set when loop runs in a background thread
         self._moth = None
         from mnemon.moth.stats import MothStats
         _db_dir    = kwargs.get("db_dir", ".")
@@ -491,9 +492,22 @@ class MnemonSync:
         self._stats = MothStats(persist_path=_stats_path)
 
     def __enter__(self):
+        import threading
         self._loop = asyncio.new_event_loop()
         self._m = Mnemon(**self._kwargs)
-        self._loop.run_until_complete(self._m.start())
+        try:
+            asyncio.get_running_loop()
+            # Already inside a running event loop (e.g. Jupyter, FastAPI startup,
+            # asyncio.run()) — run our dedicated loop in a background thread so
+            # run_until_complete / run_coroutine_threadsafe can still work.
+            self._loop_thread = threading.Thread(
+                target=self._loop.run_forever, daemon=True, name="mnemon-loop"
+            )
+            self._loop_thread.start()
+            asyncio.run_coroutine_threadsafe(self._m.start(), self._loop).result(timeout=30)
+        except RuntimeError:
+            # No running loop — safe to drive directly.
+            self._loop.run_until_complete(self._m.start())
         try:
             from mnemon.moth import Moth
             self._moth = Moth()
@@ -578,6 +592,8 @@ class MnemonSync:
         return self._stats.waste_report()
 
     def _run(self, coro):
+        if self._loop_thread is not None and self._loop_thread.is_alive():
+            return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
         return self._loop.run_until_complete(coro)
 
     def run(self, goal: str, inputs: dict, generation_fn, **kwargs) -> dict:
@@ -603,8 +619,14 @@ class MnemonSync:
             self._moth = None
         if self._m is not None and self._loop is not None:
             self._m._silent = True
-            self._loop.run_until_complete(self._m.stop())
-            _cancel_all_tasks(self._loop)
+            if self._loop_thread is not None and self._loop_thread.is_alive():
+                asyncio.run_coroutine_threadsafe(self._m.stop(), self._loop).result(timeout=10)
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                self._loop_thread.join(timeout=5)
+                self._loop_thread = None
+            else:
+                self._loop.run_until_complete(self._m.stop())
+                _cancel_all_tasks(self._loop)
             silent = self._kwargs.get("silent", False)
             if not silent:
                 import sys as _sys
