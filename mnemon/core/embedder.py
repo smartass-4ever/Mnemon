@@ -111,6 +111,7 @@ class SentenceTransformerEmbedder:
 class SimpleEmbedder:
     """
     Public embedder interface. Auto-selects best available backend.
+    Backend is loaded lazily on first embed() call — init() stays fast.
 
     With sentence-transformers: 384-dim, ~85% retrieval precision.
     Without: hash-projection 64-dim fallback, ~56% retrieval precision.
@@ -119,6 +120,13 @@ class SimpleEmbedder:
     """
 
     def __init__(self):
+        self._backend = None  # loaded on first use
+        self.dim = 384        # reported dim before load; updated after
+        self.backend_name = "pending"
+
+    def _load(self) -> None:
+        if self._backend is not None:
+            return
         st_model = _try_load_sentence_transformers()
         if st_model:
             self._backend = SentenceTransformerEmbedder(st_model)
@@ -134,9 +142,11 @@ class SimpleEmbedder:
             )
 
     def embed(self, text: str) -> List[float]:
+        self._load()
         return self._backend.embed(text)
 
     def embed_full(self, text: str) -> List[float]:
+        self._load()
         return self._backend.embed_full(text)
 
     @staticmethod

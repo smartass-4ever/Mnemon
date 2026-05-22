@@ -231,7 +231,13 @@ class LangChainIntegration(MnemonIntegration):
             logger.debug(f"Mnemon: LangChain BaseChatModel patch failed — {e}")
 
         # Patch 3: Legacy Chain.__call__ — chain-level System 1
+        # Only patch if already imported — cold-importing langchain.chains
+        # triggers heavy transitive imports that add ~10s to background thread.
         try:
+            import sys as _sys
+            if "langchain.chains.base" not in _sys.modules:
+                logger.debug("Mnemon: skipping legacy Chain patch — not yet imported")
+                return
             from langchain.chains.base import Chain
             self._original_chain_call = Chain.__call__
             orig_call    = self._original_chain_call

@@ -135,6 +135,66 @@ class Mnemon:
         self._session_plans_cached:    int   = 0
         self._session_future_tokens:   int   = 0
 
+    def _prewarm_library_thread(self) -> None:
+        """Daemon thread: compute embeddings and store curated library on first run.
+
+        Uses its own DB connection and asyncio loop — fully independent of the
+        main event loop so the main loop closing does not interrupt it.
+        """
+        try:
+            asyncio.run(self._prewarm_library_async())
+        except Exception as e:
+            logger.debug(f"Mnemon: prewarm library thread failed — {e}")
+
+    async def _prewarm_library_async(self) -> None:
+        """Async body of prewarm — runs in the daemon thread's own event loop."""
+        # Open a separate DB connection (WAL + busy_timeout make this safe).
+        db = EROSDatabase(tenant_id=self.tenant_id, db_dir=self._db_dir)
+        try:
+            await db.connect()
+        except Exception as e:
+            logger.debug(f"Mnemon: prewarm DB connect failed — {e}")
+            return
+
+        try:
+            if self._prewarm_fragments:
+                try:
+                    from mnemon.fragments.library import load_fragments
+                    existing = await db.fetch_fragments(self.tenant_id)
+                    if len(existing) == 0:
+                        frags = load_fragments(self.tenant_id)  # heavy CPU
+                        for frag in frags:
+                            await db.write_fragment(frag)
+                            if frag.signature and self._eme:
+                                await self._eme._fragment_index.add(
+                                    self.tenant_id, frag.segment_id, frag.signature
+                                )
+                                self._eme._fragment_map[frag.segment_id] = frag
+                        logger.info(f"Pre-warmed {len(frags)} fragments loaded")
+                except Exception as e:
+                    logger.info(f"Fragment pre-warm skipped: {e}")
+
+            if self._prewarm_templates:
+                try:
+                    from mnemon.fragments.library import load_templates
+                    existing_tmpl = await db.fetch_prewarmed_templates(self.tenant_id)
+                    if len(existing_tmpl) == 0:
+                        tmpls = load_templates(self.tenant_id)  # heavy CPU
+                        for tmpl in tmpls:
+                            await db.write_template(tmpl)
+                            if tmpl.embedding and self._eme:
+                                await self._eme._template_index.add(
+                                    self.tenant_id, tmpl.template_id, tmpl.embedding
+                                )
+                        logger.info(f"Pre-warmed {len(tmpls)} templates loaded")
+                except Exception as e:
+                    logger.info(f"Template pre-warm skipped: {e}")
+        finally:
+            try:
+                await db.disconnect()
+            except Exception:
+                pass
+
     async def start(self):
         await self._db.connect()
         if self._system_db:
@@ -144,37 +204,16 @@ class Mnemon:
 
         if self._eme:
             await self._eme.warm()
-            if self._prewarm_fragments:
-                try:
-                    from mnemon.fragments.library import load_fragments
-                    existing = await self._db.fetch_fragments(self.tenant_id)
-                    if len(existing) == 0:
-                        frags = load_fragments(self.tenant_id)
-                        for frag in frags:
-                            await self._db.write_fragment(frag)
-                            if frag.signature:
-                                await self._eme._fragment_index.add(
-                                    self.tenant_id, frag.segment_id, frag.signature
-                                )
-                                self._eme._fragment_map[frag.segment_id] = frag
-                        logger.info(f"Pre-warmed {len(frags)} fragments loaded")
-                except Exception as e:
-                    logger.info(f"Fragment pre-warm skipped: {e}")
-            if self._prewarm_templates:
-                try:
-                    from mnemon.fragments.library import load_templates
-                    existing_tmpl = await self._db.fetch_prewarmed_templates(self.tenant_id)
-                    if len(existing_tmpl) == 0:
-                        tmpls = load_templates(self.tenant_id)
-                        for tmpl in tmpls:
-                            await self._db.write_template(tmpl)
-                            if tmpl.embedding:
-                                await self._eme._template_index.add(
-                                    self.tenant_id, tmpl.template_id, tmpl.embedding
-                                )
-                        logger.info(f"Pre-warmed {len(tmpls)} templates loaded")
-                except Exception as e:
-                    logger.info(f"Template pre-warm skipped: {e}")
+            # Prewarm runs in a daemon thread with its own event loop and DB
+            # connection — embedding 100+ fragments triggers sentence-transformers
+            # load (15s) and must not block init().
+            if self._prewarm_fragments or self._prewarm_templates:
+                import threading as _threading
+                _threading.Thread(
+                    target=self._prewarm_library_thread,
+                    daemon=True,
+                    name="mnemon-prewarm",
+                ).start()
 
         if self._bus:
             await self._bus.start()
@@ -495,11 +534,33 @@ class MnemonSync:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop_thread = None   # set when loop runs in a background thread
         self._moth = None
+        self._patch_thread = None  # background thread that loads + applies SDK patches
         from mnemon.moth.stats import MothStats
         _db_dir    = kwargs.get("db_dir", ".")
         _tenant    = kwargs.get("tenant_id", "default")
         _stats_path = os.path.join(_db_dir, f"mnemon_stats_{_tenant}.json")
         self._stats = MothStats(persist_path=_stats_path)
+
+    def _patch_frameworks(self) -> None:
+        """Background thread: import framework SDKs and apply patches."""
+        import threading
+        try:
+            from mnemon.moth import Moth
+            moth = Moth()
+            activated = moth.activate(self)
+            self._moth = moth  # atomic assign in CPython
+            if activated:
+                logger.info(f"Mnemon moth activated: {', '.join(activated)}")
+            else:
+                import sys as _sys
+                print(
+                    "Mnemon: no supported frameworks detected -- caching is inactive.\n"
+                    "  Install one of: anthropic, openai, langchain, langgraph, crewai\n"
+                    "  Or use m.run() directly for explicit caching.",
+                    file=_sys.stderr, flush=True,
+                )
+        except Exception as e:
+            logger.warning(f"Mnemon moth failed to start: {e} -- framework auto-patching disabled")
 
     def __enter__(self):
         import threading
@@ -518,25 +579,18 @@ class MnemonSync:
         except RuntimeError:
             # No running loop — safe to drive directly.
             self._loop.run_until_complete(self._m.start())
-        try:
-            from mnemon.moth import Moth
-            self._moth = Moth()
-            activated = self._moth.activate(self)
-            if activated:
-                logger.info(f"Mnemon moth activated: {', '.join(activated)}")
-            else:
-                import sys as _sys
-                print(
-                    "Mnemon: no supported frameworks detected -- caching is inactive.\n"
-                    "  Install one of: anthropic, openai, langchain, langgraph, crewai\n"
-                    "  Or use m.run() directly for explicit caching.",
-                    file=_sys.stderr, flush=True,
-                )
-        except Exception as e:
-            logger.warning(f"Mnemon moth failed to start: {e} — framework auto-patching disabled")
+        # Patch frameworks in a background thread so init() returns in ~200ms.
+        # SDK imports (anthropic, openai, langchain) are the slow step; they
+        # complete well before the user's first LLM call fires.
+        self._patch_thread = threading.Thread(
+            target=self._patch_frameworks, daemon=True, name="mnemon-patch"
+        )
+        self._patch_thread.start()
         return self
 
     def __exit__(self, *args):
+        if self._patch_thread is not None and self._patch_thread.is_alive():
+            self._patch_thread.join(timeout=30)
         if self._moth is not None:
             try:
                 self._moth.deactivate()
@@ -631,6 +685,8 @@ class MnemonSync:
         return self._run(self._m.drift_report())
 
     def close(self):
+        if self._patch_thread is not None and self._patch_thread.is_alive():
+            self._patch_thread.join(timeout=30)
         if self._moth is not None:
             try:
                 self._moth.deactivate()
@@ -700,11 +756,13 @@ def _detect_tenant_id() -> str:
 
 
 def _detect_adapter() -> Optional[TemplateAdapter]:
+    import sys
+    if "crewai" not in sys.modules:
+        return None  # don't cold-import heavy SDKs — user must import first
     try:
-        import crewai  # noqa: F401
         from mnemon._future.adapters.crewai import CrewAIAdapter
         return CrewAIAdapter()
-    except ImportError:
+    except Exception:
         pass
     return None
 
