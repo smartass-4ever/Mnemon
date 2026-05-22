@@ -736,8 +736,16 @@ def init(
     return m
 
 
-def get() -> Optional[MnemonSync]:
-    """Return the global Mnemon instance created by init(), or None."""
+def get() -> MnemonSync:
+    """Return the global Mnemon instance created by init().
+
+    Raises RuntimeError if init() has not been called yet.
+    """
+    if _instance is None:
+        raise RuntimeError(
+            "mnemon.get() called before mnemon.init().\n"
+            "Add 'import mnemon; mnemon.init()' before using mnemon.get()."
+        )
     return _instance
 
 
