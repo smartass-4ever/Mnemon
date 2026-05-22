@@ -102,8 +102,10 @@ class MothStats:
                     self._history.append(RecallTrace(**h))
                 except Exception:
                     pass
-        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        except FileNotFoundError:
             pass
+        except (json.JSONDecodeError, KeyError):
+            logger.warning(f"Mnemon: stats file corrupted, starting fresh ({self._persist_path})")
 
     def _save(self) -> None:
         if not self._persist_path:

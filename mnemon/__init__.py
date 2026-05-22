@@ -403,8 +403,18 @@ class Mnemon:
     @classmethod
     def from_config(cls, config_path: str = "./mnemon.config.json") -> "Mnemon":
         import json
-        with open(config_path) as f:
-            config = json.load(f)
+        try:
+            with open(config_path) as f:
+                config = json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Mnemon config not found: {config_path}\n"
+                f"Run 'mnemon init' to create one, or pass config_path= explicitly."
+            ) from None
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Mnemon config is invalid JSON ({config_path}): {e}"
+            ) from None
         kwargs: dict = dict(
             tenant_id=config.get("tenant_id", "default"),
             db_dir=config.get("db_dir", config.get("db_path", ".")),
