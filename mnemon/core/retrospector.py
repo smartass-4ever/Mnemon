@@ -443,6 +443,6 @@ class Retrospector:
                 await self.system_db.expire_quarantines()
                 logger.debug("Quarantine expiry check complete")
             except asyncio.CancelledError:
-                break
+                raise  # re-raise so asyncio can properly transition task to cancelled
             except Exception as e:
                 logger.error(f"_quarantine_check_loop error (non-fatal): {e}")

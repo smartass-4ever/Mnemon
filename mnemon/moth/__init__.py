@@ -123,11 +123,33 @@ class Moth:
         """
         Auto-detect installed frameworks and activate their integrations.
         Returns list of activated integration names.
+
+        Already-imported SDKs are patched first so the user's first LLM call
+        is captured even if the background thread is still working on cold imports.
         """
+        import sys as _sys
+
+        available = [i for i in self._registered if i.is_available()]
+
+        # Patch already-imported SDKs first — their sub-module imports hit the
+        # module cache and complete in milliseconds, not seconds.
+        def _already_imported(integration: MnemonIntegration) -> bool:
+            name = integration.name
+            # Map integration names to their top-level SDK module
+            _sdk_module = {
+                "anthropic": "anthropic",
+                "openai": "openai",
+                "langchain": "langchain_core",
+                "langgraph": "langgraph",
+                "autogen": "autogen",
+                "crewai": "crewai",
+            }
+            return _sdk_module.get(name, name) in _sys.modules
+
+        available.sort(key=_already_imported, reverse=True)
+
         activated: List[str] = []
-        for integration in self._registered:
-            if not integration.is_available():
-                continue
+        for integration in available:
             version = _framework_version(integration.name)
             try:
                 integration.patch(mnemon)

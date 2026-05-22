@@ -76,7 +76,9 @@ async def cmd_demo(args):
         ]
 
     with tempfile.TemporaryDirectory() as tmp:
-        async with Mnemon(tenant_id="demo", db_dir=tmp, enable_telemetry=False, silent=True, llm_client=MockLLMClient()) as m:
+        async with Mnemon(tenant_id="demo", db_dir=tmp, enable_telemetry=False, silent=True,
+                          llm_client=MockLLMClient(),
+                          prewarm_fragments=False, prewarm_templates=False) as m:
             frags = load_fragments("demo")
             for frag in frags:
                 await m._db.write_fragment(frag)
@@ -326,6 +328,7 @@ async def cmd_doctor(args):
     try:
         from mnemon.core.embedder import SimpleEmbedder
         emb = SimpleEmbedder()
+        emb._load()  # resolve backend before reading backend_name
         name = emb.backend_name
         dim  = emb.dim
         ok   = name == "sentence-transformers"

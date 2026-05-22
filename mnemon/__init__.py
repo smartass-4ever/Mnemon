@@ -165,12 +165,11 @@ class Mnemon:
                         frags = load_fragments(self.tenant_id)  # heavy CPU
                         for frag in frags:
                             await db.write_fragment(frag)
-                            if frag.signature and self._eme:
-                                await self._eme._fragment_index.add(
-                                    self.tenant_id, frag.segment_id, frag.signature
-                                )
-                                self._eme._fragment_map[frag.segment_id] = frag
-                        logger.info(f"Pre-warmed {len(frags)} fragments loaded")
+                        # Don't touch self._eme here — its asyncio.Lock objects
+                        # are bound to the main event loop; using them from this
+                        # daemon thread's own loop corrupts asyncio state.
+                        # The in-memory index is rebuilt from DB on next startup.
+                        logger.info(f"Pre-warmed {len(frags)} fragments stored to DB")
                 except Exception as e:
                     logger.info(f"Fragment pre-warm skipped: {e}")
 
@@ -182,11 +181,7 @@ class Mnemon:
                         tmpls = load_templates(self.tenant_id)  # heavy CPU
                         for tmpl in tmpls:
                             await db.write_template(tmpl)
-                            if tmpl.embedding and self._eme:
-                                await self._eme._template_index.add(
-                                    self.tenant_id, tmpl.template_id, tmpl.embedding
-                                )
-                        logger.info(f"Pre-warmed {len(tmpls)} templates loaded")
+                        logger.info(f"Pre-warmed {len(tmpls)} templates stored to DB")
                 except Exception as e:
                     logger.info(f"Template pre-warm skipped: {e}")
         finally:
@@ -508,6 +503,9 @@ class Mnemon:
 
 def _cancel_all_tasks(loop: asyncio.AbstractEventLoop) -> None:
     try:
+        # One flush cycle lets tasks that suppressed CancelledError settle fully
+        # before we ask for the pending set — avoids "Task was destroyed" warnings.
+        loop.run_until_complete(asyncio.sleep(0))
         pending = asyncio.all_tasks(loop)
         if not pending:
             return
@@ -563,6 +561,10 @@ class MnemonSync:
             logger.warning(f"Mnemon moth failed to start: {e} -- framework auto-patching disabled")
 
     def __enter__(self):
+        if self._m is not None:
+            # Already entered (e.g. mnemon.init() called __enter__ before the
+            # user's `with` statement does). Skip re-initialization.
+            return self
         import threading
         self._loop = asyncio.new_event_loop()
         self._m = Mnemon(**self._kwargs)
