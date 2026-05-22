@@ -292,8 +292,39 @@ class FeedbackExtractor:
 
 
 # ─────────────────────────────────────────────
-# CACHE HIT TRACKING
+# CACHE HIT / MISS TRACKING
 # ─────────────────────────────────────────────
+
+def track_cache_miss(m: Any, source: str) -> None:
+    """Print first-run or new-input message on MOTH cache miss. Never raises."""
+    try:
+        import sys as _sys
+        import os as _os
+        inner = getattr(m, "_m", None)
+        if inner is None:
+            return
+        silent = getattr(inner, "_silent", False) or getattr(m, "_kwargs", {}).get("silent", False)
+        if silent:
+            return
+        db_dir    = getattr(inner, "_db_dir", ".")
+        tenant_id = getattr(inner, "tenant_id", "default")
+        flag = _os.path.join(db_dir, f".mnemon_welcomed_{tenant_id}")
+        if not _os.path.exists(flag):
+            try:
+                open(flag, "w").close()
+            except OSError:
+                pass
+            msg = (
+                f"Mnemon [{source}]: first run — response cached, next call will be instant\n"
+                f"  Thank you for installing Mnemon!"
+                f" Drop a line at mahikajadhav22@gmail.com if caching isn't working."
+            )
+        else:
+            msg = f"Mnemon [{source}]: new input — cached, next call will be instant"
+        print(msg, file=_sys.stderr, flush=True)
+    except Exception:
+        pass
+
 
 def track_cache_hit(
     m: Any,

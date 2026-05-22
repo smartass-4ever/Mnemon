@@ -24,7 +24,7 @@ from typing import Any, List, Optional
 import time as _time
 
 from mnemon.moth import MnemonIntegration
-from ._utils import extract_query, prompt_hash, track_cache_hit, build_call_evidence, route_evidence
+from ._utils import extract_query, prompt_hash, track_cache_hit, track_cache_miss, build_call_evidence, route_evidence
 from ._eme_bridge import MothCache
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,7 @@ class AnthropicIntegration(MnemonIntegration):
             lat = (_time.time() - t0) * 1000
             text = _anthropic_text(response)
             cache.store(query, [model], hash_key, response, text)
+            track_cache_miss(m, "anthropic")
             route_evidence(m, build_call_evidence(m, "anthropic", query, lat, response=response))
             return response
 
@@ -152,6 +153,7 @@ class AnthropicIntegration(MnemonIntegration):
             lat = (_time.time() - t0) * 1000
             text = _anthropic_text(response)
             await cache.async_store(query, [model], hash_key, response, text)
+            track_cache_miss(m, "anthropic")
             route_evidence(m, build_call_evidence(m, "anthropic", query, lat, response=response))
             return response
 

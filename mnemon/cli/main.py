@@ -62,6 +62,7 @@ async def cmd_demo(args):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from mnemon import Mnemon
     from mnemon.fragments.library import load_fragments
+    from mnemon.llm.client import MockLLMClient
 
     async def mock_gen(goal, inputs, context, caps, constraints):
         """Simulates an LLM planning call — only runs on cache miss."""
@@ -75,7 +76,7 @@ async def cmd_demo(args):
         ]
 
     with tempfile.TemporaryDirectory() as tmp:
-        async with Mnemon(tenant_id="demo", db_dir=tmp, enable_telemetry=False, silent=True) as m:
+        async with Mnemon(tenant_id="demo", db_dir=tmp, enable_telemetry=False, silent=True, llm_client=MockLLMClient()) as m:
             frags = load_fragments("demo")
             for frag in frags:
                 await m._db.write_fragment(frag)
