@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 import time as _time
 
 from mnemon.moth import MnemonIntegration
-from ._utils import extract_query, prompt_hash, track_cache_hit, build_call_evidence, route_evidence
+from ._utils import extract_query, prompt_hash, track_cache_hit, track_cache_miss, build_call_evidence, route_evidence
 from ._cache import BoundedTTLCache
 from ._eme_bridge import MothCache
 
@@ -177,6 +177,7 @@ class LangChainIntegration(MnemonIntegration):
                 try:
                     text = result.content if hasattr(result, "content") else str(result)
                     llm_cache.store(query, [model_name], hash_key, result, text[:400])
+                    track_cache_miss(m, "langchain")
                 except Exception:
                     pass
 
@@ -217,6 +218,7 @@ class LangChainIntegration(MnemonIntegration):
                 try:
                     text = result.content if hasattr(result, "content") else str(result)
                     await ainvoke_cache.async_store(query, [model_name], hash_key, result, text[:400])
+                    track_cache_miss(m, "langchain")
                 except Exception:
                     pass
 
@@ -246,6 +248,7 @@ class LangChainIntegration(MnemonIntegration):
 
                 result = orig_call(_self, inputs, *args, **kwargs)
                 legacy_cache.store(query, [type(_self).__name__], hash_key, result, str(result)[:400])
+                track_cache_miss(m, "langchain")
                 return result
 
             Chain.__call__ = patched_chain_call

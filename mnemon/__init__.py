@@ -525,9 +525,12 @@ class MnemonSync:
             if activated:
                 logger.info(f"Mnemon moth activated: {', '.join(activated)}")
             else:
-                logger.warning(
-                    "Mnemon started but no frameworks detected — caching is inactive. "
-                    "Install a supported framework (langchain, crewai, langgraph) or use m.run() directly."
+                import sys as _sys
+                print(
+                    "Mnemon: no supported frameworks detected -- caching is inactive.\n"
+                    "  Install one of: anthropic, openai, langchain, langgraph, crewai\n"
+                    "  Or use m.run() directly for explicit caching.",
+                    file=_sys.stderr, flush=True,
                 )
         except Exception as e:
             logger.warning(f"Mnemon moth failed to start: {e} — framework auto-patching disabled")
@@ -541,8 +544,15 @@ class MnemonSync:
                 pass
         self._m._silent = True
         if self._loop is not None:
-            self._loop.run_until_complete(self._m.stop())
-            _cancel_all_tasks(self._loop)
+            if self._loop_thread is not None and self._loop_thread.is_alive():
+                asyncio.run_coroutine_threadsafe(self._m.stop(), self._loop).result(timeout=10)
+                _cancel_all_tasks(self._loop)
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                self._loop_thread.join(timeout=5)
+                self._loop_thread = None
+            else:
+                self._loop.run_until_complete(self._m.stop())
+                _cancel_all_tasks(self._loop)
             self._loop.close()
             self._loop = None
         silent = self._kwargs.get("silent", False)

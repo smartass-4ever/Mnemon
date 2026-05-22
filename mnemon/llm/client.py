@@ -348,16 +348,7 @@ def auto_client() -> Optional[LLMClient]:
         logger.info("Mnemon LLM: detected GROQ_API_KEY → GroqClient (llama3 — free)")
         return GroqClient()
 
-    import sys as _sys
-    print(
-        "Mnemon: no LLM API key found — running in rule-based mode (System 1 cache only).\n"
-        "Set any of these env vars to unlock semantic matching (System 2):\n"
-        "  ANTHROPIC_API_KEY  (claude)  — anthropic.com\n"
-        "  OPENAI_API_KEY     (gpt-4o)  — platform.openai.com\n"
-        "  GOOGLE_API_KEY     (gemini)  — aistudio.google.com\n"
-        "  GROQ_API_KEY       (llama3)  — groq.com (free tier available)",
-        file=_sys.stderr,
-    )
+    logger.debug("Mnemon: no LLM API key found -- running in rule-based mode (System 1 cache only)")
     return None
 
 

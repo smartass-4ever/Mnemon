@@ -24,7 +24,7 @@ import logging
 from typing import Any, Optional
 
 from mnemon.moth import MnemonIntegration
-from ._utils import prompt_hash, track_cache_hit
+from ._utils import prompt_hash, track_cache_hit, track_cache_miss
 from ._eme_bridge import MothCache
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,7 @@ class LangGraphIntegration(MnemonIntegration):
             result = orig_invoke(_self, input, config, **kwargs)
             text   = _extract_graph_outcome(result)
             graph_cache.store(goal, [], hash_key, result, text)
+            track_cache_miss(m, "langgraph")
             return result
 
         async def patched_ainvoke(_self: Any, input: Any, config: Any = None, **kwargs: Any) -> Any:
@@ -96,6 +97,7 @@ class LangGraphIntegration(MnemonIntegration):
             result = await orig_ainvoke(_self, input, config, **kwargs)
             text   = _extract_graph_outcome(result)
             await graph_cache.async_store(goal, [], hash_key, result, text)
+            track_cache_miss(m, "langgraph")
             return result
 
         _GraphBase.invoke  = patched_invoke
