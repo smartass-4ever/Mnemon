@@ -168,7 +168,7 @@ Every repeat:  2.66ms · 0 tokens   · $0.00
 It works in two modes:
 
 - **System 1** — exact fingerprint match. Sub-millisecond. Zero LLM calls.
-- **System 2** — partial segment match. Only the changed parts go to the LLM. You pay for the delta, not the whole plan.
+- **System 2** — semantic similarity match. "Weekly security report" hits the cache for "generate security audit". Only changed segments go to the LLM. Requires `pip install mnemon-ai[full]` or `OPENAI_API_KEY` in your environment.
 
 Failed segments are quarantined by the Retrospector — bad patterns can't recycle into future plans.
 
@@ -252,21 +252,25 @@ mnemon demo     # see it working in 30 seconds
 mnemon doctor   # health check
 ```
 
-```bash
-pip install mnemon-ai[embeddings]   # sentence-transformers — recommended for production
-pip install mnemon-ai[full]         # embeddings + all LLM providers
-```
+### System 2 semantic recall
 
-**Optional:** set an API key to enable System 2 gap-fill (only needed for partial segment regeneration):
+System 2 matches semantically similar goals — "weekly security report" hits the cache for "generate security audit". Two ways to enable it:
 
 ```bash
-export GROQ_API_KEY=gsk_...      # pip install mnemon-ai[groq]   ← free tier, start here
-export ANTHROPIC_API_KEY=sk-...  # pip install mnemon-ai[anthropic]
-export OPENAI_API_KEY=sk-...     # pip install mnemon-ai[openai]
-export GOOGLE_API_KEY=AIza...    # pip install mnemon-ai[google]
+# Option 1 — offline, no API key (recommended for production)
+pip install mnemon-ai[full]
+
+# Option 2 — if you already have an OpenAI key in your environment
+export OPENAI_API_KEY=sk-...
+# that's it — Mnemon detects it and activates System 2 automatically
 ```
 
-Mnemon detects the key automatically.
+Without either, Mnemon runs System 1 only (exact-match cache) and prints a one-line message telling you what to do. System 1 is still valuable — just no semantic matching.
+
+```bash
+pip install mnemon-ai[full]         # sentence-transformers (offline, 85% precision)
+# or set OPENAI_API_KEY            # uses text-embedding-3-small (90% precision)
+```
 
 ---
 
