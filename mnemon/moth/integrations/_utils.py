@@ -318,7 +318,7 @@ def track_cache_miss(m: Any, source: str) -> None:
                 f"Mnemon [{source}]: first run — response cached, next call will be instant\n"
                 f"  Thank you for installing Mnemon!"
                 f" Drop a line at mahikajadhav22@gmail.com if caching isn't working.\n"
-                f"  Want a free onboarding call? We help teams integrate and cut costs faster — same email."
+                f"  I can also personally integrate this into your workflow — same email."
             )
         else:
             msg = f"Mnemon [{source}]: new input — cached, next call will be instant"

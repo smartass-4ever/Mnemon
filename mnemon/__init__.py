@@ -395,7 +395,7 @@ class Mnemon:
                         "Mnemon: first run — plan cached, next run will be instant\n"
                         "  Thank you for installing Mnemon! If your agent is loop-locking or token costs\n"
                         "  aren't dropping, drop a line at mahikajadhav22@gmail.com — I can look at your logs directly.\n"
-                        "  Want a free onboarding call? We help teams integrate and cut costs faster — same email."
+                        "  I can also personally integrate this into your workflow — same email."
                     )
                 else:
                     msg = "Mnemon: new input — cached, next run will be instant"
