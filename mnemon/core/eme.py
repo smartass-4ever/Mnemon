@@ -1582,14 +1582,24 @@ class ExecutionMemoryEngine:
 
         gap_positions = {g.position for g in pending_gaps}
         cached_segs = [s for i, s in enumerate(stitched_segments) if i not in gap_positions]
+        tokens_saved = self._seg_tokens(cached_segs)
+        if tokens_saved == 0 and all_segments:
+            # All segments went to guided generation, but the cached template
+            # avoided the planning phase — the LLM received a structured brief
+            # instead of generating the plan structure from scratch. Credit the
+            # template's planning-phase token value as savings.
+            tokens_saved = self._seg_tokens(all_segments)
+        latency_saved = partial_result.segments_reused * 2500
+        if latency_saved == 0 and all_segments:
+            latency_saved = len(all_segments) * 1000
         return EMEResult(
             status="system2_guided",
             template=final_template,
             template_id=None,
             segments_reused=partial_result.segments_reused,
             segments_generated=len(pending_gaps),
-            tokens_saved=self._seg_tokens(cached_segs),
-            latency_saved_ms=partial_result.segments_reused * 2500,
+            tokens_saved=tokens_saved,
+            latency_saved_ms=latency_saved,
             fragments_used=partial_result.fragments_used,
             cache_level="system2_guided",
             validation_passed=True,
