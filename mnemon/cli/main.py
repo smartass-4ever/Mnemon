@@ -331,13 +331,13 @@ async def cmd_doctor(args):
         emb._load()  # resolve backend before reading backend_name
         name = emb.backend_name
         dim  = emb.dim
-        ok   = name == "sentence-transformers"
-        msg  = f"{name} ({dim}-dim)"
-        if not ok:
-            msg += " — run: pip install mnemon-ai[full] for production quality"
-        checks.append(("Embedder", ok, msg))
+        s2   = emb.system2_active
+        msg  = f"{name} ({dim}-dim) — System 2 {'active' if s2 else 'INACTIVE'}"
+        if not s2:
+            msg += " — pip install mnemon-ai[full] or set OPENAI_API_KEY"
+        checks.append(("Embedder / System 2", s2, msg))
     except Exception as e:
-        checks.append(("Embedder", False, str(e)))
+        checks.append(("Embedder / System 2", False, str(e)))
 
     # 3. DB connectivity + fragment / template counts
     config_path = args.config or "./mnemon.config.json"
