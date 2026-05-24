@@ -246,6 +246,11 @@ Every other library makes your prompt slightly better. Mnemon eliminates the LLM
 pip install mnemon-ai
 ```
 
+**Optional — share anonymous usage stats to help improve Mnemon:**
+```bash
+export MNEMON_TELEMETRY=1
+```
+
 **No API key needed to start:**
 ```bash
 mnemon demo     # see it working in 30 seconds
