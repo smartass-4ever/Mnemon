@@ -359,6 +359,22 @@ class Mnemon:
                 latency_ms=latency_ms,
                 segments_reused=eme_result.segments_reused,
             )
+        if eme_result:
+            try:
+                from mnemon.core import ph_telemetry
+                if eme_result.cache_level in ("system1", "system2", "system2_guided"):
+                    ph_telemetry.track_hit(
+                        framework=context.get("_mnemon_framework", "unknown") if context else "unknown",
+                        cache_level=eme_result.cache_level,
+                        tokens_saved=eme_result.tokens_saved or 0,
+                        latency_ms=latency_ms,
+                    )
+                else:
+                    ph_telemetry.track_miss(
+                        framework=context.get("_mnemon_framework", "unknown") if context else "unknown",
+                    )
+            except Exception:
+                pass
         if self._watchdog and eme_result:
             self._watchdog.record_eme_run(eme_result.cache_level)
 
@@ -550,6 +566,11 @@ class MnemonSync:
             self._moth = moth  # atomic assign in CPython
             if activated:
                 logger.info(f"Mnemon moth activated: {', '.join(activated)}")
+                try:
+                    from mnemon.core import ph_telemetry
+                    ph_telemetry.track_init(frameworks=activated)
+                except Exception:
+                    pass
             else:
                 import sys as _sys
                 print(
