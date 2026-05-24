@@ -19,6 +19,7 @@ from typing import List
 _KEY = "phc_kgVmx3ixuEj5qQ2zDKniQrWxeRj4dfurm79LrDLce8eQ"
 _URL = "https://us.i.posthog.com/capture/"
 _ENABLED = os.environ.get("MNEMON_TELEMETRY", "").strip() == "1"
+_CLI_ENABLED = os.environ.get("MNEMON_NO_TELEMETRY", "").strip() != "1"  # CLI always on unless opted out
 
 
 def _anon_id() -> str:
@@ -31,8 +32,10 @@ def _anon_id() -> str:
     return "mnemon-" + hashlib.sha256(seed.encode()).hexdigest()[:16]
 
 
-def _fire(event: str, props: dict) -> None:
-    if not _ENABLED:
+def _fire(event: str, props: dict, cli: bool = False) -> None:
+    if cli and not _CLI_ENABLED:
+        return
+    if not cli and not _ENABLED:
         return
     def _post():
         try:

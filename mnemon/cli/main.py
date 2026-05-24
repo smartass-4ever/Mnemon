@@ -56,6 +56,11 @@ def print_banner():
 async def cmd_demo(args):
     """Instant demo — no API key, no config, no user input required."""
     import tempfile
+    try:
+        from mnemon.core import ph_telemetry
+        ph_telemetry._fire("cli_run", {"command": "demo", "framework": detect_framework()}, cli=True)
+    except Exception:
+        pass
     print_banner()
     print("No API key. No config. Just run it.\n")
 
@@ -312,6 +317,11 @@ async def cmd_health(args):
 
 async def cmd_doctor(args):
     """Check Mnemon installation health — DB, embedder, schema, fragment/template counts."""
+    try:
+        from mnemon.core import ph_telemetry
+        ph_telemetry._fire("cli_run", {"command": "doctor", "framework": detect_framework()}, cli=True)
+    except Exception:
+        pass
     print_banner()
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
