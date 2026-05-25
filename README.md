@@ -69,8 +69,10 @@ Supported: **Anthropic SDK · OpenAI SDK · LangChain · LangGraph · CrewAI · 
 There are two ways to use Mnemon. Pick one based on what you're building.
 
 **Use Path 1 if** you want caching with zero code changes. Drop it into any existing project — Anthropic, OpenAI, LangChain, CrewAI. Mnemon watches your LLM calls and caches the responses. Same input, instant response next time. Good for chatbots, simple agents, quick experiments.
+It does not track individual steps, quarantine bad plans, or learn which parts of a workflow are failing. If your input changes every run, it won't hit the cache.
 
 **Use Path 2 if** you run structured recurring tasks — weekly reports, research pipelines, multi-step workflows. This gives you the full system: segment-level caching so only the parts that changed get regenerated, a learning loop that strengthens what works and quarantines what fails, and guided generation that tells your LLM exactly what to fill in. The more it runs, the smarter it gets.
+It requires wrapping your generation logic in a function and calling `m.run()` — it's not zero code changes, but the payoff compounds with every run.
 
 ---
 
