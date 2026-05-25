@@ -1039,37 +1039,55 @@ class ExecutionMemoryEngine:
         Rule-based intent extraction — no LLM, no I/O.
 
         GenericAdapter.decompose() always wraps step data as
-        {"id": "seg_N", "content": <actual data>}.  The original version
-        only looked at top-level keys, so it always missed the real fields
-        and fell back to returning the segment ID ("seg_0", "step_1", …)
-        which gave useless embeddings.
+        {"id": "seg_N", "content": <actual data>}.
 
         Priority:
           1. Plain text content  — LLM text response IS the intent phrase
-          2. Structured content dict — extract action / tool / outputs
-          3. Structured top-level keys — rare (user built their own adapter)
-          4. First long string value  — skip IDs, use anything >20 chars
+          2. Anthropic tool_use  — name + key input fields
+          3. LangChain agent     — action + action_input
+          4. Generic structured  — action / tool / outputs / description
+          5. List content        — join items as a sequence description
+          6. Deep scan           — recurse one level for nested dicts
+          7. First long string   — anything > 20 chars that isn't an ID
         """
         import re
-        parts: List[str] = []
 
-        inner = seg_data.get("content")
-
-        # ── Plain text LLM response ───────────────────────────────────────
-        if isinstance(inner, str) and len(inner) > 10:
-            text = re.sub(
+        def _clean_text(text: str) -> str:
+            return re.sub(
                 r"^(step\s*\d+\s*[:\-\.]\s*|\d+\.\s*|#{1,3}\s*)",
-                "", inner.strip(), flags=re.IGNORECASE,
-            )
-            return (text[:200].strip() or inner[:200])
+                "", text.strip(), flags=re.IGNORECASE,
+            ).strip()
 
-        # ── Structured data: search content dict first, then top-level ───
-        sources: List[dict] = []
-        if isinstance(inner, dict):
-            sources.append(inner)
-        sources.append(seg_data)
+        def _extract_from_dict(src: dict) -> List[str]:
+            parts: List[str] = []
 
-        for src in sources:
+            # Anthropic tool_use block
+            if src.get("type") == "tool_use" and src.get("name"):
+                parts.append(src["name"])
+                inp = src.get("input", {})
+                if isinstance(inp, dict):
+                    for v in list(inp.values())[:2]:
+                        if isinstance(v, str) and len(v) > 3:
+                            parts.append(v[:100])
+                            break
+                return parts
+
+            # LangChain agent action style
+            action_input = src.get("action_input")
+            if action_input is not None:
+                action = src.get("action", "")
+                if isinstance(action, str) and action.strip():
+                    parts.append(action.strip())
+                if isinstance(action_input, str) and action_input.strip():
+                    parts.append(action_input.strip()[:150])
+                elif isinstance(action_input, dict):
+                    for v in list(action_input.values())[:1]:
+                        if isinstance(v, str) and v.strip():
+                            parts.append(v.strip()[:150])
+                if parts:
+                    return parts
+
+            # Generic structured fields
             for key in ("action", "step", "name", "task", "operation"):
                 val = src.get(key)
                 if isinstance(val, str) and val.strip():
@@ -1089,24 +1107,63 @@ class ExecutionMemoryEngine:
                 elif isinstance(outputs, str):
                     parts.append(f"produces {outputs}")
 
-            for key in ("goal", "description", "objective", "intent"):
+            for key in ("goal", "description", "objective", "intent", "query", "input"):
                 val = src.get(key)
-                if isinstance(val, str) and val.strip() and val not in parts:
-                    parts.append(val.strip())
+                if isinstance(val, str) and len(val) > 5 and val not in parts:
+                    parts.append(val.strip()[:150])
                     break
 
+            return parts
+
+        inner = seg_data.get("content")
+
+        # ── 1. Plain text ────────────────────────────────────────────────
+        if isinstance(inner, str) and len(inner) > 10:
+            cleaned = _clean_text(inner)
+            return cleaned[:200] if cleaned else inner[:200]
+
+        # ── 2–4. Structured dict ─────────────────────────────────────────
+        sources: List[dict] = []
+        if isinstance(inner, dict):
+            sources.append(inner)
+        sources.append(seg_data)
+
+        for src in sources:
+            parts = _extract_from_dict(src)
             if parts:
-                break  # found structured data in this source — stop
+                return " | ".join(parts)
 
-        if parts:
-            return " | ".join(parts)
+        # ── 5. List content — describe as a sequence ─────────────────────
+        if isinstance(inner, list):
+            items = []
+            for item in inner[:4]:
+                if isinstance(item, str) and len(item) > 3:
+                    items.append(_clean_text(item)[:60])
+                elif isinstance(item, dict):
+                    p = _extract_from_dict(item)
+                    if p:
+                        items.append(p[0][:60])
+            if items:
+                return " then ".join(items)
 
-        # ── Fallback: first string long enough to not be an ID ───────────
+        # ── 6. Deep scan — one level of nesting ──────────────────────────
+        for v in (inner or seg_data).values() if isinstance((inner or seg_data), dict) else []:
+            if isinstance(v, dict):
+                parts = _extract_from_dict(v)
+                if parts:
+                    return " | ".join(parts)
+
+        # ── 7. First long string value that isn't an ID ──────────────────
         for v in seg_data.values():
             if isinstance(v, str) and len(v) > 20:
                 return v[:200]
+        if isinstance(inner, dict):
+            for v in inner.values():
+                if isinstance(v, str) and len(v) > 20:
+                    return v[:200]
 
-        return json.dumps(seg_data, default=str)[:200]
+        # Last resort — truncated JSON (still better than empty)
+        return json.dumps(seg_data.get("content", seg_data), default=str)[:200]
 
     async def _drone_verify(self, goal: str, step_intent: str) -> bool:
         """
