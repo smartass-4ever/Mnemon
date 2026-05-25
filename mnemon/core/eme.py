@@ -1384,6 +1384,49 @@ class ExecutionMemoryEngine:
             ),
         }
 
+    def _format_guided_goal(
+        self,
+        goal: str,
+        brief: Dict,
+    ) -> str:
+        """
+        Inject the guided brief directly into the goal string as natural language.
+
+        This ensures the LLM receives the brief regardless of whether the user's
+        generation_fn reads the context parameter. Every generation_fn passes goal
+        to the LLM — this is the only reliable injection point.
+
+        Cached steps are shown as intent summaries only (not full content) so the
+        LLM's context window stays small. Full content is restored during stitching.
+        """
+        lines = [goal, "", "[Mnemon: partial cache hit — generate only the missing steps]", ""]
+
+        if brief.get("pre_filled"):
+            lines.append("Steps already solved (DO NOT regenerate):")
+            for step in brief["pre_filled"]:
+                intent = step.get("intent", f"step {step['position']}")
+                outputs = step.get("outputs", [])
+                line = f"  - Step {step['position']}: {intent}"
+                if outputs:
+                    line += f" → produces {', '.join(str(o) for o in outputs)}"
+                lines.append(line)
+            lines.append("")
+
+        lines.append("Generate ONLY these missing steps as JSON {\"position\": <step_content>}:")
+        for gap in brief.get("gaps_to_fill", []):
+            receives = gap.get("receives", [])
+            hint = gap.get("hint", "")
+            # Strip the "generate: " prefix from hint — already implied
+            hint_clean = hint.replace("generate: ", "").split(" (context:")[0].strip()
+            line = f"  - Step {gap['position']}"
+            if receives:
+                line += f" (receives: {', '.join(str(r) for r in receives)})"
+            if hint_clean:
+                line += f": {hint_clean}"
+            lines.append(line)
+
+        return "\n".join(lines)
+
     def _parse_gap_fills(
         self,
         output: Any,
@@ -1529,8 +1572,12 @@ class ExecutionMemoryEngine:
         enriched = dict(context)
         enriched["_mnemon_brief"] = brief
 
+        # Inject brief into the goal string — the only reliable delivery path.
+        # generation_fn always receives goal; context is often ignored by user code.
+        guided_goal = self._format_guided_goal(goal, brief)
+
         try:
-            raw_output = await generation_fn(goal, inputs, enriched, capabilities, constraints)
+            raw_output = await generation_fn(guided_goal, inputs, enriched, capabilities, constraints)
         except Exception as e:
             logger.error(f"Guided generation failed: {e}")
             return None
