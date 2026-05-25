@@ -394,13 +394,13 @@ class Mnemon:
 
         if not self._silent:
             import sys as _sys
-            if cache_level in ("system1", "system2"):
+            if cache_level in ("system1", "system2", "system2_guided"):
                 cost = tokens_saved * 0.000003
                 secs = latency_saved_ms / 1000
                 msg = f"Mnemon: cache hit · {tokens_saved:,} tokens saved · ~${cost:.4f}"
                 if secs > 0:
                     msg += f" · {secs:.1f}s faster"
-            elif cache_level in ("miss", "system2_guided"):
+            elif cache_level == "miss":
                 flag = os.path.join(self._db_dir, f".mnemon_welcomed_{self.tenant_id}")
                 if not os.path.exists(flag):
                     try:
@@ -422,7 +422,7 @@ class Mnemon:
         return {
             "output":           output,
             "template":         output,   # alias kept for backwards compat
-            "cache_level":      cache_level,
+            "cache_level":      "system2" if cache_level == "system2_guided" else cache_level,
             "segments_reused":  eme_result.segments_reused if eme_result else 0,
             "tokens_saved":     tokens_saved,
             "latency_saved_ms": latency_saved_ms,
