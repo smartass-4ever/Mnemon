@@ -410,7 +410,7 @@ async def run_domain(
 async def run_benchmark(domains: List[str], verbose: bool) -> Dict[str, List[RunResult]]:
     all_results: Dict[str, List[RunResult]] = {}
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         for domain in domains:
             gen_fn, description = WORKFLOWS[domain]
             print(f"\n{'─' * 60}")

@@ -6,7 +6,7 @@
       "expected": "miss",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 374.9048709869385,
+      "latency_ms": 30773.033142089844,
       "segments_reused": 0
     },
     {
@@ -15,7 +15,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 301,
-      "latency_ms": 5.747795104980469,
+      "latency_ms": 5.541324615478516,
       "segments_reused": 8
     },
     {
@@ -24,7 +24,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 301,
-      "latency_ms": 4.058361053466797,
+      "latency_ms": 4.004478454589844,
       "segments_reused": 8
     },
     {
@@ -33,25 +33,25 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 301,
-      "latency_ms": 5.748748779296875,
+      "latency_ms": 4.001140594482422,
       "segments_reused": 8
     },
     {
       "label": "E \u2014 related goal, rephrased",
-      "cache_level": "system2",
+      "cache_level": "system2_guided",
       "expected": "?",
       "expected_met": true,
-      "tokens_saved": 0,
-      "latency_ms": 54.146766662597656,
+      "tokens_saved": 301,
+      "latency_ms": 593.1174755096436,
       "segments_reused": 0
     },
     {
       "label": "F \u2014 same domain, different task",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 60.669898986816406,
+      "latency_ms": 97.39828109741211,
       "segments_reused": 0
     }
   ],
@@ -62,7 +62,7 @@
       "expected": "miss",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 315.5937194824219,
+      "latency_ms": 419.5404052734375,
       "segments_reused": 0
     },
     {
@@ -71,7 +71,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 246,
-      "latency_ms": 5.000114440917969,
+      "latency_ms": 5.584955215454102,
       "segments_reused": 6
     },
     {
@@ -80,7 +80,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 246,
-      "latency_ms": 3.0012130737304688,
+      "latency_ms": 3.000020980834961,
       "segments_reused": 6
     },
     {
@@ -89,25 +89,25 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 246,
-      "latency_ms": 3.668546676635742,
+      "latency_ms": 3.511190414428711,
       "segments_reused": 6
     },
     {
       "label": "E \u2014 rephrased goal",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 53.94315719604492,
+      "latency_ms": 130.07879257202148,
       "segments_reused": 0
     },
     {
       "label": "F \u2014 different sub-task",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 58.98022651672363,
+      "latency_ms": 127.01177597045898,
       "segments_reused": 0
     }
   ],
@@ -118,7 +118,7 @@
       "expected": "miss",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 334.1848850250244,
+      "latency_ms": 721.0044860839844,
       "segments_reused": 0
     },
     {
@@ -127,7 +127,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 272,
-      "latency_ms": 5.234241485595703,
+      "latency_ms": 6.546258926391602,
       "segments_reused": 7
     },
     {
@@ -136,7 +136,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 272,
-      "latency_ms": 3.4151077270507812,
+      "latency_ms": 4.000425338745117,
       "segments_reused": 7
     },
     {
@@ -145,25 +145,25 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 272,
-      "latency_ms": 3.031492233276367,
+      "latency_ms": 4.507303237915039,
       "segments_reused": 7
     },
     {
       "label": "E \u2014 rephrased goal",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 49.99661445617676,
+      "latency_ms": 115.24820327758789,
       "segments_reused": 0
     },
     {
       "label": "F \u2014 different architecture",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 55.74679374694824,
+      "latency_ms": 141.8752670288086,
       "segments_reused": 0
     }
   ],
@@ -174,7 +174,7 @@
       "expected": "miss",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 308.5639476776123,
+      "latency_ms": 787.4782085418701,
       "segments_reused": 0
     },
     {
@@ -183,7 +183,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 238,
-      "latency_ms": 6.0024261474609375,
+      "latency_ms": 6.573915481567383,
       "segments_reused": 6
     },
     {
@@ -192,7 +192,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 238,
-      "latency_ms": 3.999948501586914,
+      "latency_ms": 19.205093383789062,
       "segments_reused": 6
     },
     {
@@ -201,25 +201,25 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 238,
-      "latency_ms": 2.998828887939453,
+      "latency_ms": 5.006313323974609,
       "segments_reused": 6
     },
     {
       "label": "E \u2014 rephrased goal",
-      "cache_level": "system2",
+      "cache_level": "system2_guided",
       "expected": "?",
       "expected_met": true,
-      "tokens_saved": 0,
-      "latency_ms": 58.234453201293945,
+      "tokens_saved": 238,
+      "latency_ms": 998.0754852294922,
       "segments_reused": 0
     },
     {
       "label": "F \u2014 security tilt, same structure",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 57.281494140625,
+      "latency_ms": 172.990083694458,
       "segments_reused": 0
     }
   ],
@@ -230,7 +230,7 @@
       "expected": "miss",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 390.2742862701416,
+      "latency_ms": 1334.9757194519043,
       "segments_reused": 0
     },
     {
@@ -239,7 +239,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 320,
-      "latency_ms": 4.828691482543945,
+      "latency_ms": 7.562160491943359,
       "segments_reused": 8
     },
     {
@@ -248,7 +248,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 320,
-      "latency_ms": 5.054235458374023,
+      "latency_ms": 5.016803741455078,
       "segments_reused": 8
     },
     {
@@ -257,25 +257,25 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 320,
-      "latency_ms": 5.042076110839844,
+      "latency_ms": 6.54149055480957,
       "segments_reused": 8
     },
     {
       "label": "E \u2014 rephrased goal",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 55.05824089050293,
+      "latency_ms": 210.11972427368164,
       "segments_reused": 0
     },
     {
       "label": "F \u2014 annual vs quarterly",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 60.79435348510742,
+      "latency_ms": 188.57812881469727,
       "segments_reused": 0
     }
   ],
@@ -286,7 +286,7 @@
       "expected": "miss",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 367.56181716918945,
+      "latency_ms": 1106.8699359893799,
       "segments_reused": 0
     },
     {
@@ -295,7 +295,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 286,
-      "latency_ms": 6.397724151611328,
+      "latency_ms": 8.518218994140625,
       "segments_reused": 7
     },
     {
@@ -304,7 +304,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 286,
-      "latency_ms": 5.2204132080078125,
+      "latency_ms": 5.013942718505859,
       "segments_reused": 7
     },
     {
@@ -313,25 +313,25 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 286,
-      "latency_ms": 5.774021148681641,
+      "latency_ms": 6.514310836791992,
       "segments_reused": 7
     },
     {
       "label": "E \u2014 rephrased goal",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 59.26322937011719,
+      "latency_ms": 190.63138961791992,
       "segments_reused": 0
     },
     {
       "label": "F \u2014 paid vs organic, different tools",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 58.242082595825195,
+      "latency_ms": 229.04372215270996,
       "segments_reused": 0
     }
   ],
@@ -342,7 +342,7 @@
       "expected": "miss",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 413.8658046722412,
+      "latency_ms": 1673.6273765563965,
       "segments_reused": 0
     },
     {
@@ -351,7 +351,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 355,
-      "latency_ms": 7.807731628417969,
+      "latency_ms": 9.609222412109375,
       "segments_reused": 9
     },
     {
@@ -360,7 +360,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 355,
-      "latency_ms": 4.6138763427734375,
+      "latency_ms": 9.018898010253906,
       "segments_reused": 9
     },
     {
@@ -369,25 +369,25 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 355,
-      "latency_ms": 6.160974502563477,
+      "latency_ms": 6.018877029418945,
       "segments_reused": 9
     },
     {
       "label": "E \u2014 rephrased goal",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 59.10515785217285,
+      "latency_ms": 187.90411949157715,
       "segments_reused": 0
     },
     {
       "label": "F \u2014 rollback vs deploy",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 64.62669372558594,
+      "latency_ms": 278.2142162322998,
       "segments_reused": 0
     }
   ],
@@ -398,7 +398,7 @@
       "expected": "miss",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 330.4274082183838,
+      "latency_ms": 1249.0558624267578,
       "segments_reused": 0
     },
     {
@@ -407,7 +407,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 228,
-      "latency_ms": 3.998279571533203,
+      "latency_ms": 7.013082504272461,
       "segments_reused": 6
     },
     {
@@ -416,7 +416,7 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 228,
-      "latency_ms": 4.0988922119140625,
+      "latency_ms": 9.723901748657227,
       "segments_reused": 6
     },
     {
@@ -425,25 +425,25 @@
       "expected": "system1",
       "expected_met": true,
       "tokens_saved": 228,
-      "latency_ms": 2.057790756225586,
+      "latency_ms": 8.58926773071289,
       "segments_reused": 6
     },
     {
       "label": "E \u2014 rephrased goal",
-      "cache_level": "system2",
+      "cache_level": "system2_guided",
       "expected": "?",
       "expected_met": true,
-      "tokens_saved": 0,
-      "latency_ms": 49.95989799499512,
+      "tokens_saved": 228,
+      "latency_ms": 1687.7188682556152,
       "segments_reused": 0
     },
     {
       "label": "F \u2014 different intent",
-      "cache_level": "system2",
+      "cache_level": "miss",
       "expected": "?",
       "expected_met": true,
       "tokens_saved": 0,
-      "latency_ms": 53.31993103027344,
+      "latency_ms": 259.7353458404541,
       "segments_reused": 0
     }
   ]
