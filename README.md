@@ -30,6 +30,13 @@ mnemon demo     # see it working in 30 seconds
 
 Mnemon has three components. They work together automatically.
 
+Mnemon uses two matching modes across both paths:
+
+- **System 1** — exact match. Sub-millisecond. Zero tokens. No LLM call.
+- **System 2** — semantic match. "Weekly security report" hits the cache for "generate security audit".
+
+Both modes are active on both paths. MOTH uses them for response-level caching. The EME uses them for plan-level caching with gap fill on top.
+
 ### 1. Execution Memory Engine (EME) — the cache
 
 The EME stores what your agent has done before. On repeat runs it skips the LLM entirely.
@@ -39,10 +46,7 @@ First run:    20,000ms · 1,250 tokens · full cost
 Every repeat:  2.66ms  · 0 tokens    · $0.00
 ```
 
-Two matching modes:
-
-- **System 1** — exact match. Sub-millisecond. Zero tokens. No LLM call.
-- **System 2** — semantic match. "Weekly security report" hits the cache for "generate security audit". Only the parts that actually changed go to the LLM.
+System 1 + System 2 matching, plus segment-level caching: only the parts of a plan that actually changed go to the LLM. Everything else comes from cache.
 
 ### 2. Experience Bus — the learning loop
 
