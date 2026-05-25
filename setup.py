@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name="mnemon-ai",
-    version="1.1.2",
+    version="1.1.3",
     author="Mahika Jadhav",
     author_email="mahikajadhav22@gmail.com",
     description="Cut LLM agent token costs by 93%. Execution cache for LangChain, CrewAI, AutoGen, LangGraph — zero tokens on repeat runs, 2.66ms latency vs 20s.",

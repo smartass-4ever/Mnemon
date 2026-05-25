@@ -20,15 +20,14 @@ import hashlib
 import importlib.util
 import logging
 import sys
+import types
 from typing import Any, Dict, Optional
 
 from mnemon.moth import MnemonIntegration
-from ._utils import prompt_hash, track_cache_hit
-from ._cache import BoundedTTLCache
+from ._utils import prompt_hash, track_cache_hit, track_cache_miss
+from ._eme_bridge import MothCache
 
 logger = logging.getLogger(__name__)
-
-_task_cache = BoundedTTLCache(maxsize=500, ttl=3600)
 
 
 class CrewAIIntegration(MnemonIntegration):
@@ -43,6 +42,7 @@ class CrewAIIntegration(MnemonIntegration):
         self._handlers: Dict[Any, Any] = {}
         self._original_execute_sync: Optional[Any] = None
         self._mnemon: Optional[Any] = None
+        self._task_cache: Optional[MothCache] = None
 
     def is_available(self) -> bool:
         return "crewai" in sys.modules
@@ -53,6 +53,8 @@ class CrewAIIntegration(MnemonIntegration):
 
         self._mnemon = mnemon
         m = mnemon
+        self._task_cache = MothCache(m, "crewai")
+        task_cache = self._task_cache
 
         # System 2 EME: patch Task.execute_sync
         try:
@@ -66,17 +68,20 @@ class CrewAIIntegration(MnemonIntegration):
                 context: Optional[str] = None,
                 tools: Any = None,
             ) -> Any:
-                cache_key = _task_cache_key(_self, agent, context)
-                if cache_key in _task_cache:
+                description = getattr(_self, "description", "") or ""
+                cache_key   = _task_cache_key(_self, agent, context)
+                cached = task_cache.check(query=description, capabilities=[], hash_key=cache_key)
+                if cached is not None:
                     track_cache_hit(m, "crewai")
-                    logger.debug(
-                        f"Mnemon: CrewAI Task '{getattr(_self, 'description', '')[:40]}' "
-                        f"System 2 cache hit"
-                    )
-                    return _task_cache[cache_key]
+                    logger.debug(f"Mnemon: CrewAI Task '{description[:40]}' cache hit")
+                    if isinstance(cached, str):
+                        return _crewai_from_text(cached)
+                    return cached
 
                 result = orig_exec(_self, agent=agent, context=context, tools=tools)
-                _task_cache[cache_key] = result
+                text   = _crewai_text(result)
+                task_cache.store(description, [], cache_key, result, text)
+                track_cache_miss(m, "crewai")
                 return result
 
             Task.execute_sync = patched_execute_sync
@@ -104,3 +109,19 @@ def _task_cache_key(task: Any, agent: Any, context: Optional[str]) -> str:
         f"{description}|{agent_role}|{context or ''}".encode()
     ).hexdigest()
     return f"crewai_task:{key}"
+
+
+def _crewai_text(result: Any) -> str:
+    """Extract plain text from a CrewAI task result for DB persistence."""
+    if isinstance(result, str):
+        return result
+    return (
+        getattr(result, "raw", None)
+        or getattr(result, "output", None)
+        or str(result)
+    )
+
+
+def _crewai_from_text(text: str) -> Any:
+    """Reconstruct a minimal CrewAI-compatible result from cached text."""
+    return types.SimpleNamespace(raw=text, output=text, pydantic=None)
