@@ -571,6 +571,23 @@ class MnemonSync:
                     ph_telemetry.track_init(frameworks=activated)
                 except Exception:
                     pass
+                try:
+                    inner = getattr(self, "_m", None)
+                    silent = self._kwargs.get("silent", False) if hasattr(self, "_kwargs") else False
+                    if not silent:
+                        emb = getattr(inner, "_embedder", None)
+                        if emb:
+                            emb._load()
+                            if not getattr(emb, "system2_active", False):
+                                import sys as _sys
+                                print(
+                                    "Mnemon: System 2 (semantic matching) inactive — "
+                                    "cache persists across restarts but won't match rephrased inputs.\n"
+                                    "  Fix: pip install mnemon-ai[full]",
+                                    file=_sys.stderr, flush=True,
+                                )
+                except Exception:
+                    pass
             else:
                 import sys as _sys
                 print(

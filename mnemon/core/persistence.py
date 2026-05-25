@@ -188,6 +188,17 @@ class EROSDatabase:
         self._conn.execute("PRAGMA busy_timeout=5000")        # 5 s retry on SQLITE_BUSY
         self._conn.execute("PRAGMA wal_autocheckpoint=1000")  # checkpoint every 1000 WAL pages
         await self._migrate()
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS moth_hash_cache (
+                hash_key    TEXT NOT NULL,
+                tenant_id   TEXT NOT NULL,
+                source      TEXT NOT NULL,
+                text        TEXT NOT NULL,
+                stored_at   REAL NOT NULL,
+                PRIMARY KEY (hash_key, tenant_id)
+            )
+        """)
+        self._conn.commit()
         logger.info(f"Database connected: {self.db_path}")
 
     async def disconnect(self):
@@ -782,6 +793,29 @@ class EROSDatabase:
             return True
         except Exception:
             return False
+
+    def get_moth_cache(self, hash_key: str) -> Optional[str]:
+        """Look up a cached response text by exact hash key. Returns None on miss."""
+        try:
+            row = self._conn.execute(
+                "SELECT text FROM moth_hash_cache WHERE hash_key=? AND tenant_id=?",
+                (hash_key, self.tenant_id),
+            ).fetchone()
+            return row["text"] if row else None
+        except Exception:
+            return None
+
+    def set_moth_cache(self, hash_key: str, text: str, source: str) -> None:
+        """Persist a response text keyed by hash. Survives process restarts."""
+        try:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO moth_hash_cache
+                   (hash_key, tenant_id, source, text, stored_at) VALUES (?,?,?,?,?)""",
+                (hash_key, self.tenant_id, source, text, time.time()),
+            )
+            self._conn.commit()
+        except Exception:
+            pass
 
     def get_stats(self) -> Dict[str, Any]:
         row = self._conn.execute("""

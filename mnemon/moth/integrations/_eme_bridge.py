@@ -43,13 +43,28 @@ class MothCache:
             pass
         return None
 
+    def _db(self) -> Optional[Any]:
+        try:
+            if self._m._m and self._m._m._db:
+                return self._m._m._db
+        except Exception:
+            pass
+        return None
+
     # ── Sync ─────────────────────────────────────────────────────────────────
 
     def check(self, query: str, capabilities: List[str], hash_key: str) -> Optional[Any]:
-        """Check hash cache then EME semantic. Returns stored object or None."""
+        """Check hash cache, then persistent DB, then EME semantic. Returns stored object or None."""
         cached = self._hash_cache.get(hash_key)
         if cached is not None:
             return cached
+
+        db = self._db()
+        if db:
+            text = db.get_moth_cache(hash_key)
+            if text:
+                logger.debug(f"Mnemon: {self._source} persistent cache hit")
+                return text
 
         eme = self._eme()
         if eme and query:
@@ -74,8 +89,13 @@ class MothCache:
     def store(
         self, query: str, capabilities: List[str], hash_key: str, obj: Any, text: str
     ) -> None:
-        """Store in hash cache and EME."""
+        """Store in hash cache, persistent DB, and EME."""
         self._hash_cache[hash_key] = obj
+
+        if text:
+            db = self._db()
+            if db:
+                db.set_moth_cache(hash_key, text, self._source)
 
         eme = self._eme()
         if eme and query and text:
@@ -91,10 +111,17 @@ class MothCache:
     async def async_check(
         self, query: str, capabilities: List[str], hash_key: str
     ) -> Optional[Any]:
-        """Async: check hash cache then EME semantic."""
+        """Async: check hash cache, then persistent DB, then EME semantic."""
         cached = self._hash_cache.get(hash_key)
         if cached is not None:
             return cached
+
+        db = self._db()
+        if db:
+            text = db.get_moth_cache(hash_key)
+            if text:
+                logger.debug(f"Mnemon: {self._source} persistent cache hit (async)")
+                return text
 
         eme = self._eme()
         if eme and query:
@@ -117,8 +144,13 @@ class MothCache:
     async def async_store(
         self, query: str, capabilities: List[str], hash_key: str, obj: Any, text: str
     ) -> None:
-        """Async: store in hash cache and EME."""
+        """Async: store in hash cache, persistent DB, and EME."""
         self._hash_cache[hash_key] = obj
+
+        if text:
+            db = self._db()
+            if db:
+                db.set_moth_cache(hash_key, text, self._source)
 
         eme = self._eme()
         if eme and query and text:
