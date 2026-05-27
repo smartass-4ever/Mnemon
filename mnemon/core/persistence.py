@@ -23,7 +23,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 
 class SchemaError(Exception):
@@ -239,6 +239,7 @@ class EROSDatabase:
             2: self._migration_v2_to_v3,
             3: self._migration_v3_to_v4,
             4: self._migration_v4_to_v5,
+            5: self._migration_v5_to_v6,
         }
 
         for v in range(current, CURRENT_SCHEMA_VERSION):
@@ -452,6 +453,18 @@ class EROSDatabase:
         except Exception as e:
             if "duplicate column" not in str(e).lower():
                 raise
+
+    async def _migration_v5_to_v6(self):
+        """Add usage_ledger table for free-tier quota tracking."""
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS usage_ledger (
+                tenant_id   TEXT NOT NULL,
+                date        TEXT NOT NULL,
+                hits        INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (tenant_id, date)
+            )
+        """)
+        self._conn.commit()
 
     # ──────────────────────────────────────────
     # EXECUTION TEMPLATES (EME)
@@ -708,6 +721,27 @@ class EROSDatabase:
                 (tenant_id, limit),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ──────────────────────────────────────────
+    # USAGE LEDGER (quota enforcement)
+    # ──────────────────────────────────────────
+
+    async def get_daily_hits(self, tenant_id: str, date: str) -> int:
+        async with self._lock:
+            row = self._conn.execute(
+                "SELECT hits FROM usage_ledger WHERE tenant_id=? AND date=?",
+                (tenant_id, date),
+            ).fetchone()
+        return int(row["hits"]) if row else 0
+
+    async def record_daily_hit(self, tenant_id: str, date: str) -> None:
+        async with self._lock:
+            self._conn.execute(
+                "INSERT INTO usage_ledger (tenant_id, date, hits) VALUES (?,?,1) "
+                "ON CONFLICT(tenant_id, date) DO UPDATE SET hits = hits + 1",
+                (tenant_id, date),
+            )
+            self._conn.commit()
 
     # ──────────────────────────────────────────
     # AUDIT LOG

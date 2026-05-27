@@ -43,6 +43,7 @@ from mnemon.observability.watchdog import Watchdog
 from mnemon.observability.telemetry import Telemetry
 from mnemon.llm.client import LLMClient, auto_client
 from mnemon.core.drift import DriftDetector
+from mnemon.billing.quota import QuotaEnforcer
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ class Mnemon:
         prewarm_fragments: bool = True,
         prewarm_templates: bool = True,
         silent: bool = False,
+        license_key: Optional[str] = None,
     ):
         self.tenant_id   = tenant_id
         self.agent_id    = agent_id
@@ -126,6 +128,7 @@ class Mnemon:
                 webhook_url=watchdog_webhook,
             )
         self._drift   = DriftDetector(tenant_id=tenant_id, db=self._db)
+        self._quota   = QuotaEnforcer(db=self._db, tenant_id=tenant_id, license_key=license_key)
         self._started = False
         self._silent  = silent
 
@@ -220,6 +223,7 @@ class Mnemon:
                 self._eme.set_retrospector(self._retrospector)
         if self._watchdog:
             await self._watchdog.start()
+        await self._quota.start()
         self._started = True
         logger.info(f"Mnemon {MNEMON_VERSION} started — tenant={self.tenant_id}")
 
@@ -302,6 +306,24 @@ class Mnemon:
                     generation_fn=generation_fn, task_id=task_id,
                     memory_context=None,
                 )
+                # Quota gate: if free tier is exhausted, bypass the cache hit
+                if (
+                    eme_result
+                    and eme_result.cache_level in ("system1", "system2", "system2_guided")
+                    and not await self._quota.can_serve_cache_hit()
+                ):
+                    if not self._silent:
+                        import sys as _sys
+                        remaining = self._quota.hits_remaining
+                        print(
+                            f"Mnemon: free tier limit reached ({remaining} hits remaining today) — "
+                            f"upgrade to Pro for unlimited caching: https://mnemon.lemonsqueezy.com",
+                            file=_sys.stderr, flush=True,
+                        )
+                    template = await generation_fn(goal, inputs, context, caps, constraints)
+                    eme_result = EMEResult(status="miss", template=template, template_id=None)
+                elif eme_result and eme_result.cache_level in ("system1", "system2", "system2_guided"):
+                    await self._quota.record_hit()
             except Exception as e:
                 logger.warning(f"EME failed: {e} — direct generation")
                 try:
@@ -483,6 +505,8 @@ class Mnemon:
             kwargs["blocked_categories"] = config["blocked_categories"]
         if "watchdog_webhook" in config:
             kwargs["watchdog_webhook"] = config["watchdog_webhook"]
+        if "license_key" in config:
+            kwargs["license_key"] = config["license_key"]
         return cls(**kwargs)
 
     async def health_check(self) -> dict:

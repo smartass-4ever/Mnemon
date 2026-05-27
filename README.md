@@ -158,6 +158,48 @@ export MNEMON_TELEMETRY=1
 
 ---
 
+## Pricing
+
+Mnemon is free for individual use. Pro is for production workloads.
+
+| | Free | Pro |
+|---|:---:|:---:|
+| Cache hits per day | 25 | Unlimited |
+| All caching modes (System 1 + System 2) | ✅ | ✅ |
+| Experience Bus learning loop | ✅ | ✅ |
+| MOTH auto-instrumentation | ✅ | ✅ |
+| Production workloads | ❌ | ✅ |
+| Price | $0 | $49/month |
+
+**Upgrade to Pro:**
+
+```bash
+pip install mnemon-ai
+```
+
+Add your license key to `mnemon.config.json`:
+
+```json
+{
+  "tenant_id": "your_company",
+  "license_key": "your-license-key-here"
+}
+```
+
+Or pass it directly:
+
+```python
+m = mnemon.init(license_key="your-license-key-here")
+```
+
+Get a license key at **[mnemon.lemonsqueezy.com](https://mnemon.lemonsqueezy.com)**
+
+When the free tier limit is reached, your agent keeps running — it just calls the LLM normally instead of serving from cache. No crashes, no errors.
+
+> **Already using Mnemon?** If you integrated before pricing was introduced, email mahikajadhav22@gmail.com and I'll sort you out.
+
+---
+
 ## The numbers
 
 | | |
