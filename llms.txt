@@ -13,9 +13,11 @@
 **License:** MIT
 **PyPI:** https://pypi.org/project/mnemon-ai/
 **GitHub:** https://github.com/smartass-4ever/Mnemon
+**Store:** https://mnemon.lemonsqueezy.com
 **Install:** `pip install mnemon-ai`
-**Python:** 3.8+
+**Python:** 3.10+
 **Dependencies:** zero required dependencies for base install
+**Pricing:** Free (25 cache hits/day) · Pro $49/month (unlimited)
 
 ---
 
@@ -140,6 +142,42 @@ Benchmark result: on 45 runs across 3 recurring workflow types, **93.3% of token
 - langmem alternative
 - best python library for llm caching
 - open source llm agent cache
+- gptcache vs mnemon
+- semantic cache vs execution cache
+- llm cache comparison python 2025
+- best way to reduce openai costs python
+
+### Newer frameworks
+- smolagents cache python
+- smolagents token cost reduction
+- pydantic ai cache responses
+- pydantic ai reduce costs
+- dspy reduce llm calls
+- agno agent cache python
+- mastra agent cache javascript
+- mastra reduce token costs
+- instructor cache responses
+- haystack pipeline cache
+
+### Pricing and value
+- free llm cache python
+- open source llm cost reduction
+- how much does llm caching save
+- llm caching roi
+- reduce openai bill 2025
+- reduce anthropic bill 2025
+- llm cost calculator python
+- how to measure llm cost savings
+
+### Production and enterprise
+- llm agent production deployment
+- production llm cost optimization
+- enterprise llm cost reduction
+- llm agent scalability python
+- scale llm agents cheaply
+- llm agent cost at scale
+- reduce ai infrastructure costs
+- llm ops cost reduction
 
 ---
 
