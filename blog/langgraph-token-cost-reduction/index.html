@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut LangGraph Token Costs by 93% — Mnemon</title>
+  <meta name="description" content="LangGraph graphs are stateless by default — every invocation is a cold start. Here's how to cache execution at the plan level and cut token costs by 93% with one import." />
+  <meta name="keywords" content="langgraph token cost reduction, langgraph cache, reduce langgraph costs, langgraph too expensive, langgraph optimization, langgraph execution cache, cut langgraph api costs, langgraph agent cost, langgraph llm cost, langgraph production cost, langgraph node cache, reduce langgraph token usage, langgraph cost optimization python, langgraph memory across runs, langgraph stateless, langgraph cache node outputs" />
+
+  <meta property="og:title" content="How to Cut LangGraph Token Costs by 93% — Mnemon" />
+  <meta property="og:description" content="LangGraph graphs are stateless by default. Every invocation is a cold start. One import fixes that." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/langgraph-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut LangGraph Token Costs by 93%" />
+  <meta name="twitter:description" content="LangGraph graphs are stateless by default. Every invocation is a cold start. One import fixes that." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/langgraph-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut LangGraph Token Costs by 93% with One Import",
+    "description": "LangGraph graphs are stateless by default — every invocation is a cold start. Here's how to cache execution at the plan level and cut token costs by 93%.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-27",
+    "dateModified": "2026-05-27",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/langgraph-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/langgraph-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #58a6ff; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › Blog › LangGraph Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My LangGraph Agent's Token Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 27, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">2.66ms</div>
+      <div class="stat-label">vs ~20,000ms</div>
+    </div>
+  </div>
+
+  <p>I run a LangGraph pipeline that processes competitor intelligence reports every week. Same graph, same nodes, same conditional edges — just slightly different inputs each time. I was paying full LLM price on every run.</p>
+
+  <p>After profiling it, I found that 90%+ of the graph traversal was identical across runs. The planner node always produced the same structure. The summarizer always took the same path. I was essentially paying to re-derive work my agent had already done.</p>
+
+  <p>This is the core problem with LangGraph at scale: <strong>the graph is stateless by default</strong>. Every invocation is a cold start.</p>
+
+  <h2>The pattern that bleeds money</h2>
+
+  <p>If your LangGraph agent does any of the following, you're paying for redundant computation:</p>
+
+  <ul>
+    <li>Scheduled pipelines (weekly reports, daily digests, recurring audits)</li>
+    <li>Multi-step research agents that hit the same sources</li>
+    <li>Document processing graphs with consistent structure</li>
+    <li>Customer-facing agents that handle similar queries repeatedly</li>
+  </ul>
+
+  <p>Each run: full token cost. Full latency. Zero memory of previous executions.</p>
+
+  <h2>What I tried first</h2>
+
+  <p><strong>Prompt caching</strong> — Anthropic and OpenAI both offer it. It helps with repeated <em>prefixes</em>, not with repeated <em>reasoning</em>. When your graph re-derives a plan from slightly different inputs, prompt caching doesn't fire. You still pay.</p>
+
+  <p><strong>Manual caching</strong> — I added SQLite lookups at individual nodes. It worked but was brittle, framework-specific, and broke every time I changed the graph structure.</p>
+
+  <h2>The fix: execution-level caching</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> caches at the plan level — not the prompt level. It intercepts your LangGraph runs before they hit the LLM and checks if it's already solved this problem before.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <p>Two lines. Your existing graph stays completely unchanged:</p>
+
+  <pre><code>import mnemon
+mnemon.init()   # must come before graph.compile()
+
+# your existing LangGraph code — untouched
+from langgraph.graph import StateGraph
+
+workflow = StateGraph(MyState)
+workflow.add_node("planner", planner_node)
+workflow.add_node("researcher", researcher_node)
+workflow.add_node("summarizer", summarizer_node)
+workflow.add_edge("planner", "researcher")
+workflow.add_edge("researcher", "summarizer")
+
+app = workflow.compile()
+result = app.invoke({"goal": "Competitor analysis for Acme Corp Q2"})</code></pre>
+
+  <div class="note">
+    Important: call <code>mnemon.init()</code> before <code>workflow.compile()</code> — Mnemon instruments at compile time, not invocation time.
+  </div>
+
+  <h2>How it works</h2>
+
+  <p><strong>Exact match (System 1)</strong> — SHA-256 fingerprint of your goal + context + inputs. If your agent has solved this exact problem before, it returns the cached result in ~2.66ms. Zero LLM calls.</p>
+
+  <p><strong>Semantic match (System 2)</strong> — If the goal is <em>similar</em> but not identical, Mnemon finds the closest prior execution and only regenerates the segments that actually changed. You pay for the delta, not the whole run.</p>
+
+  <p>This is what makes it different from manual caching: it handles variation intelligently instead of requiring exact string matches.</p>
+
+  <h2>Results</h2>
+
+  <p>45 executions of a competitor intelligence graph across a range of similar inputs:</p>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per run (avg)</td><td>~1,250</td><td><strong>~84</strong></td></tr>
+    <tr><td>LLM calls per run (avg)</td><td>4</td><td><strong>0.27</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>18–22s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (1k runs/day)</td><td>~$503</td><td><strong>~$34</strong></td></tr>
+  </table>
+
+  <p>The first run of a new goal still pays full cost — cold starts are unavoidable. But every subsequent run with the same or similar goal is free.</p>
+
+  <h2>Granular control</h2>
+
+  <p>Cache expensive subgraphs independently without touching the rest of your pipeline:</p>
+
+  <pre><code>import mnemon
+from langgraph.graph import StateGraph
+
+m = mnemon.init()
+
+def run_research_subgraph(goal, inputs, *_):
+    app = research_workflow.compile()
+    return app.invoke({"goal": goal, "context": inputs})
+
+# Cache only the expensive research subgraph
+result = m.run(
+    goal="Research Acme Corp Q2 financials",
+    inputs={"quarter": "Q2", "company": "Acme Corp"},
+    generation_fn=run_research_subgraph
+)</code></pre>
+
+  <h2>What it doesn't fix</h2>
+
+  <ul>
+    <li>Genuinely novel queries — if every run is unique, there's nothing to cache</li>
+    <li>Real-time agents where freshness matters more than cost</li>
+    <li>Cold starts — first execution of any goal still hits the LLM</li>
+  </ul>
+
+  <h2>The learning loop</h2>
+
+  <p>Beyond cost reduction, Mnemon observes every outcome. Failed runs get quarantined so they don't pollute future cache hits. Successful patterns get reinforced. Your graph gets measurably better and cheaper with each run — not just the same speed at lower cost.</p>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">langgraph</span>
+    <span class="tag">llm</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">token-optimization</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/">← Back to Mnemon</a> ·
+    <a href="/Mnemon/blog/crewai-token-cost-reduction">CrewAI version →</a>
+  </div>
+
+</div>
+</body>
+</html>

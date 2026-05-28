@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut CrewAI Token Costs by 93% — Mnemon</title>
+  <meta name="description" content="Every CrewAI crew kickoff is stateless — agents re-derive the same reasoning every run. Here's how to eliminate that waste with one import and cut token costs by 93%." />
+  <meta name="keywords" content="crewai token cost reduction, crewai cache, reduce crewai costs, crewai too expensive, crewai optimization, crewai execution cache, cut crewai api costs, crewai agent cost, crewai llm cost, crewai production cost, crewai kickoff cache, reduce crewai token usage, crewai cost optimization python, crewai memory across runs" />
+
+  <meta property="og:title" content="How to Cut CrewAI Token Costs by 93% — Mnemon" />
+  <meta property="og:description" content="Every CrewAI crew kickoff is stateless. Agents re-derive the same reasoning every run. One import fixes that." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/crewai-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut CrewAI Token Costs by 93%" />
+  <meta name="twitter:description" content="Every CrewAI crew kickoff is stateless. Agents re-derive the same reasoning every run. One import fixes that." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/crewai-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut CrewAI Token Costs by 93% with One Import",
+    "description": "Every CrewAI crew kickoff is stateless — agents re-derive the same reasoning every run. Here's how to eliminate that waste with execution-level caching.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-27",
+    "dateModified": "2026-05-27",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/crewai-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/crewai-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › Blog › CrewAI Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My CrewAI Agent's Token Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 27, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">2.66ms</div>
+      <div class="stat-label">vs ~20,000ms</div>
+    </div>
+  </div>
+
+  <p>I have a CrewAI crew that generates product descriptions. Researcher agent, writer agent, editor agent — all working together. 20 runs a day, most with structurally similar inputs.</p>
+
+  <p>I profiled the token usage after a month. The researcher was re-deriving the same content structure on every run. The writer was regenerating the same outline logic. The editor was applying the same rules. Across hundreds of runs, the crew was solving the same problems from scratch every time.</p>
+
+  <p>This is the hidden cost of CrewAI at production scale: <strong>every crew kickoff is stateless</strong>. Agents don't remember the last run. The task delegation logic runs fresh. The reasoning starts over.</p>
+
+  <h2>Who this affects</h2>
+
+  <p>If your CrewAI setup involves any of these, you're paying for redundant computation:</p>
+
+  <ul>
+    <li>Content generation crews running daily or weekly</li>
+    <li>Research crews hitting the same topics or industries repeatedly</li>
+    <li>Data analysis crews with consistent task structures across similar inputs</li>
+    <li>Customer support crews handling common request patterns</li>
+  </ul>
+
+  <p>The more your crew runs, the more you pay — linearly. It never gets cheaper. It never gets faster.</p>
+
+  <h2>Why prompt caching doesn't solve it</h2>
+
+  <p>Prompt caching (Anthropic, OpenAI) helps when the <em>input prefix</em> is identical. In CrewAI, even when the task structure is the same, the dynamic task allocation, inter-agent communication, and context passing means the prompts differ enough that caching rarely fires where you need it.</p>
+
+  <p>You still pay for the reasoning. Every time.</p>
+
+  <h2>The fix: cache the execution, not the prompt</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> works at the execution plan level. It intercepts your crew runs before they hit the LLM and checks whether it's already solved this problem. If it has, it returns the result instantly.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <p>Two lines. Your crew stays exactly as-is:</p>
+
+  <pre><code>import crewai   # crewai must be imported before mnemon
+import mnemon
+mnemon.init()
+
+# your existing CrewAI code — completely unchanged
+from crewai import Agent, Task, Crew
+
+researcher = Agent(
+    role="Research Specialist",
+    goal="Find accurate product information",
+    backstory="Expert at gathering and synthesizing product data"
+)
+
+writer = Agent(
+    role="Content Writer",
+    goal="Write compelling product descriptions",
+    backstory="Skilled at converting research into persuasive copy"
+)
+
+research_task = Task(
+    description="Research {product_name} features and market position",
+    agent=researcher
+)
+
+write_task = Task(
+    description="Write a product description based on the research",
+    agent=writer
+)
+
+crew = Crew(agents=[researcher, writer], tasks=[research_task, write_task])
+result = crew.kickoff(inputs={"product_name": "Widget Pro 3000"})</code></pre>
+
+  <p>Mnemon auto-instruments CrewAI at import. No crew restructuring, no wrapper classes.</p>
+
+  <div class="note">
+    Note: import <code>crewai</code> before calling <code>mnemon.init()</code> — this is required so Mnemon can instrument the event bus correctly.
+  </div>
+
+  <h2>How it works</h2>
+
+  <p><strong>System 1 — Exact match:</strong> SHA-256 fingerprint of the task goal + inputs. If your crew has handled this exact request before, it returns the cached result in ~2.66ms. Zero LLM calls, zero API cost.</p>
+
+  <p><strong>System 2 — Semantic match:</strong> If the request is similar but not identical ("Widget Pro 3000" vs "Widget Pro 3001"), Mnemon finds the closest prior execution and only regenerates what actually changed. You pay for the diff, not the full crew run.</p>
+
+  <h2>Results</h2>
+
+  <p>45 runs across structurally similar product description tasks:</p>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per kickoff (avg)</td><td>~1,250</td><td><strong>~84</strong></td></tr>
+    <tr><td>LLM API calls per run</td><td>6</td><td><strong>0.4</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>18–22s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (1k runs/day)</td><td>~$503</td><td><strong>~$34</strong></td></tr>
+  </table>
+
+  <p>First run of any new task still pays full cost. Every run after that doesn't.</p>
+
+  <h2>Explicit control per task</h2>
+
+  <p>For crews with a mix of expensive and cheap tasks, cache specific phases independently:</p>
+
+  <pre><code>import crewai
+import mnemon
+from crewai import Agent, Task, Crew
+
+m = mnemon.init()
+
+def run_research_crew(goal, inputs, *_):
+    crew = Crew(agents=[researcher], tasks=[research_task])
+    return crew.kickoff(inputs={"product_name": inputs["product_name"]})
+
+# Cache just the research phase — expensive, rarely changes for similar products
+research_result = m.run(
+    goal=f"Research product: {inputs['product_name']}",
+    inputs={"product_name": "Widget Pro 3000", "category": "hardware"},
+    generation_fn=run_research_crew
+)</code></pre>
+
+  <h2>What it doesn't help with</h2>
+
+  <ul>
+    <li>Crews handling genuinely novel requests every time</li>
+    <li>Agents where real-time data freshness is critical</li>
+    <li>Cold starts — first run of any new goal is always a full execution</li>
+  </ul>
+
+  <h2>The compounding benefit</h2>
+
+  <p>Mnemon observes every crew run. Failed executions get quarantined and don't pollute future cache hits. Successful patterns accumulate. Over time, your crew's effective cost per run decreases as the cache fills — and the failure rate drops as bad patterns get filtered out.</p>
+
+  <p>It's not just cheaper. It gets measurably better.</p>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">crewai</span>
+    <span class="tag">llm</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">token-optimization</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/">← Back to Mnemon</a> ·
+    <a href="/Mnemon/blog/langgraph-token-cost-reduction">LangGraph version →</a>
+  </div>
+
+</div>
+</body>
+</html>
