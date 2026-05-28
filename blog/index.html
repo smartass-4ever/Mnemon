@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Blog — Mnemon LLM Agent Optimization</title>
+  <meta name="description" content="Guides on reducing LLM token costs, caching agent execution, and optimizing AI workflows across LangChain, CrewAI, AutoGen, and LangGraph." />
+  <meta name="keywords" content="llm cost reduction, reduce ai costs, langchain optimization, crewai optimization, autogen optimization, langgraph optimization, llm token cost, reduce openai costs, reduce anthropic costs, ai agent cache python" />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Blog",
+    "name": "Mnemon Blog",
+    "description": "Guides on reducing LLM token costs and optimizing AI agent workflows.",
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/",
+    "publisher": { "@type": "Organization", "name": "Mnemon" }
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.6; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { color: #8b949e; font-size: 1rem; margin-bottom: 40px; }
+    .post-list { display: flex; flex-direction: column; gap: 1px; }
+    .post { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 24px; margin-bottom: 12px; transition: border-color 0.15s; }
+    .post:hover { border-color: #58a6ff; }
+    .post-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 8px; }
+    .post-title a { color: #f0f6fc; }
+    .post-title a:hover { color: #58a6ff; text-decoration: none; }
+    .post-desc { color: #8b949e; font-size: 0.9rem; margin-bottom: 12px; }
+    .post-meta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .tag { background: #0d1117; border: 1px solid #21262d; color: #8b949e; padding: 2px 8px; border-radius: 20px; font-size: 0.75rem; }
+    .stat-pill { color: #3fb950; font-size: 0.8rem; font-weight: 600; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › Blog
+  </div>
+
+  <h1>Blog</h1>
+  <p class="subtitle">Guides on cutting LLM token costs and making AI agents faster.</p>
+
+  <div class="post-list">
+
+    <div class="post">
+      <div class="post-title"><a href="/Mnemon/blog/langchain-token-cost-reduction">How to Cut LangChain Token Costs by 93% with One Import</a></div>
+      <div class="post-desc">LangChain is stateless by default — every invoke() call starts from zero. Here's how execution-level caching eliminates redundant reasoning and drops your API bill to near-zero on recurring workflows.</div>
+      <div class="post-meta">
+        <span class="stat-pill">93% token reduction</span>
+        <span class="tag">langchain</span>
+        <span class="tag">cost-optimization</span>
+      </div>
+    </div>
+
+    <div class="post">
+      <div class="post-title"><a href="/Mnemon/blog/crewai-token-cost-reduction">How to Cut CrewAI Token Costs by 93% with One Import</a></div>
+      <div class="post-desc">Every CrewAI kickoff is stateless — agents re-derive the same task delegation logic on every run. Two lines of code fixes that and brings repeat runs to $0.00.</div>
+      <div class="post-meta">
+        <span class="stat-pill">7,500× faster on cache hits</span>
+        <span class="tag">crewai</span>
+        <span class="tag">cost-optimization</span>
+      </div>
+    </div>
+
+    <div class="post">
+      <div class="post-title"><a href="/Mnemon/blog/langgraph-token-cost-reduction">How to Cut LangGraph Token Costs by 93% with One Import</a></div>
+      <div class="post-desc">LangGraph graphs are stateless by default — every invocation is a cold start. Execution-level caching means only the parts of your graph that actually changed get regenerated.</div>
+      <div class="post-meta">
+        <span class="stat-pill">2.66ms vs 20,000ms</span>
+        <span class="tag">langgraph</span>
+        <span class="tag">cost-optimization</span>
+      </div>
+    </div>
+
+    <div class="post">
+      <div class="post-title"><a href="/Mnemon/blog/autogen-token-cost-reduction">How to Cut AutoGen Token Costs by 93% with One Import</a></div>
+      <div class="post-desc">AutoGen's ConversableAgent.generate_reply() is stateless — multi-agent conversations repeat the same reasoning every run. One import patches it and caches at the reply level.</div>
+      <div class="post-meta">
+        <span class="stat-pill">$0.00 on repeat runs</span>
+        <span class="tag">autogen</span>
+        <span class="tag">multi-agent</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/">← Back to Mnemon</a> ·
+    <a href="https://github.com/smartass-4ever/Mnemon">GitHub</a> ·
+    <a href="https://pypi.org/project/mnemon-ai/">pip install mnemon-ai</a>
+  </div>
+
+</div>
+</body>
+</html>

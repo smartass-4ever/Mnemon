@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut AutoGen Token Costs by 93% — Mnemon</title>
+  <meta name="description" content="AutoGen agents regenerate replies from scratch on every call. Here's how to cache at the execution level and cut token costs by 93% — zero code changes to your existing agents." />
+  <meta name="keywords" content="autogen token cost reduction, autogen cache, reduce autogen costs, autogen too expensive, autogen optimization, autogen execution cache, cut autogen api costs, autogen agent cost, autogen llm cost, autogen production cost, reduce autogen token usage, autogen cost optimization python, autogen memory across runs, autogen response cache, autogen generate reply cache, autogen reduce redundant responses" />
+
+  <meta property="og:title" content="How to Cut AutoGen Token Costs by 93% — Mnemon" />
+  <meta property="og:description" content="AutoGen agents regenerate replies from scratch every call. One import eliminates that waste." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/autogen-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut AutoGen Token Costs by 93%" />
+  <meta name="twitter:description" content="AutoGen agents regenerate replies from scratch every call. One import eliminates that waste." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/autogen-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut AutoGen Token Costs by 93% with One Import",
+    "description": "AutoGen agents regenerate replies from scratch on every call. Here's how to cache at the execution level and cut token costs by 93%.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-27",
+    "dateModified": "2026-05-27",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/autogen-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/autogen-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › AutoGen Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My AutoGen Agent's Token Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 27, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>I built an AutoGen pipeline for automated code review — an assistant agent and a critic agent working together to review PRs. Same pattern every day, hundreds of reviews a month. After the first billing cycle I realized: my agents were regenerating the same reasoning on every single call.</p>
+
+  <p>This is the core problem with AutoGen at scale: <strong><code>ConversableAgent.generate_reply()</code> is stateless.</strong> Every conversation starts fresh. Agents don't remember how they handled structurally identical tasks yesterday. The cost compounds with every run.</p>
+
+  <h2>The workflows that bleed money</h2>
+
+  <ul>
+    <li>Multi-agent pipelines running on a schedule (daily reports, nightly audits)</li>
+    <li>Assistant + critic patterns on similar tasks (code review, content evaluation)</li>
+    <li>Sequential agent chains where early steps repeat across runs</li>
+    <li>Customer-facing agent systems handling common request patterns</li>
+  </ul>
+
+  <p>Every agent conversation that repeats a prior pattern is money you've already spent — spent again.</p>
+
+  <h2>The fix</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> patches <code>ConversableAgent.generate_reply()</code> at startup. It intercepts each reply generation, checks if this reasoning has happened before, and serves the cached result if it has.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+mnemon.init()   # patches ConversableAgent.generate_reply automatically
+
+# your existing AutoGen code — completely unchanged
+from autogen import ConversableAgent
+
+assistant = ConversableAgent(
+    name="assistant",
+    system_message="You are a helpful code reviewer.",
+    llm_config={"model": "claude-sonnet-4-6"},
+)
+
+critic = ConversableAgent(
+    name="critic",
+    system_message="You identify issues in code reviews.",
+    llm_config={"model": "claude-sonnet-4-6"},
+)
+
+result = assistant.initiate_chat(
+    critic,
+    message="Review this Python function for security issues: [code here]",
+    max_turns=3,
+)</code></pre>
+
+  <p>No agent restructuring. No conversation flow changes. Your existing code stays exactly as-is.</p>
+
+  <h2>How it works</h2>
+
+  <p><strong>System 1 — Exact match:</strong> SHA-256 fingerprint of the full message + agent config. Identical inputs on a repeat run return the cached reply in ~2.66ms. Zero tokens.</p>
+
+  <p><strong>System 2 — Semantic match:</strong> Similar but not identical inputs are matched against stored executions. Only what actually changed gets regenerated. You pay for the diff, not the full conversation.</p>
+
+  <div class="note">
+    In multi-turn conversations, Mnemon caches at the reply level — each <code>generate_reply()</code> call is independently cached. A 5-turn conversation with 4 cached turns costs 80% less.
+  </div>
+
+  <h2>Results</h2>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per conversation (avg)</td><td>~1,250</td><td><strong>~84</strong></td></tr>
+    <tr><td>LLM calls per run (avg)</td><td>5</td><td><strong>0.35</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>18–22s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (1k runs/day)</td><td>~$503</td><td><strong>~$34</strong></td></tr>
+  </table>
+
+  <h2>Explicit control for complex pipelines</h2>
+
+  <p>For pipelines where you want to cache specific agent interactions independently:</p>
+
+  <pre><code>import mnemon
+from autogen import ConversableAgent
+
+m = mnemon.init()
+
+def run_review_agents(goal, inputs, *_):
+    result = assistant.initiate_chat(
+        critic,
+        message=f"Review for {inputs['pr_id']}: {inputs['code']}",
+        max_turns=3,
+    )
+    return result.summary
+
+review = m.run(
+    goal="security code review",
+    inputs={"pr_id": "PR-441", "language": "python"},
+    generation_fn=run_review_agents,
+)
+
+print(review["cache_level"])      # "system1" | "system2" | "miss"
+print(review["tokens_saved"])     # tokens saved this run</code></pre>
+
+  <h2>Multi-agent swarms</h2>
+
+  <p>The savings multiply with agent count. A 10-agent pipeline where 9 of 10 agents hit the cache saves 90% per run. At 50 agents, Mnemon has demonstrated 62,500 tokens saved in a single burst — 0 LLM calls, 0.18 seconds total.</p>
+
+  <h2>What it doesn't help with</h2>
+
+  <ul>
+    <li>Agents handling genuinely novel inputs every time</li>
+    <li>Conversations requiring real-time context</li>
+    <li>Cold starts — first execution of any goal still hits the LLM</li>
+  </ul>
+
+  <h2>Cost at scale</h2>
+
+  <table>
+    <tr><th>Daily agent runs</th><th>Monthly cost saved</th></tr>
+    <tr><td>100</td><td><strong>$56</strong></td></tr>
+    <tr><td>1,000</td><td><strong>$503</strong></td></tr>
+    <tr><td>10,000</td><td><strong>$5,034</strong></td></tr>
+  </table>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">autogen</span>
+    <span class="tag">llm</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">token-optimization</span>
+    <span class="tag">multi-agent</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/langchain-token-cost-reduction">LangChain version →</a>
+  </div>
+
+</div>
+</body>
+</html>

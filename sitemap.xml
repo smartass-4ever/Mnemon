@@ -25,6 +25,18 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://smartass-4ever.github.io/Mnemon/blog/</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://smartass-4ever.github.io/Mnemon/blog/langchain-token-cost-reduction</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://smartass-4ever.github.io/Mnemon/blog/crewai-token-cost-reduction</loc>
     <lastmod>2026-05-27</lastmod>
     <changefreq>monthly</changefreq>
@@ -33,6 +45,12 @@
   <url>
     <loc>https://smartass-4ever.github.io/Mnemon/blog/langgraph-token-cost-reduction</loc>
     <lastmod>2026-05-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://smartass-4ever.github.io/Mnemon/blog/autogen-token-cost-reduction</loc>
+    <lastmod>2026-05-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut LangChain Token Costs by 93% — Mnemon</title>
+  <meta name="description" content="LangChain agents re-execute the same reasoning on every call. Here's how to cache at the execution level and cut token costs by 93% with one import — no code changes to your existing chain." />
+  <meta name="keywords" content="langchain token cost reduction, langchain cache, reduce langchain costs, langchain too expensive, langchain optimization, langchain execution cache, cut langchain api costs, langchain agent cost, langchain llm cost, langchain production cost, reduce langchain token usage, langchain cost optimization python, langchain memory across runs, langchain response cache, langchain caching between runs, langchain reduce api calls" />
+
+  <meta property="og:title" content="How to Cut LangChain Token Costs by 93% — Mnemon" />
+  <meta property="og:description" content="LangChain agents re-execute the same reasoning every call. One import eliminates that waste." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/langchain-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut LangChain Token Costs by 93%" />
+  <meta name="twitter:description" content="LangChain agents re-execute the same reasoning every call. One import eliminates that waste." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/langchain-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut LangChain Token Costs by 93% with One Import",
+    "description": "LangChain agents re-execute the same reasoning on every call. Here's how to cache at the execution level and cut token costs by 93%.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-27",
+    "dateModified": "2026-05-27",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/langchain-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/langchain-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › LangChain Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My LangChain Agent's Token Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 27, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>I run a LangChain agent that generates weekly market summaries. Same chain, same tools, slightly different inputs each week. After three months I looked at my Anthropic bill and realized I had been paying full price every single run — for reasoning my agent had already done dozens of times.</p>
+
+  <p>The problem is structural: <strong>LangChain is stateless by default.</strong> Every <code>llm.invoke()</code> call starts from zero. Your chain has no memory of what it produced last Tuesday, or last month. Every run is as expensive as the first.</p>
+
+  <h2>Where the money goes</h2>
+
+  <p>Most LangChain cost waste comes from recurring patterns:</p>
+
+  <ul>
+    <li>Agents that run on a schedule (daily digests, weekly reports, recurring audits)</li>
+    <li>Chains that handle structurally similar queries (same intent, different specifics)</li>
+    <li>Multi-step chains where early reasoning steps are nearly identical across runs</li>
+    <li>RAG pipelines that re-synthesize over the same documents</li>
+  </ul>
+
+  <p>The more repetition in your workload, the more you're overpaying.</p>
+
+  <h2>Why LangChain's built-in caching isn't enough</h2>
+
+  <p>LangChain has a <code>set_llm_cache</code> function that caches exact string matches. It's useful but limited:</p>
+
+  <ul>
+    <li>Requires <em>exact</em> input match — one word difference misses the cache entirely</li>
+    <li>Doesn't understand semantic similarity ("weekly report for Acme" vs "Acme Corp weekly summary")</li>
+    <li>Doesn't persist learning about what failed or succeeded across sessions</li>
+    <li>No cost or token tracking</li>
+  </ul>
+
+  <p>Prompt caching from Anthropic and OpenAI helps with repeated prefixes — but when your chain re-derives reasoning with slightly varied inputs, it doesn't fire.</p>
+
+  <h2>Execution-level caching</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> operates one level higher — it caches the <em>execution plan</em>, not the prompt. It intercepts <code>BaseChatModel.invoke()</code> before it reaches the LLM and checks if this problem has been solved before.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+mnemon.init()   # patches BaseChatModel automatically
+
+# your existing LangChain code — completely unchanged
+from langchain_anthropic import ChatAnthropic
+
+llm = ChatAnthropic(model="claude-sonnet-4-6")
+response = llm.invoke("Generate weekly market summary for fintech sector")
+# second call with same or similar input: 2.66ms · 0 tokens · $0.00</code></pre>
+
+  <p>No chain restructuring. No wrapper classes. Your existing code stays exactly as-is.</p>
+
+  <h2>How matching works</h2>
+
+  <p><strong>System 1 — Exact match:</strong> SHA-256 fingerprint of the full input. Identical input on a repeat call returns the cached result in ~2.66ms. Zero tokens, zero API cost.</p>
+
+  <p><strong>System 2 — Semantic match:</strong> Similar but not identical inputs ("Acme Corp weekly report" vs "weekly report for Acme") are matched against stored executions. Only the parts that actually changed get regenerated. You pay for the delta.</p>
+
+  <div class="note">
+    System 2 requires embeddings: <code>pip install mnemon-ai[full]</code> or set an OpenAI/Anthropic API key. Without it, Mnemon runs System 1 only — still valuable for exact repeats.
+  </div>
+
+  <h2>Results</h2>
+
+  <p>45 runs across three recurring workflow types (security audit, invoice processing, weekly report):</p>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per run (avg)</td><td>~1,250</td><td><strong>~84</strong></td></tr>
+    <tr><td>LLM calls per run (avg)</td><td>1</td><td><strong>0.07</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>18–22s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (1k runs/day)</td><td>~$503</td><td><strong>~$34</strong></td></tr>
+  </table>
+
+  <h2>Full explicit control</h2>
+
+  <p>For workloads where you want precise cache boundaries:</p>
+
+  <pre><code>import mnemon
+from langchain_anthropic import ChatAnthropic
+
+m = mnemon.init()
+llm = ChatAnthropic(model="claude-sonnet-4-6")
+
+def generate_report(goal, inputs, *_):
+    return llm.invoke(f"{goal} for {inputs['client']}").content
+
+result = m.run(
+    goal="weekly fintech market summary",
+    inputs={"client": "Acme Corp", "week": "May 26"},
+    generation_fn=generate_report,
+)
+
+print(result["output"])           # your report
+print(result["cache_level"])      # "system1" | "system2" | "miss"
+print(result["tokens_saved"])     # tokens saved this run
+print(result["latency_saved_ms"]) # ms saved this run</code></pre>
+
+  <h2>What it doesn't help with</h2>
+
+  <ul>
+    <li>Chains where every input is genuinely unique</li>
+    <li>Real-time queries where freshness is required</li>
+    <li>Cold starts — first execution of any goal still hits the LLM</li>
+  </ul>
+
+  <h2>Cost at scale</h2>
+
+  <table>
+    <tr><th>Daily runs</th><th>Monthly cost saved</th></tr>
+    <tr><td>100</td><td><strong>$56</strong></td></tr>
+    <tr><td>1,000</td><td><strong>$503</strong></td></tr>
+    <tr><td>10,000</td><td><strong>$5,034</strong></td></tr>
+  </table>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">langchain</span>
+    <span class="tag">llm</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">token-optimization</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/autogen-token-cost-reduction">AutoGen version →</a>
+  </div>
+
+</div>
+</body>
+</html>
