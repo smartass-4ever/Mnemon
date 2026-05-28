@@ -42,8 +42,12 @@ setup(
         "Programming Language :: Python :: 3.12",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Topic :: Software Development :: Libraries :: Python Modules",
+        "Topic :: Software Development :: Libraries",
         "Topic :: System :: Distributed Computing",
         "Topic :: Database :: Database Engines/Servers",
+        "Environment :: Console",
+        "Operating System :: OS Independent",
+        "Typing :: Typed",
     ],
     python_requires=">=3.10",
     install_requires=[

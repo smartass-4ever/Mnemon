@@ -21,7 +21,23 @@ Mnemon fixes that. It caches what your agent has already figured out, learns fro
 
 ```bash
 pip install mnemon-ai
-mnemon demo     # see it working in 30 seconds
+```
+
+```python
+import mnemon
+mnemon.init()
+
+# your existing code — completely unchanged
+from langchain_anthropic import ChatAnthropic
+llm = ChatAnthropic(model="claude-sonnet-4-6")
+response = llm.invoke("Generate weekly security report for Acme Corp")
+# second call with same input: 2.66ms · 0 tokens · $0.00
+```
+
+Works with **LangChain · CrewAI · AutoGen · LangGraph · Anthropic SDK · OpenAI SDK** — no code changes.
+
+```bash
+mnemon demo     # see it working in 30 seconds, no API key needed
 ```
 
 ---
