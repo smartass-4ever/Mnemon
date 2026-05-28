@@ -58,7 +58,7 @@ async def cmd_demo(args):
     import tempfile
     try:
         from mnemon.core import ph_telemetry
-        ph_telemetry._fire("cli_run", {"command": "demo", "framework": detect_framework()}, cli=True)
+        ph_telemetry._fire("cli_run", {"command": "demo", "framework": detect_framework()})
     except Exception:
         pass
     print_banner()
@@ -319,7 +319,7 @@ async def cmd_doctor(args):
     """Check Mnemon installation health — DB, embedder, schema, fragment/template counts."""
     try:
         from mnemon.core import ph_telemetry
-        ph_telemetry._fire("cli_run", {"command": "doctor", "framework": detect_framework()}, cli=True)
+        ph_telemetry._fire("cli_run", {"command": "doctor", "framework": detect_framework()})
     except Exception:
         pass
     print_banner()

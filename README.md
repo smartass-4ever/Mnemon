@@ -151,9 +151,9 @@ export OPENAI_API_KEY=sk-...   # or set this — auto-detected
 
 Without either, Mnemon runs System 1 only (exact match). Still valuable, just no semantic matching.
 
-**Optional — share anonymous usage stats:**
+**Optional — disable anonymous usage stats:**
 ```bash
-export MNEMON_TELEMETRY=1
+export MNEMON_NO_TELEMETRY=1
 ```
 
 ---

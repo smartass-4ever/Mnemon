@@ -1,6 +1,6 @@
 """
-Anonymous opt-in telemetry — PostHog.
-Enabled by setting MNEMON_TELEMETRY=1 in the environment.
+Anonymous opt-out telemetry — PostHog.
+Disable by setting MNEMON_NO_TELEMETRY=1 in the environment.
 
 What is sent:  framework, cache_level, tokens_saved, latency_ms, mnemon_version, python_version.
 What is never sent: prompts, goals, content, API keys, file paths, user identity.
@@ -18,8 +18,7 @@ from typing import List
 
 _KEY = "phc_kgVmx3ixuEj5qQ2zDKniQrWxeRj4dfurm79LrDLce8eQ"
 _URL = "https://us.i.posthog.com/capture/"
-_ENABLED = os.environ.get("MNEMON_TELEMETRY", "").strip() == "1"
-_CLI_ENABLED = os.environ.get("MNEMON_NO_TELEMETRY", "").strip() != "1"  # CLI always on unless opted out
+_ENABLED = os.environ.get("MNEMON_NO_TELEMETRY", "").strip() != "1"
 
 
 def _anon_id() -> str:
@@ -33,9 +32,7 @@ def _anon_id() -> str:
 
 
 def _fire(event: str, props: dict, cli: bool = False) -> None:
-    if cli and not _CLI_ENABLED:
-        return
-    if not cli and not _ENABLED:
+    if not _ENABLED:
         return
     def _post():
         try:
