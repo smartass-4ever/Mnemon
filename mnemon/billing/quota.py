@@ -51,7 +51,14 @@ class QuotaEnforcer:
         if today != self._today:
             self._today = today
             self._daily_hits = await self._db.get_daily_hits(self._tenant_id, self._today)
-        return self._daily_hits < FREE_TIER_DAILY_HITS
+        allowed = self._daily_hits < FREE_TIER_DAILY_HITS
+        if not allowed:
+            try:
+                from mnemon.core import ph_telemetry
+                ph_telemetry._fire("quota_exhausted", {"hits_today": self._daily_hits})
+            except Exception:
+                pass
+        return allowed
 
     async def record_hit(self) -> None:
         self._daily_hits += 1

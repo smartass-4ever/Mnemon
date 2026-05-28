@@ -327,6 +327,11 @@ class Mnemon:
             except Exception as e:
                 logger.warning(f"EME failed: {e} — direct generation")
                 try:
+                    from mnemon.core import ph_telemetry
+                    ph_telemetry._fire("cache_error", {"error_type": type(e).__name__})
+                except Exception:
+                    pass
+                try:
                     template = await generation_fn(goal, inputs, context, caps, constraints)
                     eme_result = EMEResult(status="fallback", template=template, template_id=None)
                 except Exception as gen_e:
