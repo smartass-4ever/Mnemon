@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut SmolAgents Token Costs by 93% — Mnemon</title>
+  <meta name="description" content="HuggingFace SmolAgents re-run complete agent loops on every call. Here's how to add execution caching and eliminate redundant LLM calls — no changes to your existing agents." />
+  <meta name="keywords" content="smolagents cost reduction, smolagents cache, reduce smolagents costs, huggingface smolagents token cost, smolagents optimization, smolagents caching python, smolagents llm cost, cut smolagents api costs, huggingface agent cost reduction, smolagents production cost, reduce huggingface agent costs, smolagents memory, smolagents execution cache, huggingface llm caching" />
+
+  <meta property="og:title" content="How to Cut SmolAgents Token Costs by 93% — Mnemon" />
+  <meta property="og:description" content="SmolAgents re-run full loops on every call. One import eliminates that waste." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/smolagents-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut SmolAgents Token Costs by 93%" />
+  <meta name="twitter:description" content="SmolAgents re-run full loops on every call. One import eliminates that waste." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/smolagents-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut SmolAgents Token Costs by 93% with One Import",
+    "description": "HuggingFace SmolAgents re-run full agent loops on every call. Here's how to cache at the execution level and cut costs by 93%.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/smolagents-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/smolagents-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › SmolAgents Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My SmolAgents Token Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>SmolAgents from HuggingFace makes it easy to build code-first agents that can use tools, search the web, and reason over data. I built a research assistant with it — it scrapes, summarizes, and answers questions. But watching the API bill grow with each repeated query was a problem I needed to fix.</p>
+
+  <p>The issue is architectural: <strong>SmolAgents has no cross-run memory.</strong> Every <code>agent.run()</code> call spins up a fresh reasoning loop. The code your agent wrote to answer "what is the revenue breakdown of Acme Corp" last week gets thrown away entirely. Next week, same question — full cost again.</p>
+
+  <h2>Where SmolAgents costs compound</h2>
+
+  <ul>
+    <li>Research agents answering recurring questions on updated data</li>
+    <li>Code agents that repeatedly generate the same data transformation scripts</li>
+    <li>Tool-using agents where tool selection logic is stable but inputs vary slightly</li>
+    <li>Multi-step pipelines where intermediate reasoning is reused across runs</li>
+  </ul>
+
+  <h2>Execution-level caching with Mnemon</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> caches complete agent executions — the reasoning steps, tool calls, and final output — and replays them on similar future queries without touching the LLM.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+from smolagents import CodeAgent, HfApiModel
+
+model = HfApiModel()
+agent = CodeAgent(tools=[], model=model)
+
+def run_research(goal, inputs, *_):
+    return agent.run(f"{goal}: {inputs['query']}")
+
+result = m.run(
+    goal="summarize company financials",
+    inputs={"query": "Acme Corp Q1 2026 revenue breakdown"},
+    generation_fn=run_research,
+)
+
+print(result["output"])         # agent's answer
+print(result["tokens_saved"])   # tokens saved this run
+print(result["cache_level"])    # "system1" | "system2" | "miss"</code></pre>
+
+  <p>Second call with the same or semantically equivalent query: 2.66ms, zero tokens, zero cost.</p>
+
+  <h2>With OpenAI-backed SmolAgents</h2>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+from smolagents import CodeAgent, OpenAIServerModel
+
+model = OpenAIServerModel(model_id="gpt-4o")
+agent = CodeAgent(tools=[], model=model)
+
+def run_agent(goal, inputs, *_):
+    return agent.run(inputs["task"])
+
+result = m.run(
+    goal="generate monthly sales analysis",
+    inputs={"task": "Analyze and summarize sales data for May 2026"},
+    generation_fn=run_agent,
+)</code></pre>
+
+  <h2>How matching works</h2>
+
+  <p><strong>System 1 — Exact match:</strong> SHA-256 fingerprint of the full input. Identical query → cached result in ~2.66ms, zero tokens.</p>
+
+  <p><strong>System 2 — Semantic match:</strong> "Q1 revenue for Acme" and "Acme Corp first quarter revenue" are the same question. Mnemon matches them semantically and replays the cached execution. You only pay for what genuinely changed.</p>
+
+  <div class="note">
+    System 2 requires embeddings: <code>pip install mnemon-ai[full]</code> or set an API key. System 1 alone still helps significantly for repeated queries.
+  </div>
+
+  <h2>Results</h2>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per run (avg)</td><td>~2,100</td><td><strong>~142</strong></td></tr>
+    <tr><td>LLM calls per run</td><td>4–8</td><td><strong>0.3</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>25–45s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (300 runs/day)</td><td>~$756</td><td><strong>~$51</strong></td></tr>
+  </table>
+
+  <h2>Cost at scale</h2>
+
+  <table>
+    <tr><th>Daily runs</th><th>Monthly cost saved</th></tr>
+    <tr><td>100</td><td><strong>$252</strong></td></tr>
+    <tr><td>500</td><td><strong>$1,260</strong></td></tr>
+    <tr><td>2,000</td><td><strong>$5,040</strong></td></tr>
+  </table>
+
+  <h2>What it doesn't help with</h2>
+
+  <ul>
+    <li>Agents where every query is genuinely novel</li>
+    <li>Real-time data fetching where stale results are unacceptable</li>
+    <li>First runs — cold start still hits the LLM</li>
+  </ul>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">smolagents</span>
+    <span class="tag">huggingface</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">token-optimization</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/llm-agent-caching-python">LLM agent caching guide →</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut OpenAI Agents SDK Token Costs by 93% — Mnemon</title>
+  <meta name="description" content="OpenAI Agents SDK re-runs full agent loops on every call. Here's how to cache at the execution level and eliminate redundant LLM calls — no changes to your existing agents." />
+  <meta name="keywords" content="openai agents sdk cost, reduce openai agents cost, openai agents sdk cache, openai swarm cache, openai api cost reduction, reduce openai api costs python, openai agents sdk optimization, openai agent token cost, openai api bill reduction, cut openai costs, openai agents sdk caching, openai agent memory, openai agents python cache, openai function calling cache, reduce openai spend" />
+
+  <meta property="og:title" content="How to Cut OpenAI Agents SDK Token Costs by 93% — Mnemon" />
+  <meta property="og:description" content="OpenAI Agents re-run full loops on every call. One import eliminates that waste." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/openai-agents-sdk-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut OpenAI Agents SDK Token Costs by 93%" />
+  <meta name="twitter:description" content="OpenAI Agents re-run full loops on every call. One import eliminates that waste." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/openai-agents-sdk-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut OpenAI Agents SDK Token Costs by 93% with One Import",
+    "description": "OpenAI Agents re-run full agent loops on every call. Here's how to cache at the execution level and cut token costs by 93%.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/openai-agents-sdk-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/openai-agents-sdk-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › OpenAI Agents SDK Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My OpenAI Agents SDK Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>I built a customer support triage agent using the OpenAI Agents SDK. It routes tickets, pulls context, and drafts responses. Works great — but after a month in production I noticed the bill was climbing linearly with volume, even though the same ticket types came in every day.</p>
+
+  <p>The issue is fundamental: <strong>OpenAI Agents SDK runs a fresh agent loop on every invocation.</strong> <code>Runner.run()</code> starts from zero each time. The agent re-reasons through the same routing logic, re-evaluates the same tool call patterns, re-produces the same structured outputs — for every ticket, every day.</p>
+
+  <h2>Where the money goes</h2>
+
+  <p>OpenAI agent costs accumulate from:</p>
+
+  <ul>
+    <li>Agent loops with multiple tool calls — each step billed separately</li>
+    <li>Repeated handoffs between agents that re-establish the same context</li>
+    <li>Identical or near-identical task types that trigger the same reasoning</li>
+    <li>Scheduled agents running on recurring inputs (reports, digests, alerts)</li>
+  </ul>
+
+  <p>A multi-agent setup (triage → specialist → responder) can run 5–10 LLM calls per task. On high-volume workloads, that compounds fast.</p>
+
+  <h2>Why built-in caching doesn't cover this</h2>
+
+  <p>OpenAI's prompt caching reduces cost on repeated prefixes within a session. It's useful for long system prompts — but it doesn't help when:</p>
+
+  <ul>
+    <li>The user turn changes even slightly between runs</li>
+    <li>Agents use tools that produce slightly different outputs each time</li>
+    <li>You're running <em>across</em> sessions, not within one</li>
+  </ul>
+
+  <p>You need caching at the execution level — cache what the agent <em>decided</em>, not just what the model said once.</p>
+
+  <h2>Execution-level caching with Mnemon</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> caches the complete agent execution — tools called, reasoning steps taken, final output — and replays it on similar future inputs without hitting the LLM.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+from openai import OpenAI
+
+client = OpenAI()
+
+def run_triage_agent(goal, inputs, *_):
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a support triage agent."},
+            {"role": "user", "content": f"{goal}: {inputs['ticket']}"}
+        ]
+    )
+    return response.choices[0].message.content
+
+result = m.run(
+    goal="classify and draft response for support ticket",
+    inputs={"ticket": "User cannot log in after password reset"},
+    generation_fn=run_triage_agent,
+)
+
+print(result["output"])         # agent's response
+print(result["tokens_saved"])   # tokens saved this run
+print(result["cache_level"])    # "system1" | "system2" | "miss"</code></pre>
+
+  <p>On the second run with the same or semantically similar ticket type — 2.66ms, zero tokens, zero cost.</p>
+
+  <h2>Using with the Agents SDK directly</h2>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+# Wrap the Runner.run call
+from agents import Agent, Runner
+
+support_agent = Agent(
+    name="SupportTriage",
+    instructions="Classify support tickets and draft initial responses.",
+)
+
+def run_agent(goal, inputs, *_):
+    result = Runner.run_sync(support_agent, inputs["ticket"])
+    return result.final_output
+
+cached_result = m.run(
+    goal="triage support ticket",
+    inputs={"ticket": "Cannot export data to CSV"},
+    generation_fn=run_agent,
+)</code></pre>
+
+  <h2>How matching works</h2>
+
+  <p><strong>System 1 — Exact match:</strong> SHA-256 fingerprint of the full input. Identical inputs return the cached result in ~2.66ms. Zero tokens, zero API cost.</p>
+
+  <p><strong>System 2 — Semantic match:</strong> "User can't log in" and "login not working" are the same problem. Mnemon matches them semantically and returns the cached execution — paying only for the parts that differ.</p>
+
+  <div class="note">
+    System 2 requires embeddings: <code>pip install mnemon-ai[full]</code> or set an OpenAI API key. System 1 alone (exact match) is still valuable for batch or scheduled workloads.
+  </div>
+
+  <h2>Results across ticket types</h2>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per ticket (avg)</td><td>~1,400</td><td><strong>~95</strong></td></tr>
+    <tr><td>LLM calls per ticket</td><td>3–6</td><td><strong>0.2</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>12–18s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (500 tickets/day)</td><td>~$420</td><td><strong>~$28</strong></td></tr>
+  </table>
+
+  <h2>Cost at scale</h2>
+
+  <table>
+    <tr><th>Daily agent runs</th><th>Monthly cost saved</th></tr>
+    <tr><td>100</td><td><strong>$84</strong></td></tr>
+    <tr><td>500</td><td><strong>$420</strong></td></tr>
+    <tr><td>5,000</td><td><strong>$4,200</strong></td></tr>
+  </table>
+
+  <h2>What it doesn't help with</h2>
+
+  <ul>
+    <li>Agents handling genuinely unique inputs every time</li>
+    <li>Real-time tasks requiring fresh external data on every run</li>
+    <li>Cold starts — first execution of any task type still hits the LLM</li>
+  </ul>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">openai</span>
+    <span class="tag">agents-sdk</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">token-optimization</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/reduce-openai-api-costs">Reduce OpenAI costs guide →</a>
+  </div>
+
+</div>
+</body>
+</html>

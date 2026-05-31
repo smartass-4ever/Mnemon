@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Production LLM Agent Optimization — Speed, Cost, Reliability — Mnemon</title>
+  <meta name="description" content="A practical guide to optimizing LLM agents for production — reducing costs, cutting latency, and building reliability into recurring agent workflows." />
+  <meta name="keywords" content="production llm agent optimization, llm agent production, optimize llm agents python, llm agent performance, llm agent cost production, production ai agent optimization, llm agent latency reduction, llm agent reliability, production ai workflow optimization, llm agent scaling, reduce llm agent costs production, llm production best practices, ai agent production deployment, llm agent monitoring" />
+
+  <meta property="og:title" content="Production LLM Agent Optimization — Speed, Cost, Reliability — Mnemon" />
+  <meta property="og:description" content="How to optimize LLM agents for production — costs, latency, and reliability for recurring workflows." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/production-llm-agent-optimization" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Production LLM Agent Optimization — Speed, Cost, Reliability" />
+  <meta name="twitter:description" content="How to optimize LLM agents for production — costs, latency, and reliability for recurring workflows." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/production-llm-agent-optimization" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Production LLM Agent Optimization — Speed, Cost, Reliability",
+    "description": "A practical guide to optimizing LLM agents for production — costs, latency, and reliability.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/production-llm-agent-optimization",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/production-llm-agent-optimization"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › Production LLM Agent Optimization
+  </div>
+
+  <h1>Production LLM Agent Optimization — Speed, Cost, Reliability</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 8 min read</p>
+
+  <p>Moving an LLM agent from prototype to production surfaces a specific set of problems: costs that scale linearly with volume, latency that's hard to predict, and failure modes that only appear under real load. This guide covers the optimizations that matter most once you're running agents in production.</p>
+
+  <h2>Problem 1: Cost scales linearly with volume</h2>
+
+  <p>In a prototype, you run the agent a few times a day and the cost is negligible. In production with 1,000 runs/day, you're paying full price on every single one. If your agent's inputs have any repetition — and almost all production workloads do — you're leaving most of that money on the table.</p>
+
+  <p><strong>Fix: execution caching</strong></p>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> caches complete agent executions and replays them on similar future inputs. For recurring workflows, this brings the marginal cost of repeat runs to $0.00.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+# Works with any LLM call — OpenAI, Anthropic, LangChain, etc.
+def run_agent(goal, inputs, *_):
+    # your existing agent code here
+    return result
+
+cached = m.run(
+    goal="weekly fraud detection report",
+    inputs={"region": "US-West", "week": "2026-W22"},
+    generation_fn=run_agent,
+)
+
+print(cached["cache_level"])    # "system1" | "system2" | "miss"
+print(cached["tokens_saved"])   # tokens not billed to LLM API
+print(cached["latency_saved_ms"])</code></pre>
+
+  <p>First run: full LLM cost. Subsequent runs with same or similar inputs: 2.66ms, zero tokens.</p>
+
+  <h2>Problem 2: Latency is variable and slow at peak</h2>
+
+  <p>LLM API latency varies: 2–30 seconds depending on model, load, and output length. For user-facing features, this is often unacceptable. For pipelines, it creates unpredictable SLAs.</p>
+
+  <p><strong>Fixes in order of impact:</strong></p>
+
+  <ul>
+    <li><strong>Execution caching (Mnemon):</strong> Cache hits return in 2.66ms regardless of model. Most effective for recurring patterns.</li>
+    <li><strong>Use faster models:</strong> Groq's Llama 3 at 500+ tokens/sec, or GPT-4o-mini at lower latency than GPT-4o.</li>
+    <li><strong>Reduce output length:</strong> Shorter outputs = faster responses. Constrain with explicit instructions.</li>
+    <li><strong>Stream responses:</strong> Use <code>stream=True</code> to show partial output to users immediately rather than waiting for completion.</li>
+    <li><strong>Warm the cache:</strong> Pre-run common inputs during off-peak hours so peak requests hit the cache.</li>
+  </ul>
+
+  <h2>Problem 3: Reliability — agents fail silently</h2>
+
+  <p>LLM agents fail in subtle ways: hallucinated tool calls, wrong output format, partial reasoning, timeout mid-chain. In production, you need to catch and handle these gracefully.</p>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+def run_with_fallback(goal, inputs, *_):
+    try:
+        return my_agent(inputs)
+    except Exception as e:
+        # Log and return a safe default
+        print(f"Agent failed: {e}")
+        return "Unable to process this request."
+
+result = m.run(
+    goal="process customer request",
+    inputs={"request": inputs["text"]},
+    generation_fn=run_with_fallback,
+)
+
+# Check what happened
+if result["cache_level"] == "miss":
+    # This hit the LLM — monitor for errors
+    log_live_call(result)
+else:
+    # Cache hit — track cache performance
+    log_cache_hit(result["tokens_saved"])</code></pre>
+
+  <h2>Problem 4: No visibility into what's running</h2>
+
+  <p>Without instrumentation you can't answer: which workflows cost the most? Where are cache hits happening? What's the P95 latency? Mnemon gives you per-run metadata that feeds into your monitoring stack:</p>
+
+  <pre><code>result = m.run(goal=goal, inputs=inputs, generation_fn=fn)
+
+# Structured data for every run
+metrics = {
+    "cache_level": result["cache_level"],     # hit or miss
+    "tokens_saved": result["tokens_saved"],    # 0 on miss
+    "latency_saved_ms": result["latency_saved_ms"],
+    "goal": goal,
+}
+# Send to Datadog, Prometheus, PostHog, etc.</code></pre>
+
+  <h2>Problem 5: Scaling — cost grows with every new user</h2>
+
+  <p>With execution caching, the relationship between users and cost breaks. The first user to run a workflow type pays for it. Every subsequent user with a similar task gets the cached result. As volume grows, your marginal cost per run drops — rather than staying flat.</p>
+
+  <table>
+    <tr><th>Daily runs</th><th>Monthly cost without caching</th><th>With caching</th></tr>
+    <tr><td>100</td><td>$60</td><td><strong>$4</strong></td></tr>
+    <tr><td>1,000</td><td>$600</td><td><strong>$40</strong></td></tr>
+    <tr><td>10,000</td><td>$6,000</td><td><strong>$400</strong></td></tr>
+    <tr><td>100,000</td><td>$60,000</td><td><strong>$4,000</strong></td></tr>
+  </table>
+
+  <div class="note">
+    The cost ratio stays roughly constant (93% reduction) because recurring input patterns dominate at every scale. You pay once per new input type, not per run.
+  </div>
+
+  <h2>Production checklist</h2>
+
+  <ul>
+    <li>Set hard spending limits in your LLM provider's dashboard</li>
+    <li>Add execution caching for any recurring workflow</li>
+    <li>Use the cheapest model that meets your quality bar</li>
+    <li>Instrument every agent run with tokens, latency, and cache status</li>
+    <li>Add retry logic with exponential backoff for transient failures</li>
+    <li>Set max output tokens to prevent runaway outputs</li>
+    <li>Log and alert on unexpected cost spikes</li>
+  </ul>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">production</span>
+    <span class="tag">llm-agents</span>
+    <span class="tag">optimization</span>
+    <span class="tag">python</span>
+    <span class="tag">cost-reduction</span>
+    <span class="tag">latency</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/llm-agent-caching-python">LLM caching guide →</a>
+  </div>
+
+</div>
+</body>
+</html>

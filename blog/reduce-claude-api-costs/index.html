@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Reduce Anthropic Claude API Costs by 93% in Python — Mnemon</title>
+  <meta name="description" content="Claude API bills climbing? Here's how to reduce Anthropic API costs in Python — from model selection to execution caching that eliminates repeat run costs entirely." />
+  <meta name="keywords" content="reduce claude api costs, anthropic api cost reduction, reduce anthropic costs python, claude too expensive, lower anthropic bill, claude api optimization, reduce claude spend, anthropic cost optimization, claude api bill reduction, how to reduce claude costs, claude sonnet cost reduction, anthropic api cheaper, reduce claude token usage, anthropic production cost, claude cost saving python, reduce claude opus costs" />
+
+  <meta property="og:title" content="How to Reduce Anthropic Claude API Costs by 93% — Mnemon" />
+  <meta property="og:description" content="Claude API bills climbing? Here's every technique that works — including caching that brings repeat runs to $0." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/reduce-claude-api-costs" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Reduce Anthropic Claude API Costs by 93%" />
+  <meta name="twitter:description" content="Claude API bills climbing? Here's every technique that works — including caching that brings repeat runs to $0." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/reduce-claude-api-costs" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Reduce Anthropic Claude API Costs by 93% in Python",
+    "description": "A practical guide to reducing Claude API costs — from model selection to execution-level caching.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/reduce-claude-api-costs",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/reduce-claude-api-costs"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › Reduce Claude API Costs
+  </div>
+
+  <h1>How to Reduce Anthropic Claude API Costs by 93% in Python</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 7 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93%</div>
+      <div class="stat-label">Achievable reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">5</div>
+      <div class="stat-label">Techniques ranked by impact</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>Claude is among the most capable models available — Claude Sonnet in particular has become a production workhorse for AI applications. But at $3–$15 per million tokens depending on the model, costs compound fast at scale.</p>
+
+  <p>Here are the techniques that actually reduce your Anthropic bill, ranked by impact.</p>
+
+  <h2>Technique 1: Cache execution results (biggest win)</h2>
+
+  <p>The most expensive line on your Anthropic bill is almost always recurring work — agents that process the same types of inputs repeatedly, workflows that run on a schedule, pipelines that see the same question patterns daily.</p>
+
+  <p><strong>Execution caching</strong> remembers what your agent produced for a given input and returns it instantly on the next similar call — zero tokens, zero API cost.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+import anthropic
+client = anthropic.Anthropic()
+
+def run_analysis(goal, inputs, *_):
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": f"{goal}:\n{inputs['data']}"}]
+    )
+    return message.content[0].text
+
+result = m.run(
+    goal="summarize weekly engineering metrics",
+    inputs={"data": "PRs merged: 14. Incidents: 0. Deploy frequency: 3.2/day."},
+    generation_fn=run_analysis,
+)
+
+print(result["output"])         # summary
+print(result["tokens_saved"])   # tokens saved vs full API call
+print(result["cache_level"])    # "system1" | "system2" | "miss"</code></pre>
+
+  <p><strong>Impact: 93% cost reduction on recurring workloads.</strong> The second time any similar input is processed, it costs nothing.</p>
+
+  <h2>Technique 2: Use Haiku for simple tasks</h2>
+
+  <p>Claude Haiku costs roughly 20× less than Opus and 5× less than Sonnet. Most classification, routing, and extraction tasks work just as well on Haiku.</p>
+
+  <table>
+    <tr><th>Task</th><th>Model</th><th>vs Sonnet cost</th></tr>
+    <tr><td>Classification, routing</td><td>claude-haiku-4-5</td><td><strong>~80% cheaper</strong></td></tr>
+    <tr><td>Simple extraction</td><td>claude-haiku-4-5</td><td><strong>~80% cheaper</strong></td></tr>
+    <tr><td>Complex reasoning</td><td>claude-sonnet-4-6</td><td>baseline</td></tr>
+    <tr><td>Advanced multi-step</td><td>claude-opus-4-8</td><td>~3× more expensive</td></tr>
+  </table>
+
+  <h2>Technique 3: Enable prompt caching</h2>
+
+  <p>Anthropic's prompt caching caches up to 90% of your input tokens at 10% of the normal input price. If your system prompt is large and static, this is significant.</p>
+
+  <pre><code>import anthropic
+client = anthropic.Anthropic()
+
+response = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    system=[
+        {
+            "type": "text",
+            "text": LARGE_STATIC_SYSTEM_PROMPT,
+            "cache_control": {"type": "ephemeral"}  # cache this block
+        }
+    ],
+    messages=[{"role": "user", "content": user_message}]
+)</code></pre>
+
+  <p><strong>Impact: 90% reduction on system prompt tokens</strong> after the first call in a session. Requires prompts of 1024+ tokens to activate.</p>
+
+  <h2>Technique 4: Trim output length</h2>
+
+  <p>Output tokens cost 5× more than input tokens on most Claude models. Be explicit about desired output length:</p>
+
+  <pre><code># Instead of open-ended prompts:
+"Analyze this document and give me your thoughts."
+
+# Constrain the output explicitly:
+"Summarize in 2-3 sentences. Be direct — no preamble."</code></pre>
+
+  <p><strong>Impact: 30–70% reduction</strong> on output token costs for verbose workflows.</p>
+
+  <h2>Technique 5: Batch API for async workloads</h2>
+
+  <p>Anthropic's Message Batches API processes requests asynchronously at 50% of standard price. For non-real-time jobs — nightly reports, bulk classification, document processing queues — this is free savings.</p>
+
+  <pre><code>import anthropic
+client = anthropic.Anthropic()
+
+batch = client.messages.batches.create(requests=[
+    {"custom_id": f"item-{i}", "params": {"model": "claude-haiku-4-5", ...}}
+    for i, item in enumerate(items)
+])</code></pre>
+
+  <p><strong>Impact: 50% across the board</strong> for any async workload.</p>
+
+  <h2>Combined impact</h2>
+
+  <table>
+    <tr><th>Technique</th><th>Reduction</th><th>Applies to</th></tr>
+    <tr><td>Execution caching</td><td><strong>93%</strong></td><td>Recurring/similar inputs</td></tr>
+    <tr><td>Haiku for simple tasks</td><td><strong>80%</strong></td><td>Classification, extraction</td></tr>
+    <tr><td>Prompt caching</td><td><strong>90% on prefix</strong></td><td>Long static system prompts</td></tr>
+    <tr><td>Output trimming</td><td><strong>30–70%</strong></td><td>Verbose outputs</td></tr>
+    <tr><td>Batch API</td><td><strong>50%</strong></td><td>Async workloads</td></tr>
+  </table>
+
+  <div class="note">
+    Execution caching is the only technique that makes recurring runs cost $0.00. All other techniques reduce per-token cost, but the bill still scales with volume. Caching breaks that scaling relationship entirely.
+  </div>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">Try Mnemon — pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">anthropic</span>
+    <span class="tag">claude</span>
+    <span class="tag">cost-reduction</span>
+    <span class="tag">python</span>
+    <span class="tag">llm-optimization</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/reduce-openai-api-costs">Reduce OpenAI costs →</a>
+  </div>
+
+</div>
+</body>
+</html>

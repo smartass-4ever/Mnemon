@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut Groq API Costs by 93% — Mnemon</title>
+  <meta name="description" content="Groq is blazing fast — but you're still paying per token on every call. Here's how to add execution caching and cut your Groq API bill by 93% with one import." />
+  <meta name="keywords" content="groq api cost reduction, groq cache, reduce groq costs, groq token cost, groq optimization, groq caching python, groq llm cost, cut groq api costs, groq production cost, reduce groq token usage, groq api bill, groq llama cache, groq mixtral cache, groq inference cost, groq cost optimization python" />
+
+  <meta property="og:title" content="How to Cut Groq API Costs by 93% — Mnemon" />
+  <meta property="og:description" content="Groq is fast — but you're still paying per token. One import caches executions and cuts your bill by 93%." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/groq-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut Groq API Costs by 93%" />
+  <meta name="twitter:description" content="Groq is fast — but you're still paying per token. One import caches executions and cuts your bill by 93%." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/groq-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut Groq API Costs by 93% with One Import",
+    "description": "Groq is fast but you're still paying per token on every call. Here's how to cache executions and cut costs by 93%.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/groq-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/groq-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › Groq Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My Groq API Bill by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>Groq is genuinely fast — 500+ tokens per second with Llama 3 makes it perfect for latency-sensitive applications. I switched my agent workload to Groq specifically for the speed. But fast doesn't mean free: you're still paying per token, and my recurring agent runs were spending the same tokens at Groq speed, every single run.</p>
+
+  <p>The irony: <strong>Groq's speed makes it easy to burn through tokens faster.</strong> What used to take 20 seconds now happens in 1 second — so you run agents more aggressively, and the bill grows accordingly. The bottleneck shifted from latency to cost.</p>
+
+  <h2>Where Groq costs still add up</h2>
+
+  <ul>
+    <li>High-frequency agent loops running dozens of times per hour</li>
+    <li>Batch processing jobs that re-analyze similar data repeatedly</li>
+    <li>Real-time pipelines where the same decision patterns recur</li>
+    <li>Production agents where Groq speed encourages more frequent runs</li>
+  </ul>
+
+  <h2>Execution caching: make repeat runs free</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> caches complete LLM executions. On a cache hit, you skip the Groq API call entirely — 2.66ms instead of even Groq's blazing-fast 1s. Zero tokens, zero cost.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+from groq import Groq
+
+client = Groq()
+
+def run_analysis(goal, inputs, *_):
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": "You are a data analyst."},
+            {"role": "user", "content": f"{goal}: {inputs['data']}"}
+        ],
+    )
+    return response.choices[0].message.content
+
+result = m.run(
+    goal="analyze daily sales metrics and flag anomalies",
+    inputs={"data": "Revenue: $42,300. Units: 847. Returns: 12. Region: West."},
+    generation_fn=run_analysis,
+)
+
+print(result["output"])         # analysis
+print(result["tokens_saved"])   # tokens saved this run
+print(result["cache_level"])    # "system1" | "system2" | "miss"</code></pre>
+
+  <p>Second run with same or similar sales data: 2.66ms, zero Groq tokens, zero cost.</p>
+
+  <h2>With LangChain + Groq</h2>
+
+  <pre><code>import mnemon
+mnemon.init()  # auto-patches BaseChatModel
+
+from langchain_groq import ChatGroq
+
+llm = ChatGroq(model="llama-3.3-70b-versatile")
+# All existing LangChain code works unchanged
+response = llm.invoke("Analyze weekly inventory report for widget-A")
+# cache hit → 2.66ms, 0 tokens</code></pre>
+
+  <h2>How matching works</h2>
+
+  <p><strong>System 1 — Exact match:</strong> Identical input → cached result in ~2.66ms. Faster than even Groq's inference.</p>
+
+  <p><strong>System 2 — Semantic match:</strong> "Sales data for West region May 26" and "West region sales metrics 5/26" are the same. Mnemon matches them and skips the Groq call entirely.</p>
+
+  <div class="note">
+    System 2 requires embeddings: <code>pip install mnemon-ai[full]</code> or set an API key. System 1 alone still gives massive savings on high-frequency repeated workloads.
+  </div>
+
+  <h2>Results on high-frequency agent workload</h2>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per run (avg)</td><td>~1,100</td><td><strong>~75</strong></td></tr>
+    <tr><td>Groq API calls</td><td>1</td><td><strong>0.07</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>~1s (Groq)</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (2k runs/day)</td><td>~$132</td><td><strong>~$9</strong></td></tr>
+  </table>
+
+  <h2>Cost at scale</h2>
+
+  <table>
+    <tr><th>Daily runs</th><th>Monthly cost saved</th></tr>
+    <tr><td>500</td><td><strong>$33</strong></td></tr>
+    <tr><td>5,000</td><td><strong>$330</strong></td></tr>
+    <tr><td>50,000</td><td><strong>$3,300</strong></td></tr>
+  </table>
+
+  <h2>What it doesn't help with</h2>
+
+  <ul>
+    <li>Workloads where every input is genuinely unique</li>
+    <li>Streaming responses where partial output is needed</li>
+    <li>First run of any new input type</li>
+  </ul>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">groq</span>
+    <span class="tag">llama</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">token-optimization</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/reduce-openai-api-costs">Reduce OpenAI costs guide →</a>
+  </div>
+
+</div>
+</body>
+</html>

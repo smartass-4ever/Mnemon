@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut Instructor Token Costs by 93% — Mnemon</title>
+  <meta name="description" content="Instructor re-runs structured extraction on every call. Here's how to cache at the execution level and cut token costs by 93% — no changes to your existing extraction code." />
+  <meta name="keywords" content="instructor python cost reduction, instructor llm cache, reduce instructor costs, instructor structured output token cost, instructor optimization, instructor caching python, instructor llm cost, cut instructor api costs, instructor production cost, reduce instructor token usage, jason liu instructor cost, instructor pydantic cache, structured output cache, instructor response cache" />
+
+  <meta property="og:title" content="How to Cut Instructor Token Costs by 93% — Mnemon" />
+  <meta property="og:description" content="Instructor re-runs structured extraction on every call. One import eliminates that waste." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/instructor-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut Instructor Token Costs by 93%" />
+  <meta name="twitter:description" content="Instructor re-runs structured extraction on every call. One import eliminates that waste." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/instructor-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut Instructor Token Costs by 93% with One Import",
+    "description": "Instructor re-runs structured extraction on every call. Here's how to cache executions and cut costs by 93%.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/instructor-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/instructor-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › Instructor Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My Instructor Structured Extraction Costs by 93%</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>Instructor is the go-to library for structured LLM outputs — Pydantic validation, automatic retries, clean API. I use it for a data enrichment pipeline that classifies and extracts structured data from incoming records. Clean results. But high volume means high costs when the same record types come in repeatedly.</p>
+
+  <p>The problem: <strong>Instructor has no execution cache across calls.</strong> Every <code>client.chat.completions.create()</code> with <code>response_model</code> hits the LLM fresh. If you're extracting the same category of data — job postings, invoices, product descriptions — you're paying full price every single time.</p>
+
+  <h2>Where Instructor costs accumulate</h2>
+
+  <ul>
+    <li>Classification pipelines processing recurring input categories</li>
+    <li>Entity extraction over structurally similar documents</li>
+    <li>Data enrichment workflows with repeating record types</li>
+    <li>Validation-heavy extractions where retries compound the cost</li>
+  </ul>
+
+  <h2>Execution-level caching with Mnemon</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> wraps Instructor calls and caches complete extraction results — including the Pydantic-validated output — for replay on semantically equivalent future inputs.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import instructor
+import openai
+import mnemon
+from pydantic import BaseModel
+
+client = instructor.from_openai(openai.OpenAI())
+m = mnemon.init()
+
+class JobPosting(BaseModel):
+    title: str
+    company: str
+    required_skills: list[str]
+    seniority: str
+    remote: bool
+
+def extract_job(goal, inputs, *_):
+    result = client.chat.completions.create(
+        model="gpt-4o-mini",
+        response_model=JobPosting,
+        messages=[{
+            "role": "user",
+            "content": f"Extract structured data from this job posting:\n{inputs['text']}"
+        }],
+    )
+    return result.model_dump_json()
+
+cached = m.run(
+    goal="extract structured job posting data",
+    inputs={"text": "Senior Python Engineer at Acme Corp. Remote OK. Skills: Python, FastAPI, AWS..."},
+    generation_fn=extract_job,
+)
+
+print(cached["output"])         # JSON-serialized JobPosting
+print(cached["tokens_saved"])   # tokens saved this run
+print(cached["cache_level"])    # "system1" | "system2" | "miss"</code></pre>
+
+  <p>Second posting of the same type: 2.66ms, zero tokens, zero extraction cost.</p>
+
+  <h2>How matching works</h2>
+
+  <p><strong>System 1 — Exact match:</strong> Identical input text → cached extraction in ~2.66ms.</p>
+
+  <p><strong>System 2 — Semantic match:</strong> Two senior Python engineer postings from different companies extract to the same schema. Mnemon matches them and returns the cached result, only updating fields that actually differ.</p>
+
+  <div class="note">
+    System 2 requires embeddings: <code>pip install mnemon-ai[full]</code>. Particularly valuable for Instructor workflows where you're processing many structurally similar documents.
+  </div>
+
+  <h2>Results on job posting extraction</h2>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per extraction (avg)</td><td>~900</td><td><strong>~61</strong></td></tr>
+    <tr><td>LLM calls per record</td><td>1–2</td><td><strong>0.07</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>5–10s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (1k records/day)</td><td>~$270</td><td><strong>~$18</strong></td></tr>
+  </table>
+
+  <h2>Cost at scale</h2>
+
+  <table>
+    <tr><th>Daily extractions</th><th>Monthly cost saved</th></tr>
+    <tr><td>500</td><td><strong>$135</strong></td></tr>
+    <tr><td>2,000</td><td><strong>$540</strong></td></tr>
+    <tr><td>10,000</td><td><strong>$2,700</strong></td></tr>
+  </table>
+
+  <h2>What it doesn't help with</h2>
+
+  <ul>
+    <li>Extraction over fully unique documents every time</li>
+    <li>Cases where LLM retries are needed on novel inputs (Instructor shines here)</li>
+    <li>First extraction of any new document type</li>
+  </ul>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">instructor</span>
+    <span class="tag">structured-outputs</span>
+    <span class="tag">pydantic</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/pydantic-ai-token-cost-reduction">Pydantic AI version →</a>
+  </div>
+
+</div>
+</body>
+</html>

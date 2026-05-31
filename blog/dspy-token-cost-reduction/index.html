@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut DSPy Token Costs by 93% — Mnemon</title>
+  <meta name="description" content="DSPy programs re-execute from scratch on every forward() call. Here's how to add execution caching and eliminate redundant LLM calls — no changes to your compiled programs." />
+  <meta name="keywords" content="dspy cost reduction, dspy cache, reduce dspy costs, dspy token cost, dspy optimization, dspy caching python, dspy llm cost, cut dspy api costs, dspy production cost, reduce dspy token usage, dspy agent cost, dspy execution cache, dspy memory, dspy response cache, stanford dspy cost" />
+
+  <meta property="og:title" content="How to Cut DSPy Token Costs by 93% — Mnemon" />
+  <meta property="og:description" content="DSPy programs re-execute from scratch on every call. One import eliminates that waste." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/dspy-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut DSPy Token Costs by 93%" />
+  <meta name="twitter:description" content="DSPy programs re-execute from scratch on every call. One import eliminates that waste." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/dspy-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut DSPy Token Costs by 93% with One Import",
+    "description": "DSPy programs re-execute from scratch on every forward() call. Here's how to cache executions and cut costs by 93%.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/dspy-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/dspy-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › DSPy Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My DSPy Token Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>DSPy is powerful for optimizing LLM program logic — you compile prompts, optimize with optimizers, and get reliable structured outputs. I use it for a multi-hop reasoning pipeline over technical documentation. The compiled program is excellent. The production bill, less so.</p>
+
+  <p>The problem: <strong>every <code>program()</code> forward call re-executes the full pipeline.</strong> DSPy has a development-time cache (<code>DSPY_CACHEDIR</code>) for speeding up optimization runs, but this doesn't carry into production. In deployment, every query triggers the LLM chain from scratch.</p>
+
+  <h2>Where DSPy production costs accumulate</h2>
+
+  <ul>
+    <li>Multi-hop reasoning chains where early hops are stable across similar queries</li>
+    <li>Chain-of-Thought modules answering recurring question patterns</li>
+    <li>ReAct loops that repeatedly arrive at the same tool-call decisions</li>
+    <li>Classify or extract modules processing similar input categories</li>
+  </ul>
+
+  <h2>Execution-level caching with Mnemon</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> wraps DSPy program calls and caches complete execution results for replay on semantically similar future inputs.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import dspy
+import mnemon
+
+dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
+m = mnemon.init()
+
+class TechQA(dspy.Signature):
+    """Answer technical questions with step-by-step reasoning."""
+    question: str = dspy.InputField()
+    answer: str = dspy.OutputField()
+    reasoning: str = dspy.OutputField()
+
+cot = dspy.ChainOfThought(TechQA)
+
+def run_program(goal, inputs, *_):
+    result = cot(question=inputs["question"])
+    return f"{result.answer}\n\nReasoning: {result.reasoning}"
+
+cached = m.run(
+    goal="answer technical question with reasoning",
+    inputs={"question": "What causes memory leaks in Python async code?"},
+    generation_fn=run_program,
+)
+
+print(cached["output"])         # answer + reasoning
+print(cached["tokens_saved"])   # tokens saved this run
+print(cached["cache_level"])    # "system1" | "system2" | "miss"</code></pre>
+
+  <p>Second query with the same or semantically similar question: 2.66ms, zero tokens, zero cost.</p>
+
+  <h2>With compiled/optimized programs</h2>
+
+  <pre><code>import dspy
+import mnemon
+
+m = mnemon.init()
+
+# Load your compiled program
+compiled_program = dspy.load("./optimized_qa.json")
+
+def run_compiled(goal, inputs, *_):
+    result = compiled_program(question=inputs["question"])
+    return result.answer
+
+cached = m.run(
+    goal="technical support answer",
+    inputs={"question": "How do I configure connection pooling in SQLAlchemy?"},
+    generation_fn=run_compiled,
+)</code></pre>
+
+  <h2>How matching works</h2>
+
+  <p><strong>System 1 — Exact match:</strong> Identical input text → cached result in ~2.66ms, zero tokens.</p>
+
+  <p><strong>System 2 — Semantic match:</strong> "How do I fix a memory leak?" and "Why is my Python process growing in memory?" are the same debugging intent. Mnemon matches them and returns the cached answer.</p>
+
+  <div class="note">
+    System 2 requires embeddings: <code>pip install mnemon-ai[full]</code> or set an API key. This complements DSPy's optimization cache — DSPy caches during compilation, Mnemon caches during production inference.
+  </div>
+
+  <h2>Results on a multi-hop QA pipeline</h2>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per query (avg)</td><td>~2,400</td><td><strong>~163</strong></td></tr>
+    <tr><td>LLM calls per query</td><td>3–5</td><td><strong>0.25</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>15–30s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (250 queries/day)</td><td>~$720</td><td><strong>~$49</strong></td></tr>
+  </table>
+
+  <h2>Cost at scale</h2>
+
+  <table>
+    <tr><th>Daily queries</th><th>Monthly cost saved</th></tr>
+    <tr><td>100</td><td><strong>$288</strong></td></tr>
+    <tr><td>500</td><td><strong>$1,440</strong></td></tr>
+    <tr><td>2,000</td><td><strong>$5,760</strong></td></tr>
+  </table>
+
+  <h2>What it doesn't help with</h2>
+
+  <ul>
+    <li>Programs where every input is genuinely unique</li>
+    <li>Real-time inference where you need fresh LLM outputs always</li>
+    <li>Cold starts — first execution of any query type still hits the LLM</li>
+  </ul>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">dspy</span>
+    <span class="tag">stanford</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">token-optimization</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/llm-agent-caching-python">LLM agent caching guide →</a>
+  </div>
+
+</div>
+</body>
+</html>

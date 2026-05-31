@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Why Is My OpenAI Bill So High? (And How to Fix It) — Mnemon</title>
+  <meta name="description" content="Your OpenAI bill is growing fast and you can't figure out why. Here's the real reason most AI API bills spiral — and how to fix it without gutting your application." />
+  <meta name="keywords" content="openai bill too high, why is my openai bill so high, openai api costs too much, openai expensive, openai api bill growing, reduce openai bill, openai cost spike, openai charges too much, openai api expensive, lower openai bill, openai monthly cost, openai api pricing, why openai so expensive, openai api budget, openai spending too much" />
+
+  <meta property="og:title" content="Why Is My OpenAI Bill So High? (And How to Fix It) — Mnemon" />
+  <meta property="og:description" content="The real reason most AI API bills spiral — and how to fix it with execution caching." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/openai-bill-too-high" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Why Is My OpenAI Bill So High? (And How to Fix It)" />
+  <meta name="twitter:description" content="The real reason most AI API bills spiral — and how to fix it with execution caching." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/openai-bill-too-high" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Why Is My OpenAI Bill So High? (And How to Fix It)",
+    "description": "The real reason most AI API bills spiral — and the fastest way to fix it.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/openai-bill-too-high",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/openai-bill-too-high"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    .warning { background: #161b22; border-left: 3px solid #f85149; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › Why Is My OpenAI Bill So High
+  </div>
+
+  <h1>Why Is My OpenAI Bill So High? (And How to Fix It)</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 6 min read</p>
+
+  <p>You check your OpenAI dashboard and the number is way higher than you expected. You didn't add that many users. The feature set didn't change. But the bill is up 3× from last month. Here's what's actually happening — and how to fix it in an afternoon.</p>
+
+  <h2>The real reason: stateless agents re-pay on every run</h2>
+
+  <p>The number one cause of runaway OpenAI bills is simple: <strong>LLM agents are stateless by default.</strong> Every call to <code>gpt-4o</code>, every <code>.invoke()</code>, every agent loop — starts from zero. There is no built-in memory of what the agent did yesterday, or 10 minutes ago.</p>
+
+  <p>This means:</p>
+
+  <ul>
+    <li>A support agent that classifies tickets pays full price on every ticket — even for patterns it's seen 1,000 times</li>
+    <li>A weekly report generator re-reasons through the same formatting logic every week</li>
+    <li>A scheduled pipeline that runs at 9am daily bills you the same amount every single morning</li>
+    <li>A RAG pipeline re-synthesizes the same answers over the same docs</li>
+  </ul>
+
+  <p>If your application has <em>any</em> repetition in its inputs — and nearly all production applications do — you're overpaying by a large factor.</p>
+
+  <h2>How to diagnose it: look for repetition in your logs</h2>
+
+  <p>Pull your last 1,000 API calls. How many of the input messages are structurally similar?</p>
+
+  <ul>
+    <li>If 30%+ look like the same "type" of request → execution caching saves 90%+ of your bill</li>
+    <li>If every single request is unique → you have a harder optimization problem (model selection, output trimming)</li>
+  </ul>
+
+  <p>Most production apps land in the first bucket. FAQ bots, classification pipelines, scheduled agents, document extractors — all of these process recurring input patterns.</p>
+
+  <h2>The fast fix: execution caching</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> adds execution-level caching to any Python AI application. It intercepts LLM calls, checks whether this problem has been solved before, and returns the cached result at zero token cost.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+from openai import OpenAI
+client = OpenAI()
+
+def run_agent(goal, inputs, *_):
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": f"{goal}: {inputs['query']}"}
+        ]
+    )
+    return response.choices[0].message.content
+
+# First run: hits OpenAI, caches the result
+result = m.run(
+    goal="classify customer support ticket by category",
+    inputs={"query": "I can't log in after resetting my password"},
+    generation_fn=run_agent,
+)
+
+# All future similar tickets: 2.66ms, 0 tokens, $0.00
+result2 = m.run(
+    goal="classify customer support ticket by category",
+    inputs={"query": "Password reset isn't working, can't access account"},
+    generation_fn=run_agent,
+)
+
+print(result2["cache_level"])    # "system2" — semantic match
+print(result2["tokens_saved"])   # full token count saved</code></pre>
+
+  <h2>Other things to check</h2>
+
+  <p>Beyond caching, common causes of bill spikes:</p>
+
+  <ul>
+    <li><strong>Wrong model:</strong> Using GPT-4o for tasks that GPT-4o-mini handles fine. Mini is 15× cheaper.</li>
+    <li><strong>Verbose output prompts:</strong> Asking for explanations when you need a one-word answer. Output tokens cost 3–4× more than input.</li>
+    <li><strong>Retry loops:</strong> Retrying failed requests without fixing the underlying error. Each retry costs full price.</li>
+    <li><strong>No usage limits:</strong> A bug, a loop, or a bad actor can run up unlimited charges if you haven't set hard limits in your OpenAI settings.</li>
+    <li><strong>Runaway agents:</strong> Agents that call tools in infinite loops before hitting the context limit.</li>
+  </ul>
+
+  <div class="warning">
+    Set a hard monthly spend limit in your OpenAI dashboard immediately if you haven't already. Go to Settings → Limits → Set a monthly budget cap. This prevents worst-case scenarios from runaway code.
+  </div>
+
+  <h2>Expected savings by application type</h2>
+
+  <table>
+    <tr><th>Application type</th><th>Repetition level</th><th>Expected savings</th></tr>
+    <tr><td>Support ticket classifier</td><td>Very high</td><td><strong>90–95%</strong></td></tr>
+    <tr><td>Scheduled report generator</td><td>Very high</td><td><strong>90–95%</strong></td></tr>
+    <tr><td>FAQ / knowledge base bot</td><td>High</td><td><strong>80–90%</strong></td></tr>
+    <tr><td>Document processing pipeline</td><td>Medium-high</td><td><strong>70–85%</strong></td></tr>
+    <tr><td>General-purpose chatbot</td><td>Low-medium</td><td><strong>30–50%</strong></td></tr>
+    <tr><td>Unique-input creative tool</td><td>Low</td><td><strong>10–20%</strong></td></tr>
+  </table>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">Fix it now — pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">openai</span>
+    <span class="tag">cost-reduction</span>
+    <span class="tag">python</span>
+    <span class="tag">api-costs</span>
+    <span class="tag">execution-cache</span>
+    <span class="tag">debugging</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/reduce-openai-api-costs">Full cost reduction guide →</a>
+  </div>
+
+</div>
+</body>
+</html>

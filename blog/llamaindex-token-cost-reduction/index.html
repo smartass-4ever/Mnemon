@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut LlamaIndex Token Costs by 93% — Mnemon</title>
+  <meta name="description" content="LlamaIndex query engines re-synthesize answers from scratch on every query. Here's how to cache at the execution level and cut token costs by 93% with one import." />
+  <meta name="keywords" content="llamaindex cost reduction, llamaindex cache, reduce llamaindex costs, llamaindex token cost, llamaindex optimization, llamaindex caching python, llamaindex query cache, cut llamaindex api costs, llamaindex production cost, reduce llamaindex token usage, llamaindex llm cost, llamaindex agent cost, llama index cache, llamaindex memory, llamaindex response cache" />
+
+  <meta property="og:title" content="How to Cut LlamaIndex Token Costs by 93% — Mnemon" />
+  <meta property="og:description" content="LlamaIndex re-synthesizes answers from scratch on every query. One import eliminates that waste." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/llamaindex-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut LlamaIndex Token Costs by 93%" />
+  <meta name="twitter:description" content="LlamaIndex re-synthesizes answers from scratch on every query. One import eliminates that waste." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/llamaindex-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut LlamaIndex Token Costs by 93% with One Import",
+    "description": "LlamaIndex query engines re-synthesize answers from scratch on every query. Here's how to cache executions and cut costs by 93%.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/llamaindex-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/llamaindex-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › LlamaIndex Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My LlamaIndex Token Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>LlamaIndex is my go-to for RAG pipelines. I built an internal knowledge base query engine — hundreds of documents, structured queries, solid retrieval. But after putting it into production, I noticed the same handful of questions accounted for 70% of the API spend.</p>
+
+  <p>The problem: <strong>LlamaIndex has no cross-session query cache.</strong> Every <code>query_engine.query()</code> call retrieves context, synthesizes an answer, and bills you — even if you answered the exact same question yesterday. LlamaIndex's built-in caching helps with embeddings, but the LLM synthesis step runs fresh every time.</p>
+
+  <h2>Where LlamaIndex costs pile up</h2>
+
+  <ul>
+    <li>Repeated queries over a static or slowly-changing knowledge base</li>
+    <li>FAQ-style workloads where 20% of questions drive 80% of volume</li>
+    <li>Scheduled document summarization over the same corpus</li>
+    <li>Agent workflows that query the same index multiple times</li>
+  </ul>
+
+  <h2>Execution-level caching with Mnemon</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> caches the complete query execution — retrieval plan plus synthesized answer — and replays it on semantically equivalent future queries.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+
+documents = SimpleDirectoryReader("./docs").load_data()
+index = VectorStoreIndex.from_documents(documents)
+query_engine = index.as_query_engine()
+
+def run_query(goal, inputs, *_):
+    response = query_engine.query(inputs["question"])
+    return str(response)
+
+result = m.run(
+    goal="answer question from knowledge base",
+    inputs={"question": "What is our refund policy for enterprise customers?"},
+    generation_fn=run_query,
+)
+
+print(result["output"])         # synthesized answer
+print(result["tokens_saved"])   # tokens saved this run
+print(result["cache_level"])    # "system1" | "system2" | "miss"</code></pre>
+
+  <p>Second query with the same or similar question: 2.66ms, zero tokens, zero synthesis cost.</p>
+
+  <h2>With LlamaIndex agents</h2>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+from llama_index.core.agent import ReActAgent
+from llama_index.core.tools import QueryEngineTool
+
+query_tool = QueryEngineTool.from_defaults(query_engine=query_engine)
+agent = ReActAgent.from_tools([query_tool])
+
+def run_agent(goal, inputs, *_):
+    return str(agent.chat(inputs["message"]))
+
+result = m.run(
+    goal="answer enterprise support question",
+    inputs={"message": "How do I upgrade my enterprise plan?"},
+    generation_fn=run_agent,
+)</code></pre>
+
+  <h2>How matching works</h2>
+
+  <p><strong>System 1 — Exact match:</strong> Identical query text → cached answer in ~2.66ms, zero tokens.</p>
+
+  <p><strong>System 2 — Semantic match:</strong> "What's your refund policy?" and "How do refunds work for enterprise?" are the same intent. Mnemon matches them and returns the cached answer — only paying for genuinely new questions.</p>
+
+  <div class="note">
+    System 2 requires embeddings: <code>pip install mnemon-ai[full]</code> or set an API key. This works alongside LlamaIndex's own embedding index — they cache different things.
+  </div>
+
+  <h2>Results on a 500-doc knowledge base</h2>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per query (avg)</td><td>~1,800</td><td><strong>~122</strong></td></tr>
+    <tr><td>LLM calls per query</td><td>1–3</td><td><strong>0.08</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>10–20s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (400 queries/day)</td><td>~$864</td><td><strong>~$58</strong></td></tr>
+  </table>
+
+  <h2>Cost at scale</h2>
+
+  <table>
+    <tr><th>Daily queries</th><th>Monthly cost saved</th></tr>
+    <tr><td>200</td><td><strong>$432</strong></td></tr>
+    <tr><td>1,000</td><td><strong>$2,160</strong></td></tr>
+    <tr><td>5,000</td><td><strong>$10,800</strong></td></tr>
+  </table>
+
+  <h2>What it doesn't help with</h2>
+
+  <ul>
+    <li>Queries over constantly-changing documents where freshness matters</li>
+    <li>Genuinely unique questions every time</li>
+    <li>First query of any type — cold start still hits the LLM</li>
+  </ul>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">llamaindex</span>
+    <span class="tag">rag</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">token-optimization</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/llm-agent-caching-python">LLM agent caching guide →</a>
+  </div>
+
+</div>
+</body>
+</html>

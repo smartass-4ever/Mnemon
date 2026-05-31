@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Reduce OpenAI API Costs by 93% in Python — Mnemon</title>
+  <meta name="description" content="OpenAI API bills growing out of control? Here's a practical guide to reducing OpenAI API costs in Python — from prompt optimization to execution caching that brings repeat runs to $0.00." />
+  <meta name="keywords" content="reduce openai api costs, openai api cost reduction python, cut openai costs, openai too expensive, lower openai bill, openai api optimization, reduce openai spend, openai cost optimization, openai api bill reduction, how to reduce openai costs, openai gpt4 cost reduction, openai api cheaper, reduce openai token usage, openai production cost, openai cost saving python" />
+
+  <meta property="og:title" content="How to Reduce OpenAI API Costs by 93% in Python — Mnemon" />
+  <meta property="og:description" content="OpenAI bills growing? Here's every technique that works — from prompt tricks to execution caching." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/reduce-openai-api-costs" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Reduce OpenAI API Costs by 93% in Python" />
+  <meta name="twitter:description" content="OpenAI bills growing? Here's every technique that works — from prompt tricks to execution caching." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/reduce-openai-api-costs" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Reduce OpenAI API Costs by 93% in Python",
+    "description": "A practical guide to reducing OpenAI API costs — from model selection to execution-level caching.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/reduce-openai-api-costs",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/reduce-openai-api-costs"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+    .technique { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .technique-title { font-weight: 600; color: #f0f6fc; margin-bottom: 8px; }
+    .impact { color: #3fb950; font-size: 0.85rem; font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › Reduce OpenAI API Costs
+  </div>
+
+  <h1>How to Reduce OpenAI API Costs by 93% in Python</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 7 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93%</div>
+      <div class="stat-label">Achievable reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">5</div>
+      <div class="stat-label">Techniques ranked by impact</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>Your OpenAI bill is growing linearly with usage. You've tried switching to cheaper models, shortening prompts, and batching requests. The bill is still climbing. Here's what actually moves the needle — ranked by impact.</p>
+
+  <h2>Technique 1: Cache execution results (biggest win)</h2>
+
+  <p>Most production AI workloads have significant repetition. The same agent processes the same types of inputs daily. The same questions come in over and over. The same workflows run on a schedule.</p>
+
+  <p>Every repeated run that hits the OpenAI API is wasted money. <strong>Execution caching</strong> intercepts the call, checks if this problem has been solved before, and returns the cached result in milliseconds — at zero token cost.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+from openai import OpenAI
+client = OpenAI()
+
+def classify_ticket(goal, inputs, *_):
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Classify support tickets by category and priority."},
+            {"role": "user", "content": inputs["ticket"]}
+        ]
+    )
+    return response.choices[0].message.content
+
+result = m.run(
+    goal="classify support ticket",
+    inputs={"ticket": "User cannot log in after password reset"},
+    generation_fn=classify_ticket,
+)
+# Second identical or similar ticket: 2.66ms · 0 tokens · $0.00</code></pre>
+
+  <p><strong>Impact: 93% cost reduction on recurring workloads.</strong> This alone eliminates most of the bill for scheduled, batch, or FAQ-style applications.</p>
+
+  <h2>Technique 2: Use the right model for the task</h2>
+
+  <p>GPT-4o costs ~15× more per token than GPT-4o-mini. Most tasks don't need that power.</p>
+
+  <table>
+    <tr><th>Task</th><th>Use this model</th><th>Cost vs GPT-4o</th></tr>
+    <tr><td>Classification, routing</td><td>gpt-4o-mini</td><td><strong>~94% cheaper</strong></td></tr>
+    <tr><td>Simple extraction</td><td>gpt-4o-mini</td><td><strong>~94% cheaper</strong></td></tr>
+    <tr><td>Complex reasoning</td><td>gpt-4o</td><td>baseline</td></tr>
+    <tr><td>Long-context synthesis</td><td>gpt-4o</td><td>baseline</td></tr>
+  </table>
+
+  <p>Audit your API calls. You'll likely find that 70%+ can run on mini without quality loss.</p>
+
+  <h2>Technique 3: Enable prompt caching</h2>
+
+  <p>OpenAI charges 50% less for tokens that appear in cached prefixes. If your system prompt is long and static, this fires automatically — but only within a session window.</p>
+
+  <pre><code># Ensure your system prompt is at the start and unchanged across calls
+# OpenAI auto-caches after the first call if the prefix is 1024+ tokens
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": LONG_STATIC_SYSTEM_PROMPT},  # cached after first call
+        {"role": "user", "content": user_message}  # varies each call
+    ]
+)</code></pre>
+
+  <p><strong>Impact: 50% reduction on system prompt tokens.</strong> Only helps if your system prompts are long (1024+ tokens) and reused across calls in the same session.</p>
+
+  <h2>Technique 4: Reduce output tokens</h2>
+
+  <p>Output tokens cost 3–4× more than input tokens. Shorten your outputs explicitly:</p>
+
+  <pre><code># Bad — LLM writes a paragraph when you need two words
+"What is the sentiment of this review?"
+
+# Good — constrain the output
+"Classify the sentiment of this review. Reply with exactly one word: positive, negative, or neutral."</code></pre>
+
+  <p><strong>Impact: 20–60% cost reduction</strong> depending on how verbose your current prompts are.</p>
+
+  <h2>Technique 5: Batch API for offline workloads</h2>
+
+  <p>OpenAI's Batch API runs requests asynchronously within 24 hours at 50% of normal price. If your workload doesn't need real-time responses, this is free money.</p>
+
+  <pre><code>from openai import OpenAI
+client = OpenAI()
+
+batch = client.batches.create(
+    input_file_id=file_id,
+    endpoint="/v1/chat/completions",
+    completion_window="24h"
+)</code></pre>
+
+  <p><strong>Impact: 50% across the board</strong> for any non-real-time workload.</p>
+
+  <h2>Combined impact</h2>
+
+  <table>
+    <tr><th>Technique</th><th>Reduction</th><th>Applies to</th></tr>
+    <tr><td>Execution caching</td><td><strong>93%</strong></td><td>Recurring/similar inputs</td></tr>
+    <tr><td>Model downgrade</td><td><strong>94%</strong></td><td>Simple tasks</td></tr>
+    <tr><td>Prompt caching</td><td><strong>50% on prefix</strong></td><td>Long static system prompts</td></tr>
+    <tr><td>Output trimming</td><td><strong>20–60%</strong></td><td>Verbose outputs</td></tr>
+    <tr><td>Batch API</td><td><strong>50%</strong></td><td>Non-real-time jobs</td></tr>
+  </table>
+
+  <div class="note">
+    Execution caching is the only technique that brings recurring runs to $0.00. The others reduce per-token cost — valuable, but the token spend still scales with volume. Caching breaks that relationship entirely.
+  </div>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">Try Mnemon — pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">openai</span>
+    <span class="tag">cost-reduction</span>
+    <span class="tag">python</span>
+    <span class="tag">llm-optimization</span>
+    <span class="tag">execution-cache</span>
+    <span class="tag">api-costs</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/reduce-claude-api-costs">Reduce Claude API costs →</a>
+  </div>
+
+</div>
+</body>
+</html>

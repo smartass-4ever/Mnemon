@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>How to Cut Pydantic AI Token Costs by 93% — Mnemon</title>
+  <meta name="description" content="Pydantic AI agents re-run from scratch on every call. Here's how to cache at the execution level and cut token costs by 93% — no changes to your existing agents." />
+  <meta name="keywords" content="pydantic ai cost reduction, pydantic ai cache, reduce pydantic ai costs, pydantic ai token cost, pydantic ai optimization, pydantic ai caching, pydantic ai agent cost, pydantic ai llm cost, cut pydantic ai api costs, pydantic ai production cost, pydantic ai memory, pydantic ai response cache, pydantic ai python cache, reduce pydantic ai token usage" />
+
+  <meta property="og:title" content="How to Cut Pydantic AI Token Costs by 93% — Mnemon" />
+  <meta property="og:description" content="Pydantic AI agents re-run from scratch on every call. One import eliminates that waste." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/pydantic-ai-token-cost-reduction" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="How to Cut Pydantic AI Token Costs by 93%" />
+  <meta name="twitter:description" content="Pydantic AI agents re-run from scratch on every call. One import eliminates that waste." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/pydantic-ai-token-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "How to Cut Pydantic AI Token Costs by 93% with One Import",
+    "description": "Pydantic AI agents re-run from scratch on every call. Here's how to cache at the execution level and cut token costs by 93%.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/pydantic-ai-token-cost-reduction",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/pydantic-ai-token-cost-reduction"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › Pydantic AI Token Cost Reduction
+  </div>
+
+  <h1>How I Cut My Pydantic AI Agent's Token Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 5 min read</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-number">93.3%</div>
+      <div class="stat-label">Token reduction</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">7,500×</div>
+      <div class="stat-label">Faster on cache hits</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number">$0.00</div>
+      <div class="stat-label">Cost on repeat runs</div>
+    </div>
+  </div>
+
+  <p>Pydantic AI is fantastic for structured agent outputs — type-safe, clean, production-ready. I use it for a document processing pipeline that classifies and extracts data from incoming contracts. Clean code, but after two months in production, the bill was adding up fast.</p>
+
+  <p>The problem: <strong>every <code>agent.run_sync()</code> call is a cold start.</strong> Pydantic AI has no built-in execution memory. The same contract template — seen hundreds of times — triggers the full LLM reasoning loop every single run.</p>
+
+  <h2>Where Pydantic AI costs accumulate</h2>
+
+  <ul>
+    <li>Structured extraction agents processing repeated document templates</li>
+    <li>Classification agents that see the same category patterns daily</li>
+    <li>Validation agents that re-check the same rule sets</li>
+    <li>Multi-turn agents that re-establish context on every session</li>
+  </ul>
+
+  <p>Pydantic AI's type enforcement means your structured outputs are reliable — but you're paying full price to regenerate the same JSON schema outputs over and over.</p>
+
+  <h2>Execution-level caching with Mnemon</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> wraps your Pydantic AI agent calls and caches complete executions — including structured outputs — for replay on similar future inputs.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+from pydantic_ai import Agent
+from pydantic import BaseModel
+
+class ContractSummary(BaseModel):
+    party_a: str
+    party_b: str
+    contract_type: str
+    key_terms: list[str]
+
+agent = Agent(
+    'openai:gpt-4o',
+    result_type=ContractSummary,
+    system_prompt='Extract structured data from legal contracts.',
+)
+
+def extract_contract(goal, inputs, *_):
+    result = agent.run_sync(inputs["text"])
+    return result.data.model_dump_json()
+
+cached = m.run(
+    goal="extract contract parties and terms",
+    inputs={"text": "This agreement between Acme Corp and Beta Ltd..."},
+    generation_fn=extract_contract,
+)
+
+print(cached["output"])        # JSON-serialized ContractSummary
+print(cached["tokens_saved"])  # tokens saved this run
+print(cached["cache_level"])   # "system1" | "system2" | "miss"</code></pre>
+
+  <p>Second run with an identical or structurally similar contract: 2.66ms, zero tokens, zero cost.</p>
+
+  <h2>How matching works</h2>
+
+  <p><strong>System 1 — Exact match:</strong> SHA-256 fingerprint of the full input. Same contract text → cached result in ~2.66ms.</p>
+
+  <p><strong>System 2 — Semantic match:</strong> A new NDA from a different company but same structure matches semantically. Only the changed fields are regenerated — you pay for the delta, not the whole extraction.</p>
+
+  <div class="note">
+    System 2 requires embeddings: <code>pip install mnemon-ai[full]</code> or set an OpenAI API key. System 1 alone covers exact repeats — still eliminates a large fraction of costs for templated workloads.
+  </div>
+
+  <h2>Results on document processing</h2>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per extraction (avg)</td><td>~1,100</td><td><strong>~75</strong></td></tr>
+    <tr><td>LLM calls per doc</td><td>1</td><td><strong>0.07</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>8–14s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (200 docs/day)</td><td>~$264</td><td><strong>~$18</strong></td></tr>
+  </table>
+
+  <h2>Cost at scale</h2>
+
+  <table>
+    <tr><th>Daily extractions</th><th>Monthly cost saved</th></tr>
+    <tr><td>100</td><td><strong>$132</strong></td></tr>
+    <tr><td>500</td><td><strong>$660</strong></td></tr>
+    <tr><td>2,000</td><td><strong>$2,640</strong></td></tr>
+  </table>
+
+  <h2>What it doesn't help with</h2>
+
+  <ul>
+    <li>Agents processing fully unique documents every time</li>
+    <li>Real-time data pipelines where freshness is mandatory</li>
+    <li>First run of any new input type — still hits the LLM</li>
+  </ul>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">pydantic-ai</span>
+    <span class="tag">structured-outputs</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-cost-reduction</span>
+    <span class="tag">token-optimization</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/llm-agent-caching-python">LLM agent caching guide →</a>
+  </div>
+
+</div>
+</body>
+</html>

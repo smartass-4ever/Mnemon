@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>LLM Agent Caching in Python — Complete Guide — Mnemon</title>
+  <meta name="description" content="A complete guide to LLM agent caching in Python — the different cache levels, when each helps, and how to implement execution-level caching that brings repeat runs to $0." />
+  <meta name="keywords" content="llm agent caching python, llm caching python, python llm cache, ai agent cache python, llm response cache python, llm agent memory python, semantic cache python, execution cache llm, llm cache implementation, langchain cache python, openai cache python, llm memoization python, agent workflow cache, reduce llm api calls, llm caching guide" />
+
+  <meta property="og:title" content="LLM Agent Caching in Python — Complete Guide — Mnemon" />
+  <meta property="og:description" content="Different caching levels for LLM agents, when each applies, and how to implement execution-level caching." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/llm-agent-caching-python" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="LLM Agent Caching in Python — Complete Guide" />
+  <meta name="twitter:description" content="Different caching levels for LLM agents, when each applies, and how to implement execution-level caching." />
+
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/llm-agent-caching-python" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "LLM Agent Caching in Python — Complete Guide",
+    "description": "A complete guide to LLM agent caching in Python — cache levels, when each applies, and how to implement execution-level caching.",
+    "author": { "@type": "Person", "name": "Mahika Jadhav" },
+    "datePublished": "2026-05-31",
+    "dateModified": "2026-05-31",
+    "publisher": { "@type": "Organization", "name": "Mnemon" },
+    "url": "https://smartass-4ever.github.io/Mnemon/blog/llm-agent-caching-python",
+    "mainEntityOfPage": "https://smartass-4ever.github.io/Mnemon/blog/llm-agent-caching-python"
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; }
+    .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+    td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; }
+    li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+    .level { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .level-title { font-weight: 700; color: #f0f6fc; font-size: 1rem; margin-bottom: 6px; }
+    .level-detail { color: #8b949e; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › LLM Agent Caching Python
+  </div>
+
+  <h1>LLM Agent Caching in Python — Complete Guide</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 8 min read</p>
+
+  <p>There are four distinct levels at which you can cache LLM agent behavior in Python. Most developers only know about one or two. Understanding all four — and when each applies — is the key to eliminating most of your AI API spend.</p>
+
+  <h2>The four levels of LLM caching</h2>
+
+  <div class="level">
+    <div class="level-title">Level 1: Prompt caching (prefix-level)</div>
+    <div class="level-detail">Caches repeated prefix tokens within a session. OpenAI and Anthropic both support this. 50–90% discount on cached token portions. Requires 1024+ token static prefix. Doesn't persist across sessions.</div>
+  </div>
+
+  <div class="level">
+    <div class="level-title">Level 2: Response caching (exact match)</div>
+    <div class="level-detail">Caches the LLM response for an exact input string. LangChain's built-in <code>set_llm_cache</code> does this. Fast and simple — but breaks on any input variation. "weekly report" and "weekly report for May" are different keys.</div>
+  </div>
+
+  <div class="level">
+    <div class="level-title">Level 3: Semantic caching</div>
+    <div class="level-detail">Uses embeddings to match semantically similar inputs. "How do refunds work?" and "What's your return policy?" hit the same cache. Requires a vector store and embedding calls. Many false positives if not tuned carefully.</div>
+  </div>
+
+  <div class="level">
+    <div class="level-title">Level 4: Execution caching (goal-level)</div>
+    <div class="level-detail">Caches the complete agent execution — the reasoning, tool calls, and final output — keyed to a goal + inputs pair. Survives sessions, works across frameworks, and enables semantic matching at the intent level rather than the string level. This is what Mnemon does.</div>
+  </div>
+
+  <h2>Which level should you use?</h2>
+
+  <table>
+    <tr><th>Scenario</th><th>Best cache level</th></tr>
+    <tr><td>Long static system prompts</td><td>Level 1: Prompt caching</td></tr>
+    <tr><td>Exact same inputs across sessions</td><td>Level 2: Response cache</td></tr>
+    <tr><td>Similar but not identical inputs</td><td>Level 3 or 4</td></tr>
+    <tr><td>Recurring agent workflows</td><td><strong>Level 4: Execution cache</strong></td></tr>
+    <tr><td>Scheduled batch jobs</td><td><strong>Level 4: Execution cache</strong></td></tr>
+    <tr><td>Multi-step pipelines</td><td><strong>Level 4: Execution cache</strong></td></tr>
+  </table>
+
+  <h2>Implementing execution-level caching with Mnemon</h2>
+
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> implements Level 4 caching — it persists execution results across sessions and matches them semantically on future runs.</p>
+
+  <pre><code>pip install mnemon-ai</code></pre>
+
+  <p><strong>Auto-patching mode</strong> (for LangChain, LangGraph, and compatible frameworks):</p>
+
+  <pre><code>import mnemon
+mnemon.init()  # patches BaseChatModel.invoke automatically
+
+from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(model="gpt-4o-mini")
+
+# Your existing code unchanged — caching is transparent
+result = llm.invoke("Generate weekly security audit summary")
+# Second call with same/similar input: 2.66ms, 0 tokens</code></pre>
+
+  <p><strong>Explicit mode</strong> (for any Python function):</p>
+
+  <pre><code>import mnemon
+m = mnemon.init()
+
+import openai
+client = openai.OpenAI()
+
+def my_agent_function(goal, inputs, *_):
+    # any LLM call — OpenAI, Anthropic, Groq, etc.
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": f"{goal}: {inputs['query']}"}]
+    )
+    return response.choices[0].message.content
+
+result = m.run(
+    goal="classify customer feedback",
+    inputs={"query": "The checkout process was confusing and I couldn't find the promo code field"},
+    generation_fn=my_agent_function,
+)
+
+print(result["output"])           # classification result
+print(result["cache_level"])      # "system1" | "system2" | "miss"
+print(result["tokens_saved"])     # tokens not sent to LLM
+print(result["latency_saved_ms"]) # milliseconds saved</code></pre>
+
+  <h2>How Mnemon's two-system matching works</h2>
+
+  <p><strong>System 1 (exact match):</strong> SHA-256 hash of the full input. Identical inputs return in ~2.66ms. No embedding calls needed.</p>
+
+  <p><strong>System 2 (semantic match):</strong> Encodes the goal and inputs as an embedding and finds the closest cached execution. Handles paraphrasing, minor variations, and structurally similar inputs. Only the changed parts get re-generated — you pay for the delta.</p>
+
+  <div class="note">
+    System 2 requires embeddings: <code>pip install mnemon-ai[full]</code> or set an OpenAI/Anthropic API key. System 1 alone (exact match) is still valuable and requires no extra dependencies.
+  </div>
+
+  <h2>Implementing Level 2 and Level 3 caching (for comparison)</h2>
+
+  <p>LangChain exact-match cache (Level 2):</p>
+
+  <pre><code>from langchain.globals import set_llm_cache
+from langchain_community.cache import InMemoryCache
+
+set_llm_cache(InMemoryCache())
+# Only fires on exact string matches — breaks on any variation</code></pre>
+
+  <p>Semantic cache with a vector store (Level 3):</p>
+
+  <pre><code>from langchain_community.cache import RedisSemanticCache
+from langchain_openai import OpenAIEmbeddings
+
+set_llm_cache(RedisSemanticCache(
+    redis_url="redis://localhost:6379",
+    embedding=OpenAIEmbeddings()
+))
+# Better recall — but only caches the LLM response, not the full execution</code></pre>
+
+  <h2>Choosing the right approach</h2>
+
+  <ul>
+    <li>Start with <strong>Level 1</strong> (prompt caching) — free if your provider supports it, no code changes needed</li>
+    <li>Add <strong>Level 2</strong> (exact response cache) for simple Q&amp;A workloads with stable inputs</li>
+    <li>Use <strong>Level 4</strong> (execution cache via Mnemon) for production agents with recurring workflows — this is where the 93% savings come from</li>
+    <li>Level 3 (semantic cache at the response level) is useful but often overlaps with Level 4 — if you're going to cache semantically, do it at the execution level</li>
+  </ul>
+
+  <hr />
+
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub — pip install mnemon-ai</a>
+
+  <div class="tags">
+    <span class="tag">llm-caching</span>
+    <span class="tag">python</span>
+    <span class="tag">ai-agents</span>
+    <span class="tag">cost-optimization</span>
+    <span class="tag">langchain</span>
+    <span class="tag">execution-cache</span>
+  </div>
+
+  <div class="footer">
+    <a href="/Mnemon/blog/">← All posts</a> ·
+    <a href="/Mnemon/blog/reduce-openai-api-costs">Reduce OpenAI costs →</a>
+  </div>
+
+</div>
+</body>
+</html>
