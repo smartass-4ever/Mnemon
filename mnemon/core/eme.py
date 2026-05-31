@@ -102,6 +102,14 @@ SCHEMA_WEIGHT     = 0.25
 CONTEXT_WEIGHT    = 0.25
 CAPABILITY_WEIGHT = 0.20
 
+# Fragment-overlap scoring (Approach A)
+FRAGMENT_OVERLAP_WEIGHT    = 0.30   # additive bonus on top of multi-component score
+FRAGMENT_OVERLAP_GATE      = 0.60   # min overlap to pass the relaxed goal-sim gate
+MIN_GOAL_SIMILARITY_RELAXED = 0.40  # lower goal-sim gate when fragment overlap compensates
+
+# Fragment assembly (Approach B — cheap-LLM decomposition path)
+FRAGMENT_ASSEMBLY_THRESHOLD = 0.50  # min fraction of steps that must have fragment matches
+
 
 # ─────────────────────────────────────────────
 # DOMAIN ADAPTER INTERFACE
@@ -724,6 +732,16 @@ class ExecutionMemoryEngine:
                     await self._cache_template(goal, result.template, fp, capabilities)
 
         if not result:
+            # ── FRAGMENT ASSEMBLY ──────────────
+            # Approach B: decompose goal → fragment lookup → guided generation
+            # for gaps. Fires when no template matches but the fragment library
+            # covers enough of the expected steps.
+            result = await self._try_fragment_assembly(
+                fp, goal, inputs, context, capabilities,
+                constraints, generation_fn, memory_context
+            )
+
+        if not result:
             # ── FULL GENERATION ────────────────
             result = await self._full_generation(
                 goal, inputs, context, capabilities,
@@ -868,16 +886,33 @@ class ExecutionMemoryEngine:
         best_template: Optional[ExecutionTemplate] = None
         best_score = 0.0
 
+        # Short-form goal embedding used for per-segment fragment overlap scoring.
+        # Computed once here so we don't re-embed on every candidate.
+        goal_sig_for_overlap = self._embed_sync(goal, full=False)
+
         for t in templates:
             if not t.embedding:
                 continue
             goal_sim = SimpleEmbedder.cosine_similarity(goal_embedding, t.embedding)
-            if goal_sim < MIN_GOAL_SIMILARITY:
+
+            # Approach A: fragment overlap as an additive score component.
+            # A template whose segments are structurally relevant to this goal
+            # can be selected even when goal-string similarity is below the
+            # normal MIN_GOAL_SIMILARITY threshold (0.60), as long as enough
+            # segments overlap (FRAGMENT_OVERLAP_GATE = 0.60).
+            fragment_overlap = self._compute_fragment_overlap(t.segments, goal_sig_for_overlap)
+            if goal_sim < MIN_GOAL_SIMILARITY_RELAXED and fragment_overlap < FRAGMENT_OVERLAP_GATE:
                 continue
+
             score = self._multi_component_similarity(
                 fp, t.fingerprint, goal_embedding, t.embedding,
                 capabilities, list(t.tool_versions.keys())
             )
+            # Fragment overlap adds on top of the multi-component score.
+            # High overlap (e.g. 0.80) contributes +0.24 — enough to surface
+            # a template that was previously below the 0.70 threshold.
+            score = min(1.0, score + fragment_overlap * FRAGMENT_OVERLAP_WEIGHT)
+
             # Apply collective cross-tenant boost to proven pre-warmed templates
             if t.is_prewarmed and self._proven_boosts:
                 intent_key = hashlib.md5(f"prewarmed:{t.intent}".encode()).hexdigest()[:24]
@@ -1032,6 +1067,26 @@ class ExecutionMemoryEngine:
             CONTEXT_WEIGHT    * ctx_sim    +
             CAPABILITY_WEIGHT * cap_sim
         )
+
+    def _compute_fragment_overlap(
+        self, segments: List["TemplateSegment"], goal_sig: List[float]
+    ) -> float:
+        """
+        Fraction of a template's segments whose intent signature scores
+        >= SEGMENT_MATCH_THRESHOLD against the incoming goal.
+
+        Used as an additive score component in System 2 candidate selection
+        so templates with high structural relevance can be selected even when
+        goal-string similarity is moderate.
+        """
+        if not segments:
+            return 0.0
+        matched = sum(
+            1 for seg in segments
+            if seg.signature and
+            SimpleEmbedder.cosine_similarity(goal_sig, seg.signature) >= SEGMENT_MATCH_THRESHOLD
+        )
+        return matched / len(segments)
 
     @staticmethod
     def _extract_intent(seg_data: dict) -> str:
@@ -1748,6 +1803,224 @@ class ExecutionMemoryEngine:
                 logger.debug(f"Gap fragment cached: {seg.segment_id} at position {gap.position}")
         except Exception as e:
             logger.debug(f"Gap fragment extraction failed (non-critical): {e}")
+
+    # ──────────────────────────────────────────
+    # FRAGMENT ASSEMBLY (Approach B)
+    # ──────────────────────────────────────────
+
+    async def _decompose_goal(
+        self, goal: str, capabilities: List[str]
+    ) -> Optional[List[str]]:
+        """
+        Return a list of step-intent strings for this goal.
+
+        If capabilities are provided by the caller they already ARE the steps
+        (free — no LLM call needed).  Otherwise fall back to drone_fn (cheap
+        LLM) to produce a decomposition.  Returns None when neither is
+        available so the caller skips fragment assembly gracefully.
+        """
+        if capabilities:
+            return list(capabilities)
+        if self.drone_fn is None:
+            return None
+        try:
+            prompt = (
+                f"Break this goal into 3-8 implementation steps.\n"
+                f"Output ONLY a JSON array of short step descriptions.\n"
+                f"Example: [\"validate input\", \"query database\", \"return result\"]\n\n"
+                f"Goal: {goal}\n\nJSON:"
+            )
+            raw = await self.drone_fn(prompt)
+            import re as _re
+            m = _re.search(r"\[.*?\]", str(raw), _re.DOTALL)
+            if m:
+                parsed = json.loads(m.group())
+                if isinstance(parsed, list) and parsed:
+                    return [str(s).strip() for s in parsed if str(s).strip()]
+        except Exception as e:
+            logger.debug(f"Fragment assembly decomposition failed: {e}")
+        return None
+
+    async def _try_fragment_assembly(
+        self,
+        fp: "ComputationFingerprint",
+        goal: str,
+        inputs: Dict,
+        context: Dict,
+        capabilities: List[str],
+        constraints: Dict,
+        generation_fn: Callable,
+        memory_context: Optional[Dict],
+    ) -> Optional["EMEResult"]:
+        """
+        Approach B: fragment assembly without a template match.
+
+        When System 2 finds no template close enough, this path:
+          1. Decomposes the goal into step intents (free via capabilities,
+             or cheap via drone_fn LLM).
+          2. Queries the fragment library for each step.
+          3. If coverage >= FRAGMENT_ASSEMBLY_THRESHOLD (50%): builds a
+             guided brief — pre-solved steps listed as capsules, gaps
+             sent to the user's generation_fn.
+          4. Stitches fragments + generated gaps → caches as new template.
+
+        Token savings = tokens for the covered steps (not generated).
+        Cost = one cheap decomposition call (or zero if capabilities given).
+        """
+        step_intents = await self._decompose_goal(goal, capabilities)
+        if not step_intents:
+            return None
+
+        # ── Match each step against the fragment library ──────────────────
+        assembled: List[Optional[TemplateSegment]] = []
+        for intent in step_intents:
+            intent_sig = self._embed_sync(intent, full=False)
+            candidates = await self._fragment_index.top_k(
+                self.tenant_id, intent_sig, k=8
+            )
+            best_frag: Optional[TemplateSegment] = None
+            best_sim = 0.0
+            for seg_id, sim in candidates:
+                if sim < FRAGMENT_SIMILAR_THRESHOLD:
+                    break
+                frag = self._fragment_map.get(seg_id)
+                if frag and sim > best_sim:
+                    best_sim = sim
+                    best_frag = frag
+            assembled.append(best_frag)
+
+        covered = sum(1 for s in assembled if s is not None)
+        coverage = covered / len(step_intents)
+
+        if coverage < FRAGMENT_ASSEMBLY_THRESHOLD:
+            return None
+
+        gap_positions = [i for i, s in enumerate(assembled) if s is None]
+
+        # ── All steps covered — assemble directly, no LLM needed ─────────
+        if not gap_positions:
+            segs = [s for s in assembled if s is not None]
+            final = self.adapter.reconstruct(segs)
+            await self._cache_template(goal, final, fp, capabilities)
+            return EMEResult(
+                status="system2",
+                template=final,
+                template_id=None,
+                segments_reused=covered,
+                segments_generated=0,
+                tokens_saved=self._seg_tokens(segs),
+                latency_saved_ms=covered * 2500,
+                cache_level="system2",
+            )
+
+        # ── Build guided brief: capsules for covered, gaps for the rest ───
+        pre_filled = [
+            {
+                "position": i,
+                "capsule_id": assembled[i].segment_id,
+                "intent": assembled[i].intent or step_intents[i],
+                "outputs": list(assembled[i].outputs) if assembled[i].outputs else [],
+            }
+            for i in range(len(step_intents)) if assembled[i] is not None
+        ]
+        gaps_to_fill = []
+        for pos in gap_positions:
+            receives: List[str] = []
+            if pos > 0 and assembled[pos - 1] is not None:
+                receives = list(assembled[pos - 1].outputs or [])
+            gaps_to_fill.append({
+                "position": pos,
+                "receives": receives,
+                "hint": f"generate: {step_intents[pos]}",
+            })
+
+        brief = {
+            "pre_filled": pre_filled,
+            "gaps_to_fill": gaps_to_fill,
+            "total_steps": len(step_intents),
+            "instruction": (
+                "pre_filled steps are already solved — do NOT regenerate them. "
+                "Generate ONLY the steps in gaps_to_fill as JSON: "
+                "{\"<position>\": <step_content>} with one key per gap."
+            ),
+        }
+        enriched = dict(context)
+        enriched["_mnemon_brief"] = brief
+        guided_goal = self._format_guided_goal(goal, brief)
+
+        try:
+            raw_output = await generation_fn(
+                guided_goal, inputs, enriched, capabilities, constraints
+            )
+        except Exception as e:
+            logger.error(f"Fragment assembly guided generation failed: {e}")
+            return None
+
+        # Build GapFillRequest objects for the parser
+        pending_gaps = [
+            GapFillRequest(
+                position=pos,
+                segment_id=f"fa_gap_{pos}",
+                hint=step_intents[pos],
+                surrounding_context=[],
+            )
+            for pos in gap_positions
+        ]
+
+        # Placeholder segments for parse_gap_fills (gaps need a TemplateSegment slot)
+        all_segs_with_placeholders: List[TemplateSegment] = []
+        for i, seg in enumerate(assembled):
+            if seg is not None:
+                all_segs_with_placeholders.append(seg)
+            else:
+                sig = self._embed_sync(step_intents[i], full=False)
+                all_segs_with_placeholders.append(TemplateSegment(
+                    segment_id=f"fa_gap_{i}",
+                    tenant_id=self.tenant_id,
+                    content={"gap": True, "intent": step_intents[i]},
+                    fingerprint=f"gap_{i}",
+                    signature=sig,
+                    intent=step_intents[i],
+                    is_generated=False,
+                    confidence=0.0,
+                    success_rate=0.0,
+                ))
+
+        gap_fills = self._parse_gap_fills(raw_output, pending_gaps, all_segs_with_placeholders)
+        if gap_fills is None:
+            logger.warning("Fragment assembly: gap fill parse failed — caching raw output as miss")
+            await self._cache_template(goal, raw_output, fp, capabilities)
+            return EMEResult(
+                status="miss", template=raw_output, template_id=None,
+                cache_level="miss",
+            )
+
+        stitched = self._stitch_plan(all_segs_with_placeholders, gap_fills, pending_gaps)
+        final_template = self.adapter.reconstruct(stitched)
+        await self._cache_template(goal, final_template, fp, capabilities)
+
+        # Register newly generated gap segments in the fragment library
+        for gap in pending_gaps:
+            if gap.position < len(stitched):
+                seg = stitched[gap.position]
+                if seg.signature:
+                    await self._fragment_index.add(self.tenant_id, seg.segment_id, seg.signature)
+                    self._fragment_map[seg.segment_id] = seg
+                    await self._write_behind.enqueue(seg)
+                    self._trace_gen_buf.append(seg.segment_id)
+
+        covered_segs = [s for i, s in enumerate(stitched) if i not in gap_positions]
+        return EMEResult(
+            status="system2",
+            template=final_template,
+            template_id=None,
+            segments_reused=covered,
+            segments_generated=len(gap_positions),
+            tokens_saved=self._seg_tokens(covered_segs),
+            latency_saved_ms=covered * 2500,
+            cache_level="system2",
+            validation_passed=True,
+        )
 
     # ──────────────────────────────────────────
     # FULL GENERATION
