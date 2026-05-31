@@ -45,7 +45,11 @@ def extract_query(messages: List[Dict], system: Optional[str] = None) -> str:
     """
     parts: List[str] = []
     if system and isinstance(system, str):
-        parts.append(system[:200])
+        # 50 chars is enough to encode agent role without dominating the embedding.
+        # At 200 chars the system prompt overwhelms the user message, collapsing
+        # different-topic queries from the same agent into one neighbourhood and
+        # producing false System 2 hits (billing query → password-reset response).
+        parts.append(system[:50])
     try:
         for msg in reversed(messages):
             if isinstance(msg, dict):

@@ -2068,6 +2068,7 @@ class ExecutionMemoryEngine:
 
             # System 2: semantic similarity — skip pre-warmed templates (plan JSON, not LLM text)
             goal_emb = await self._embed(goal, full=True)
+            goal_sig = self._embed_sync(goal, full=False)
             candidates = await self._template_index.top_k(self.tenant_id, goal_emb, k=5)
             for tid, score in candidates:
                 if score < SYSTEM2_THRESHOLD_DEFAULT:
@@ -2080,6 +2081,21 @@ class ExecutionMemoryEngine:
                     self.tenant_id, fp_hash
                 )
                 if template and not template.should_evict and not template.is_prewarmed:
+                    # Verify the cached response intent actually matches this query.
+                    # Query→query similarity alone is not enough — a billing query and
+                    # a password-reset query share the same system prompt prefix, so
+                    # their embeddings look similar even though the correct responses
+                    # are completely different. The segment signature is the short
+                    # embedding of the cached response's intent (first 200 chars of
+                    # the response text). Checking it against the incoming query
+                    # ensures we only serve a cached response when its content is
+                    # actually relevant.
+                    if template.segments and template.segments[0].signature:
+                        response_intent_sim = SimpleEmbedder.cosine_similarity(
+                            goal_sig, template.segments[0].signature
+                        )
+                        if response_intent_sim < INTENT_AMBIGUOUS_LOW:
+                            continue
                     text = (
                         str(template.segments[0].content)
                         if template.segments else ""

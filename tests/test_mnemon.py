@@ -102,7 +102,7 @@ async def test_eme_system1_cache():
 
     r2 = await eros.run(
         goal="weekly security audit for Acme",
-        inputs={"week": "week_2"},
+        inputs={"week": "week_1"},  # same inputs → same fingerprint → System 1
         generation_fn=gen,
     )
     assert r2["cache_level"] == "system1", f"Second run should be system1, got {r2['cache_level']}"
