@@ -143,9 +143,11 @@ async def cmd_demo(args):
     print()
     print("  Your agent learns. Every repeated task gets faster.")
     print()
-    print("  Get started:")
-    print("    pip install mnemon-ai")
-    print("    https://github.com/smartass-4ever/Mnemon")
+    print("  Add two lines to your existing code:")
+    print("    import mnemon")
+    print("    mnemon.init()")
+    print()
+    print("  Docs: https://github.com/smartass-4ever/Mnemon")
     print()
 
 
@@ -247,18 +249,22 @@ async def cmd_init(args):
 
     print(f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Ready. Add to your agent:
+Ready. Add two lines to your agent:
 
-  from mnemon import Mnemon
+  import mnemon
+  mnemon.init()   # auto-patches your installed frameworks
 
-  mnemon = Mnemon.from_config("{config_path}")
-  await mnemon.start()
-
-  result = await mnemon.run(
+  # your existing code — unchanged
+  # or use the explicit API:
+  m = mnemon.init()
+  result = m.run(
       goal="your task description",
       inputs={{...}},
-      generation_fn=your_planning_function,
+      generation_fn=your_generation_fn,
   )
+  print(result["tokens_saved"])
+
+  Docs: https://github.com/smartass-4ever/Mnemon
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 

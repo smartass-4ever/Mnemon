@@ -314,10 +314,9 @@ class Mnemon:
                 ):
                     if not self._silent:
                         import sys as _sys
-                        remaining = self._quota.hits_remaining
                         print(
-                            f"Mnemon: free tier limit reached ({remaining} hits remaining today) — "
-                            f"upgrade to Pro for unlimited caching: https://mnemon.lemonsqueezy.com",
+                            "Mnemon: free tier daily limit reached — "
+                            "upgrade to Pro for unlimited caching: https://mnemon.lemonsqueezy.com",
                             file=_sys.stderr, flush=True,
                         )
                     template = await generation_fn(goal, inputs, context, caps, constraints)
@@ -428,17 +427,21 @@ class Mnemon:
                 if secs > 0:
                     msg += f" · {secs:.1f}s faster"
             elif cache_level == "miss":
-                flag = os.path.join(self._db_dir, f".mnemon_welcomed_{self.tenant_id}")
+                mnemon_home = os.path.join(os.path.expanduser("~"), ".mnemon")
+                try:
+                    os.makedirs(mnemon_home, exist_ok=True)
+                except OSError:
+                    mnemon_home = self._db_dir
+                flag = os.path.join(mnemon_home, f".welcomed_{self.tenant_id}")
                 if not os.path.exists(flag):
                     try:
                         open(flag, "w").close()
                     except OSError:
                         pass
                     msg = (
-                        "Mnemon: first run — plan cached, next run will be instant\n"
-                        "  Thank you for installing Mnemon! If your agent is loop-locking or token costs\n"
-                        "  aren't dropping, drop a line at mahikajadhav22@gmail.com — I can look at your logs directly.\n"
-                        "  I can also personally integrate this into your workflow — same email."
+                        "Mnemon: first run complete — execution cached, next run will be instant\n"
+                        "  Docs & examples: https://github.com/smartass-4ever/Mnemon\n"
+                        "  Issues or questions: https://github.com/smartass-4ever/Mnemon/issues"
                     )
                 else:
                     msg = "Mnemon: new input — cached, next run will be instant"
@@ -604,14 +607,18 @@ class MnemonSync:
                     inner = getattr(self, "_m", None)
                     silent = self._kwargs.get("silent", False) if hasattr(self, "_kwargs") else False
                     if not silent:
+                        import sys as _sys
+                        print(
+                            f"Mnemon: {', '.join(activated)} patched — caching active",
+                            file=_sys.stderr, flush=True,
+                        )
                         emb = getattr(inner, "_embedder", None)
                         if emb:
                             emb._load()
                             if not getattr(emb, "system2_active", False):
-                                import sys as _sys
                                 print(
-                                    "Mnemon: System 2 (semantic matching) inactive — "
-                                    "cache persists across restarts but won't match rephrased inputs.\n"
+                                    "Mnemon: System 2 inactive — only exact repeated inputs will be cached.\n"
+                                    "  Similar inputs (different wording, same meaning) will still call the LLM.\n"
                                     "  Fix: pip install mnemon-ai[full]",
                                     file=_sys.stderr, flush=True,
                                 )
@@ -620,9 +627,10 @@ class MnemonSync:
             else:
                 import sys as _sys
                 print(
-                    "Mnemon: no supported frameworks detected -- caching is inactive.\n"
+                    "Mnemon: no supported frameworks detected — caching is inactive.\n"
                     "  Install one of: anthropic, openai, langchain, langgraph, crewai\n"
-                    "  Or use m.run() directly for explicit caching.",
+                    "  Or use m.run() directly for explicit caching.\n"
+                    "  Docs: https://github.com/smartass-4ever/Mnemon",
                     file=_sys.stderr, flush=True,
                 )
         except Exception as e:
