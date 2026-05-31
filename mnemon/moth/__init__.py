@@ -161,10 +161,14 @@ class Moth:
                     + " activated"
                 )
             except Exception as e:
-                logger.warning(
+                # atexit errors happen in very short scripts where Python starts
+                # shutting down before the background patch thread completes.
+                # Downgrade to debug since it's a timing artifact, not a real failure.
+                log_fn = logger.debug if "atexit" in str(e).lower() else logger.warning
+                log_fn(
                     f"Mnemon moth: {integration.name}"
                     + (f" {version}" if version else "")
-                    + f" could not be instrumented — {e}. "
+                    + f" could not be instrumented -- {e}. "
                     f"Original behavior preserved. "
                     f"Check github.com/smartass-4ever/Mnemon for version compatibility."
                 )

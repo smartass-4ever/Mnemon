@@ -1,10 +1,10 @@
 """
-Mnemon Embedder — auto-upgrading embedding backend.
+Mnemon Embedder -- auto-upgrading embedding backend.
 
 Priority order (automatic, zero config):
-  1. sentence-transformers  — 384-dim, ~85% retrieval precision (pip install mnemon-ai[full])
-  2. OpenAI embeddings       — 1536-dim, ~90% retrieval precision (requires OPENAI_API_KEY)
-  3. HashProjectionEmbedder — 64-dim fallback, System 1 cache only (always available)
+  1. sentence-transformers  -- 384-dim, ~85% retrieval precision (pip install mnemon-ai[full])
+  2. OpenAI embeddings       -- 1536-dim, ~90% retrieval precision (requires OPENAI_API_KEY)
+  3. HashProjectionEmbedder -- 64-dim fallback, System 1 cache only (always available)
 
 The best available backend is selected on first embed() call.
 No code changes needed when you upgrade.
@@ -52,20 +52,20 @@ def _try_load_openai_embedder() -> Optional["OpenAIEmbedder"]:
     if not os.environ.get("OPENAI_API_KEY"):
         return None
     try:
-        import openai  # noqa: F401 — just checking availability
+        import openai  # noqa: F401 -- just checking availability
         return OpenAIEmbedder()
     except ImportError:
         return None
     except Exception as e:
-        logger.debug(f"Mnemon: OpenAI embedder unavailable — {e}")
+        logger.debug(f"Mnemon: OpenAI embedder unavailable -- {e}")
         return None
 
 
 class HashProjectionEmbedder:
     """
     Lightweight hash-projection fallback. 64-dim activation, 384-dim full.
-    Always available — zero dependencies beyond numpy.
-    Retrieval precision: ~56% on eval suite — sufficient for System 1 (exact cache).
+    Always available -- zero dependencies beyond numpy.
+    Retrieval precision: ~56% on eval suite -- sufficient for System 1 (exact cache).
     System 2 semantic recall requires a real embedder (see upgrade paths below).
     """
     DIM_ACTIVATION = 64
@@ -130,7 +130,7 @@ class OpenAIEmbedder:
     OpenAI text-embedding-3-small backend.
     1536-dim, ~90% retrieval precision. Requires OPENAI_API_KEY.
     Embeddings are cached in-memory to minimise API calls.
-    Cost: ~$0.02 per million tokens — negligible for agent workloads.
+    Cost: ~$0.02 per million tokens -- negligible for agent workloads.
     """
     DIM_ACTIVATION = 1536
     DIM_FULL       = 1536
@@ -156,7 +156,7 @@ class OpenAIEmbedder:
         try:
             return self._call(text)
         except Exception as e:
-            logger.warning(f"Mnemon: OpenAI embed failed — {e}")
+            logger.warning(f"Mnemon: OpenAI embed failed -- {e}")
             return [0.0] * self.DIM_ACTIVATION
 
     def embed_full(self, text: str) -> List[float]:
@@ -168,9 +168,9 @@ class SimpleEmbedder:
     Public embedder interface. Auto-selects best available backend on first use.
 
     Priority (automatic, zero config):
-      1. sentence-transformers — offline, best quality (pip install mnemon-ai[full])
-      2. OpenAI embeddings     — requires OPENAI_API_KEY, excellent quality
-      3. hash-projection       — always works; System 1 cache only, no System 2
+      1. sentence-transformers -- offline, best quality (pip install mnemon-ai[full])
+      2. OpenAI embeddings     -- requires OPENAI_API_KEY, excellent quality
+      3. hash-projection       -- always works; System 1 cache only, no System 2
 
     System 2 semantic recall is active with backends 1 or 2.
     Backend 3 supports exact-match caching (System 1) only.

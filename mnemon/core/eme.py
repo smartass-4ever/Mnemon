@@ -2016,20 +2016,29 @@ class ExecutionMemoryEngine:
 
     def _schema_of(self, inputs: Dict) -> Dict:
         """
-        Extract structural schema from inputs (types only, not values).
+        Extract fingerprint key from inputs — values for primitives, schema for
+        complex types.
 
-        [v2] Handles nested dicts and lists without crashing on unhashable
-        types. Original called type(v).__name__ on raw values which raised
-        TypeError for dict/list inputs with complex inner structures.
+        Primitive values (str, int, float, bool) are included as-is so that
+        {"region": "US"} and {"region": "EU"} produce different fingerprints
+        and never collide in the System 1 cache.
+
+        Complex types (dict, list) use structural schema because their internal
+        values are typically too large to hash efficiently and the plan structure
+        is what matters for caching purposes.
+
+        [v2] Handles nested dicts and lists without crashing on unhashable types.
         """
-        def _type(v: Any) -> str:
+        def _key(v: Any) -> str:
+            if isinstance(v, (str, int, float, bool)):
+                return f"{type(v).__name__}:{v}"
             if isinstance(v, dict):
                 return f"dict[{','.join(sorted(str(k) for k in v.keys()))}]"
             if isinstance(v, (list, tuple)):
                 return f"list[{len(v)}]"
             return type(v).__name__
 
-        return {k: _type(v) for k, v in inputs.items()}
+        return {k: _key(v) for k, v in inputs.items()}
 
     async def semantic_lookup(
         self, goal: str, capabilities: List[str]

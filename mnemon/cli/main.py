@@ -3,11 +3,11 @@ Mnemon CLI
 Interactive setup and tooling.
 
 Commands:
-  mnemon demo     — instant demo, no API key needed
-  mnemon init     — guided setup, installs adapter, loads fragments, runs benchmark
-  mnemon eval     — run eval suite
-  mnemon health   — check system health
-  mnemon stats    — show telemetry report
+  mnemon demo     -- instant demo, no API key needed
+  mnemon init     -- guided setup, installs adapter, loads fragments, runs benchmark
+  mnemon eval     -- run eval suite
+  mnemon health   -- check system health
+  mnemon stats    -- show telemetry report
 
 Usage:
   mnemon demo
@@ -46,15 +46,15 @@ def detect_framework() -> str:
 
 def print_banner():
     print("""
-╔═══════════════════════════════════════════════════════╗
-║        Mnemon — Intelligence Layer for Agents         ║
-║          Memory · Execution Cache · Learning          ║
-╚═══════════════════════════════════════════════════════╝
++-------------------------------------------------------+
+|        Mnemon -- Intelligence Layer for Agents        |
+|        Memory | Execution Cache | Learning            |
++-------------------------------------------------------+
 """)
 
 
 async def cmd_demo(args):
-    """Instant demo — no API key, no config, no user input required."""
+    """Instant demo -- no API key, no config, no user input required."""
     import tempfile
     try:
         from mnemon.core import ph_telemetry
@@ -70,7 +70,7 @@ async def cmd_demo(args):
     from mnemon.llm.client import MockLLMClient
 
     async def mock_gen(goal, inputs, context, caps, constraints):
-        """Simulates an LLM planning call — only runs on cache miss."""
+        """Simulates an LLM planning call -- only runs on cache miss."""
         await asyncio.sleep(0.25)  # realistic ~250ms LLM planning latency
         return [
             {"id": "step_1", "action": "authenticate",    "tool": "auth_service"},
@@ -94,7 +94,7 @@ async def cmd_demo(args):
             print("  Scenario: your agent runs the same class of task repeatedly.")
             print("  Goal: 'generate weekly security report'\n")
 
-            # Run 1 — cold miss, LLM is called
+            # Run 1 -- cold miss, LLM is called
             t0 = time.time()
             r1 = await m.run(
                 goal="generate weekly security report",
@@ -103,7 +103,7 @@ async def cmd_demo(args):
             )
             ms1 = (time.time() - t0) * 1000
 
-            # Run 2 — same goal, different week → System 1 hit (served from cache)
+            # Run 2 -- same goal, different week → System 1 hit (served from cache)
             t1 = time.time()
             r2 = await m.run(
                 goal="generate weekly security report",
@@ -112,7 +112,7 @@ async def cmd_demo(args):
             )
             ms2 = (time.time() - t1) * 1000
 
-            # Run 3 — different client, same goal → System 1 hit
+            # Run 3 -- different client, same goal → System 1 hit
             t2 = time.time()
             r3 = await m.run(
                 goal="generate weekly security report",
@@ -123,8 +123,8 @@ async def cmd_demo(args):
 
     def cache_label(r):
         level = r.get("cache_level", "miss")
-        if level == "system1": return "CACHE HIT   (exact match — LLM skipped)"
-        if level == "system2": return "CACHE HIT   (partial match — LLM skipped)"
+        if level == "system1": return "CACHE HIT   (exact match -- LLM skipped)"
+        if level == "system2": return "CACHE HIT   (partial match -- LLM skipped)"
         return "cache miss  (LLM called)"
 
     total_tokens  = r1.get("tokens_saved", 0) + r2.get("tokens_saved", 0) + r3.get("tokens_saved", 0)
@@ -162,12 +162,12 @@ async def cmd_init(args):
         print(f"  Detected framework: {framework}")
         print(f"  Recommended adapter: mnemon-{framework}")
     else:
-        print("  No known framework detected — using generic adapter")
+        print("  No known framework detected -- using generic adapter")
 
     # Persistence choice
     print("\nPersistence backend:")
-    print("  1. SQLite (local, zero config) — recommended for development")
-    print("  2. Redis (production ready)    — recommended for production")
+    print("  1. SQLite (local, zero config) -- recommended for development")
+    print("  2. Redis (production ready)    -- recommended for production")
     choice = input("Choose [1]: ").strip() or "1"
     db_dir = "." if choice == "1" else None
     if db_dir:
@@ -254,7 +254,7 @@ Ready. Add two lines to your agent:
   import mnemon
   mnemon.init()   # auto-patches your installed frameworks
 
-  # your existing code — unchanged
+  # your existing code -- unchanged
   # or use the explicit API:
   m = mnemon.init()
   result = m.run(
@@ -311,7 +311,7 @@ async def cmd_health(args):
         )
         result = await watchdog.health_check()
 
-    print(f"Health check — tenant: {tenant_id}")
+    print(f"Health check -- tenant: {tenant_id}")
     print(f"Overall: {'✓ HEALTHY' if result['healthy'] else '✗ UNHEALTHY'}\n")
     for check in result["checks"]:
         status = "✓" if check["passed"] else "✗"
@@ -322,7 +322,7 @@ async def cmd_health(args):
 
 
 async def cmd_doctor(args):
-    """Check Mnemon installation health — DB, embedder, schema, fragment/template counts."""
+    """Check Mnemon installation health -- DB, embedder, schema, fragment/template counts."""
     try:
         from mnemon.core import ph_telemetry
         ph_telemetry._fire("cli_run", {"command": "doctor", "framework": detect_framework()})
@@ -348,9 +348,9 @@ async def cmd_doctor(args):
         name = emb.backend_name
         dim  = emb.dim
         s2   = emb.system2_active
-        msg  = f"{name} ({dim}-dim) — System 2 {'active' if s2 else 'INACTIVE'}"
+        msg  = f"{name} ({dim}-dim) -- System 2 {'active' if s2 else 'INACTIVE'}"
         if not s2:
-            msg += " — pip install mnemon-ai[full] or set OPENAI_API_KEY"
+            msg += " -- pip install mnemon-ai[full] or set OPENAI_API_KEY"
         checks.append(("Embedder / System 2", s2, msg))
     except Exception as e:
         checks.append(("Embedder / System 2", False, str(e)))
@@ -377,7 +377,7 @@ async def cmd_doctor(args):
             fragments = db_stats.get("fragments", 0)
             templates = db_stats.get("templates", 0)
             memories  = db_stats.get("memories", 0)
-            checks.append(("DB connectivity",    True, f"ok — tenant: {tenant_id}"))
+            checks.append(("DB connectivity",    True, f"ok -- tenant: {tenant_id}"))
             checks.append(("Memories",           True, str(memories)))
             from mnemon.fragments.library import FRAGMENT_COUNT
             checks.append(("Fragment library",   fragments >= FRAGMENT_COUNT, f"{fragments} fragments {'✓' if fragments >= FRAGMENT_COUNT else '(run mnemon init)'}"))
@@ -392,7 +392,7 @@ async def cmd_doctor(args):
 
     # Print results
     all_ok = all(c[1] for c in checks)
-    print(f"Mnemon doctor — {'all checks passed' if all_ok else 'issues found'}\n")
+    print(f"Mnemon doctor -- {'all checks passed' if all_ok else 'issues found'}\n")
     for name, passed, msg in checks:
         sym = "✓" if passed else "✗"
         print(f"  {sym} {name:<24} {msg}")
@@ -423,7 +423,7 @@ async def cmd_stats(args):
     async with Mnemon(tenant_id=tenant_id, db_dir=db_dir) as mnemon:
         stats = mnemon.get_stats()
 
-    print(f"Mnemon Stats — tenant: {tenant_id}\n")
+    print(f"Mnemon Stats -- tenant: {tenant_id}\n")
     db = stats.get("db", {})
     print(f"  Memories:   {db.get('memories', 0)}")
     print(f"  Facts:      {db.get('facts', 0)}")
@@ -448,12 +448,12 @@ def main():
 
     parser = argparse.ArgumentParser(
         prog="mnemon",
-        description="Mnemon — The intelligence layer between your agents and oblivion"
+        description="Mnemon -- The intelligence layer between your agents and oblivion"
     )
     parser.add_argument("--config", help="Path to mnemon.config.json")
     subparsers = parser.add_subparsers(dest="command")
 
-    subparsers.add_parser("demo", help="Instant demo — no API key needed")
+    subparsers.add_parser("demo", help="Instant demo -- no API key needed")
     init_p = subparsers.add_parser("init", help="Interactive setup")
     init_p.add_argument("--tenant-id", dest="tenant_id", default="my_company")
 

@@ -1,5 +1,5 @@
 """
-Mnemon — execution caching and system learning for AI agents.
+Mnemon -- execution caching and system learning for AI agents.
 
 Zero code changes. One import line.
 Gets smarter with every run. Saves tokens on every cache hit.
@@ -141,22 +141,22 @@ class Mnemon:
     def _prewarm_library_thread(self) -> None:
         """Daemon thread: compute embeddings and store curated library on first run.
 
-        Uses its own DB connection and asyncio loop — fully independent of the
+        Uses its own DB connection and asyncio loop -- fully independent of the
         main event loop so the main loop closing does not interrupt it.
         """
         try:
             asyncio.run(self._prewarm_library_async())
         except Exception as e:
-            logger.debug(f"Mnemon: prewarm library thread failed — {e}")
+            logger.debug(f"Mnemon: prewarm library thread failed -- {e}")
 
     async def _prewarm_library_async(self) -> None:
-        """Async body of prewarm — runs in the daemon thread's own event loop."""
+        """Async body of prewarm -- runs in the daemon thread's own event loop."""
         # Open a separate DB connection (WAL + busy_timeout make this safe).
         db = EROSDatabase(tenant_id=self.tenant_id, db_dir=self._db_dir)
         try:
             await db.connect()
         except Exception as e:
-            logger.debug(f"Mnemon: prewarm DB connect failed — {e}")
+            logger.debug(f"Mnemon: prewarm DB connect failed -- {e}")
             return
 
         try:
@@ -168,7 +168,7 @@ class Mnemon:
                         frags = load_fragments(self.tenant_id)  # heavy CPU
                         for frag in frags:
                             await db.write_fragment(frag)
-                        # Don't touch self._eme here — its asyncio.Lock objects
+                        # Don't touch self._eme here -- its asyncio.Lock objects
                         # are bound to the main event loop; using them from this
                         # daemon thread's own loop corrupts asyncio state.
                         # The in-memory index is rebuilt from DB on next startup.
@@ -203,7 +203,7 @@ class Mnemon:
         if self._eme:
             await self._eme.warm()
             # Prewarm runs in a daemon thread with its own event loop and DB
-            # connection — embedding 100+ fragments triggers sentence-transformers
+            # connection -- embedding 100+ fragments triggers sentence-transformers
             # load (15s) and must not block init().
             if self._prewarm_fragments or self._prewarm_templates:
                 import threading as _threading
@@ -225,7 +225,7 @@ class Mnemon:
             await self._watchdog.start()
         await self._quota.start()
         self._started = True
-        logger.info(f"Mnemon {MNEMON_VERSION} started — tenant={self.tenant_id}")
+        logger.info(f"Mnemon {MNEMON_VERSION} started -- tenant={self.tenant_id}")
 
     async def stop(self):
         if not self._started:
@@ -260,8 +260,8 @@ class Mnemon:
                 cost_usd = self._session_tokens_saved * 0.000003
                 secs_saved = self._session_latency_saved_ms / 1000
                 parts.append(
-                    f"{self._session_tokens_saved:,} tokens saved · ${cost_usd:.4f}"
-                    + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else "")
+                    f"{self._session_tokens_saved:,} tokens saved |${cost_usd:.4f}"
+                    + (f" |{secs_saved:.1f}s faster" if secs_saved > 0 else "")
                 )
             if self._session_plans_cached > 0:
                 future_cost = self._session_future_tokens * 0.000003
@@ -270,7 +270,7 @@ class Mnemon:
                     f"next run saves ~{self._session_future_tokens:,} tokens (~${future_cost:.4f})"
                 )
             if parts:
-                print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stderr, flush=True)
+                print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stderr, flush=True)
 
     async def __aenter__(self):
         await self.start()
@@ -315,7 +315,7 @@ class Mnemon:
                     if not self._silent:
                         import sys as _sys
                         print(
-                            "Mnemon: free tier daily limit reached — "
+                            "Mnemon: free tier daily limit reached -- "
                             "upgrade to Pro for unlimited caching: https://mnemon.lemonsqueezy.com",
                             file=_sys.stderr, flush=True,
                         )
@@ -324,7 +324,7 @@ class Mnemon:
                 elif eme_result and eme_result.cache_level in ("system1", "system2", "system2_guided"):
                     await self._quota.record_hit()
             except Exception as e:
-                logger.warning(f"EME failed: {e} — direct generation")
+                logger.warning(f"EME failed: {e} -- direct generation")
                 try:
                     from mnemon.core import ph_telemetry
                     ph_telemetry._fire("cache_error", {"error_type": type(e).__name__})
@@ -423,9 +423,9 @@ class Mnemon:
             if cache_level in ("system1", "system2", "system2_guided"):
                 cost = tokens_saved * 0.000003
                 secs = latency_saved_ms / 1000
-                msg = f"Mnemon: cache hit · {tokens_saved:,} tokens saved · ~${cost:.4f}"
+                msg = f"Mnemon: cache hit |{tokens_saved:,} tokens saved |~${cost:.4f}"
                 if secs > 0:
-                    msg += f" · {secs:.1f}s faster"
+                    msg += f" |{secs:.1f}s faster"
             elif cache_level == "miss":
                 mnemon_home = os.path.join(os.path.expanduser("~"), ".mnemon")
                 try:
@@ -439,12 +439,12 @@ class Mnemon:
                     except OSError:
                         pass
                     msg = (
-                        "Mnemon: first run complete — execution cached, next run will be instant\n"
+                        "Mnemon: first run complete -- execution cached, next run will be instant\n"
                         "  Docs & examples: https://github.com/smartass-4ever/Mnemon\n"
                         "  Issues or questions: https://github.com/smartass-4ever/Mnemon/issues"
                     )
                 else:
-                    msg = "Mnemon: new input — cached, next run will be instant"
+                    msg = "Mnemon: new input -- cached, next run will be instant"
             else:
                 msg = "Mnemon: ran (no cache)"
             print(msg, file=_sys.stderr, flush=True)
@@ -523,7 +523,7 @@ class Mnemon:
         return {
             "tenant_id": self.tenant_id,
             "healthy":   self._started,
-            "message":   "Watchdog not enabled — enable_watchdog=True for detailed health",
+            "message":   "Watchdog not enabled -- enable_watchdog=True for detailed health",
         }
 
     async def drift_report(self) -> "DriftReport":
@@ -553,7 +553,7 @@ class Mnemon:
 def _cancel_all_tasks(loop: asyncio.AbstractEventLoop) -> None:
     try:
         # One flush cycle lets tasks that suppressed CancelledError settle fully
-        # before we ask for the pending set — avoids "Task was destroyed" warnings.
+        # before we ask for the pending set -- avoids "Task was destroyed" warnings.
         loop.run_until_complete(asyncio.sleep(0))
         pending = asyncio.all_tasks(loop)
         if not pending:
@@ -604,30 +604,19 @@ class MnemonSync:
                 except Exception:
                     pass
                 try:
-                    inner = getattr(self, "_m", None)
                     silent = self._kwargs.get("silent", False) if hasattr(self, "_kwargs") else False
                     if not silent:
                         import sys as _sys
                         print(
-                            f"Mnemon: {', '.join(activated)} patched — caching active",
+                            f"Mnemon: {', '.join(activated)} patched -- caching active",
                             file=_sys.stderr, flush=True,
                         )
-                        emb = getattr(inner, "_embedder", None)
-                        if emb:
-                            emb._load()
-                            if not getattr(emb, "system2_active", False):
-                                print(
-                                    "Mnemon: System 2 inactive — only exact repeated inputs will be cached.\n"
-                                    "  Similar inputs (different wording, same meaning) will still call the LLM.\n"
-                                    "  Fix: pip install mnemon-ai[full]",
-                                    file=_sys.stderr, flush=True,
-                                )
                 except Exception:
                     pass
             else:
                 import sys as _sys
                 print(
-                    "Mnemon: no supported frameworks detected — caching is inactive.\n"
+                    "Mnemon: no supported frameworks detected -- caching is inactive.\n"
                     "  Install one of: anthropic, openai, langchain, langgraph, crewai\n"
                     "  Or use m.run() directly for explicit caching.\n"
                     "  Docs: https://github.com/smartass-4ever/Mnemon",
@@ -647,7 +636,7 @@ class MnemonSync:
         try:
             asyncio.get_running_loop()
             # Already inside a running event loop (e.g. Jupyter, FastAPI startup,
-            # asyncio.run()) — run our dedicated loop in a background thread so
+            # asyncio.run()) -- run our dedicated loop in a background thread so
             # run_until_complete / run_coroutine_threadsafe can still work.
             self._loop_thread = threading.Thread(
                 target=self._loop.run_forever, daemon=True, name="mnemon-loop"
@@ -655,7 +644,7 @@ class MnemonSync:
             self._loop_thread.start()
             asyncio.run_coroutine_threadsafe(self._m.start(), self._loop).result(timeout=30)
         except RuntimeError:
-            # No running loop — safe to drive directly.
+            # No running loop -- safe to drive directly.
             self._loop.run_until_complete(self._m.start())
         # Patch frameworks in a background thread so init() returns in ~200ms.
         # SDK imports (anthropic, openai, langchain) are the slow step; they
@@ -705,8 +694,8 @@ class MnemonSync:
                 else:
                     cost_str = f"~${total_tokens * 0.000003:.4f}"
                 parts.append(
-                    f"~{total_tokens:,} tokens saved · {cost_str}"
-                    + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else "")
+                    f"~{total_tokens:,} tokens saved |{cost_str}"
+                    + (f" |{secs_saved:.1f}s faster" if secs_saved > 0 else "")
                 )
             if plans_cached > 0:
                 future_tokens = self._m._session_future_tokens
@@ -716,7 +705,7 @@ class MnemonSync:
                     f"next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})"
                 )
             if parts:
-                print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stderr, flush=True)
+                print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stderr, flush=True)
 
     @property
     def active_integrations(self) -> List[str]:
@@ -799,8 +788,8 @@ class MnemonSync:
                     else:
                         cost_str = f"~${total_tokens * 0.000003:.4f}"
                     parts.append(
-                        f"~{total_tokens:,} tokens saved · {cost_str}"
-                        + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else "")
+                        f"~{total_tokens:,} tokens saved |{cost_str}"
+                        + (f" |{secs_saved:.1f}s faster" if secs_saved > 0 else "")
                     )
                 if plans_cached > 0:
                     future_tokens = self._m._session_future_tokens
@@ -810,7 +799,7 @@ class MnemonSync:
                         f"next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})"
                     )
                 if parts:
-                    print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stderr, flush=True)
+                    print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stderr, flush=True)
             self._loop.close()
             self._loop = None
             self._m = None
@@ -836,7 +825,7 @@ def _detect_tenant_id() -> str:
 def _detect_adapter() -> Optional[TemplateAdapter]:
     import sys
     if "crewai" not in sys.modules:
-        return None  # don't cold-import heavy SDKs — user must import first
+        return None  # don't cold-import heavy SDKs -- user must import first
     try:
         from mnemon._future.adapters.crewai import CrewAIAdapter
         return CrewAIAdapter()
