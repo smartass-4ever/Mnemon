@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How to Make GPT-4o API Cheaper — Reduce GPT-4 Costs by 93% — Mnemon</title>
+  <meta name="description" content="GPT-4o is expensive at scale. Here's how to reduce GPT-4o API costs by 93% in Python — execution caching, model switching, and prompt optimization that actually works." />
+  <meta name="keywords" content="reduce gpt-4 api costs, gpt-4o too expensive, make gpt4 cheaper, reduce gpt-4o costs python, gpt-4 cost optimization, cut gpt-4 api costs, gpt-4o api cost reduction, gpt4 api cheaper, reduce gpt4 spend, gpt-4o billing optimization, lower gpt-4 costs, gpt-4 production cost, gpt-4o token cost reduction, how to use gpt4 cheaper, gpt-4 cost saving" />
+  <meta property="og:title" content="How to Make GPT-4o API Cheaper — Reduce Costs by 93% — Mnemon" />
+  <meta property="og:description" content="GPT-4o is expensive. Here's the fastest way to cut your bill by 93% without changing your outputs." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/reduce-gpt4-api-costs" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/reduce-gpt4-api-costs" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"How to Make GPT-4o API Cheaper — Reduce GPT-4 Costs by 93%","author":{"@type":"Person","name":"Mahika Jadhav"},"datePublished":"2026-05-31","publisher":{"@type":"Organization","name":"Mnemon"},"url":"https://smartass-4ever.github.io/Mnemon/blog/reduce-gpt4-api-costs"}</script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; } a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; } .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; } td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; } li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="breadcrumb"><a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › Reduce GPT-4 API Costs</div>
+  <h1>How to Make GPT-4o API Cheaper — Reduce Costs by 93%</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 6 min read</p>
+  <div class="stat-row">
+    <div class="stat"><div class="stat-number">93%</div><div class="stat-label">Achievable reduction</div></div>
+    <div class="stat"><div class="stat-number">15×</div><div class="stat-label">GPT-4o vs mini price gap</div></div>
+    <div class="stat"><div class="stat-number">$0.00</div><div class="stat-label">Recurring run cost</div></div>
+  </div>
+
+  <p>GPT-4o costs $2.50 per million input tokens and $10 per million output tokens. At scale — 1,000 agent runs per day — that compounds to hundreds or thousands of dollars monthly. And most of that spend is on work the model has already done before.</p>
+  <p>Here are the three techniques that cut GPT-4o bills the most.</p>
+
+  <h2>Technique 1: Cache executions (biggest win — 93% reduction)</h2>
+  <p>Most production GPT-4o workloads have recurring patterns. The same classification logic. The same report template. The same question types. Every repeated call pays full GPT-4o price for reasoning the model already did yesterday.</p>
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> intercepts GPT-4o calls and returns cached results for similar inputs — 2.66ms instead of 15–30 seconds, zero tokens, $0.00.</p>
+  <pre><code>pip install mnemon-ai</code></pre>
+  <pre><code>import mnemon
+m = mnemon.init()
+
+from openai import OpenAI
+client = OpenAI()
+
+def run_gpt4(goal, inputs, *_):
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are an expert analyst."},
+            {"role": "user", "content": f"{goal}: {inputs['data']}"}
+        ]
+    )
+    return response.choices[0].message.content
+
+result = m.run(
+    goal="analyze and summarize quarterly earnings report",
+    inputs={"data": "Revenue: $12.4M (+18% YoY). EBITDA margin: 22%..."},
+    generation_fn=run_gpt4,
+)
+# Second call with same/similar report: 2.66ms, $0.00</code></pre>
+
+  <h2>Technique 2: Route simple tasks to GPT-4o-mini (94% cheaper)</h2>
+  <p>GPT-4o-mini costs $0.15/1M input tokens vs $2.50 for GPT-4o — 15× cheaper. Most tasks don't need GPT-4o.</p>
+  <table>
+    <tr><th>Task type</th><th>Use GPT-4o?</th><th>Use mini instead?</th></tr>
+    <tr><td>Classification, labeling</td><td>Rarely</td><td><strong>Yes — 15× cheaper</strong></td></tr>
+    <tr><td>Simple extraction</td><td>Rarely</td><td><strong>Yes — 15× cheaper</strong></td></tr>
+    <tr><td>Formatting, rewriting</td><td>Sometimes</td><td><strong>Usually yes</strong></td></tr>
+    <tr><td>Complex multi-step reasoning</td><td>Yes</td><td>Risky</td></tr>
+    <tr><td>Code generation (complex)</td><td>Yes</td><td>For simple tasks</td></tr>
+  </table>
+  <pre><code># Audit your calls — most can move to mini
+client.chat.completions.create(
+    model="gpt-4o-mini",  # was "gpt-4o" — 15x cheaper, same result for routing/classification
+    messages=[...]
+)</code></pre>
+
+  <h2>Technique 3: Constrain output tokens</h2>
+  <p>Output tokens cost 4× more than input tokens on GPT-4o ($10 vs $2.50 per million). If your prompts produce verbose outputs, you're paying a premium for words you don't need.</p>
+  <pre><code>client.chat.completions.create(
+    model="gpt-4o",
+    max_tokens=150,  # hard cap
+    messages=[{
+        "role": "user",
+        "content": "Classify this ticket. Reply with JSON only: {category, priority}. No explanation.\n\n" + ticket
+    }]
+)</code></pre>
+
+  <h2>Combined monthly savings at 1k runs/day</h2>
+  <table>
+    <tr><th>Scenario</th><th>Monthly cost</th></tr>
+    <tr><td>Baseline (GPT-4o, no optimization)</td><td>~$600</td></tr>
+    <tr><td>+ Move 70% of tasks to mini</td><td>~$210</td></tr>
+    <tr><td>+ Execution caching (Mnemon)</td><td><strong>~$14</strong></td></tr>
+  </table>
+
+  <div class="note">The order matters. Caching + model routing together cut the bill by 97%+ for typical production workloads with recurring inputs.</div>
+  <hr />
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">pip install mnemon-ai</a>
+  <div class="tags"><span class="tag">gpt-4o</span><span class="tag">openai</span><span class="tag">cost-reduction</span><span class="tag">python</span><span class="tag">execution-cache</span></div>
+  <div class="footer"><a href="/Mnemon/blog/">← All posts</a> · <a href="/Mnemon/blog/reduce-openai-api-costs">Full OpenAI cost guide →</a></div>
+</div>
+</body>
+</html>

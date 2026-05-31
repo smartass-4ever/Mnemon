@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How to Cache LangChain Agent Responses Between Sessions — Mnemon</title>
+  <meta name="description" content="LangChain's built-in cache only works within a single session. Here's how to persist LangChain agent responses across sessions and eliminate repeat LLM costs entirely." />
+  <meta name="keywords" content="langchain cache between sessions, langchain persistent cache, langchain cache across runs, langchain session cache, langchain memory across sessions, langchain cache responses, langchain agent cache persistent, langchain cross-session cache, langchain save responses, langchain cache not working between runs, langchain execution cache, persist langchain cache, langchain cache redis persistent" />
+  <meta property="og:title" content="How to Cache LangChain Agent Responses Between Sessions — Mnemon" />
+  <meta property="og:description" content="LangChain's cache resets between sessions. Here's how to persist it across runs." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/langchain-cache-between-sessions" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/langchain-cache-between-sessions" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"How to Cache LangChain Agent Responses Between Sessions","author":{"@type":"Person","name":"Mahika Jadhav"},"datePublished":"2026-05-31","publisher":{"@type":"Organization","name":"Mnemon"},"url":"https://smartass-4ever.github.io/Mnemon/blog/langchain-cache-between-sessions"}</script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; } a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; } .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; } td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; } li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    .warning { background: #161b22; border-left: 3px solid #f85149; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="breadcrumb"><a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › LangChain Cache Between Sessions</div>
+  <h1>How to Cache LangChain Agent Responses Between Sessions</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 6 min read</p>
+
+  <p>You've set up LangChain's cache. It works great — within a single run. But restart your script, redeploy your service, or schedule it for tomorrow morning, and the cache is gone. You're back to paying full price on every run.</p>
+  <p>This is one of the most common frustrations with LangChain caching. Here's why it happens and three ways to fix it, from simplest to most powerful.</p>
+
+  <h2>Why LangChain's default cache doesn't persist</h2>
+  <p>LangChain's <code>InMemoryCache</code> stores responses in a Python dictionary — it lives only as long as the process. It's useful for deduplication within a single script run but provides zero benefit across sessions.</p>
+  <pre><code># This cache dies when the script ends
+from langchain.globals import set_llm_cache
+from langchain_community.cache import InMemoryCache
+set_llm_cache(InMemoryCache())  # gone on restart</code></pre>
+
+  <h2>Option 1: SQLite cache (simplest persistent option)</h2>
+  <p>LangChain ships with a SQLite-backed cache that persists to disk:</p>
+  <pre><code>from langchain.globals import set_llm_cache
+from langchain_community.cache import SQLiteCache
+
+set_llm_cache(SQLiteCache(database_path=".langchain.db"))
+
+# Now responses survive restarts — but only exact string matches</code></pre>
+  <p><strong>Limitation:</strong> Only matches exact input strings. "weekly report for Acme" and "Acme Corp weekly report" are different cache keys — both hit the LLM.</p>
+
+  <h2>Option 2: Redis cache (distributed, exact match)</h2>
+  <pre><code>from langchain_community.cache import RedisCache
+import redis
+
+set_llm_cache(RedisCache(redis_=redis.Redis.from_url("redis://localhost:6379")))
+# Persists across restarts, shareable across instances
+# Still exact-match only</code></pre>
+
+  <h2>Option 3: Execution-level cache (persistent + semantic, recommended)</h2>
+  <p><a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> persists complete agent executions to SQLite — survives restarts, deployments, and reschedules — and matches semantically similar inputs, not just exact strings.</p>
+  <pre><code>pip install mnemon-ai</code></pre>
+  <pre><code>import mnemon
+mnemon.init()  # patches BaseChatModel, persists to local SQLite
+
+from langchain_anthropic import ChatAnthropic
+
+llm = ChatAnthropic(model="claude-sonnet-4-6")
+
+# Run 1 — Monday morning
+response = llm.invoke("Generate weekly fintech market summary")
+# Hits LLM, caches the execution to disk
+
+# Run 2 — Tuesday morning (new process, new session)
+response = llm.invoke("Generate weekly fintech market summary")
+# Returns cached result in 2.66ms — zero tokens, $0.00
+
+# Run 3 — Wednesday morning (slightly different phrasing)
+response = llm.invoke("Weekly fintech sector market summary")
+# System 2 semantic match — still returns cached result</code></pre>
+
+  <div class="note">Mnemon's cache is stored at <code>~/.mnemon/</code> by default — persists across all restarts and redeployments. Override with <code>MNEMON_CACHE_DIR</code>.</div>
+
+  <h2>Comparison</h2>
+  <table>
+    <tr><th>Cache type</th><th>Persists across sessions</th><th>Semantic matching</th><th>Setup</th></tr>
+    <tr><td>InMemoryCache</td><td>No</td><td>No</td><td>Zero</td></tr>
+    <tr><td>SQLiteCache</td><td>Yes</td><td>No</td><td>One line</td></tr>
+    <tr><td>RedisCache</td><td>Yes</td><td>No</td><td>Needs Redis</td></tr>
+    <tr><td><strong>Mnemon</strong></td><td><strong>Yes</strong></td><td><strong>Yes</strong></td><td><strong>One import</strong></td></tr>
+  </table>
+
+  <h2>For scheduled agents</h2>
+  <p>If you're running LangChain on a schedule (cron, Airflow, GitHub Actions), Mnemon is the cleanest solution — no external dependencies, no Redis to manage, and the cache grows smarter over time as it accumulates executions.</p>
+  <pre><code># cron: runs every day at 9am
+import mnemon
+mnemon.init()
+
+from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(model="gpt-4o-mini")
+
+result = llm.invoke("Daily security audit summary for prod environment")
+# Day 1: hits OpenAI
+# Day 2 onward: 2.66ms, $0.00</code></pre>
+
+  <hr />
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub — pip install mnemon-ai</a>
+  <div class="tags"><span class="tag">langchain</span><span class="tag">caching</span><span class="tag">python</span><span class="tag">persistent-cache</span><span class="tag">execution-cache</span></div>
+  <div class="footer"><a href="/Mnemon/blog/">← All posts</a> · <a href="/Mnemon/blog/langchain-token-cost-reduction">LangChain cost guide →</a></div>
+</div>
+</body>
+</html>

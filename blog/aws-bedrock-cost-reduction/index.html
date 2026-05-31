@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How to Cut AWS Bedrock Costs by 93% — Mnemon</title>
+  <meta name="description" content="AWS Bedrock re-invokes foundation models on every call. Here's how to add execution caching and cut your Bedrock bill by 93% — works with Claude, Llama, Titan, and all Bedrock models." />
+  <meta name="keywords" content="aws bedrock cost reduction, reduce bedrock costs, aws bedrock cache, bedrock api cost, bedrock optimization python, cut aws bedrock costs, bedrock token cost, aws ai cost reduction, bedrock claude cost, reduce bedrock token usage, bedrock api bill, aws bedrock python cache, bedrock agent cost, aws bedrock optimization, reduce aws ai costs" />
+  <meta property="og:title" content="How to Cut AWS Bedrock Costs by 93% — Mnemon" />
+  <meta property="og:description" content="Bedrock re-invokes foundation models on every call. One import eliminates that waste." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/aws-bedrock-cost-reduction" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/aws-bedrock-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"How to Cut AWS Bedrock Costs by 93% with One Import","author":{"@type":"Person","name":"Mahika Jadhav"},"datePublished":"2026-05-31","publisher":{"@type":"Organization","name":"Mnemon"},"url":"https://smartass-4ever.github.io/Mnemon/blog/aws-bedrock-cost-reduction"}</script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; } a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; } .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; } td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; } li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .stat-row { display: flex; gap: 32px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; }
+    .stat-number { font-size: 1.8rem; font-weight: 700; color: #3fb950; }
+    .stat-label { font-size: 0.8rem; color: #8b949e; margin-top: 2px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="breadcrumb"><a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › AWS Bedrock Cost Reduction</div>
+  <h1>How I Cut My AWS Bedrock Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 5 min read</p>
+  <div class="stat-row">
+    <div class="stat"><div class="stat-number">93.3%</div><div class="stat-label">Cost reduction</div></div>
+    <div class="stat"><div class="stat-number">7,500×</div><div class="stat-label">Faster on cache hits</div></div>
+    <div class="stat"><div class="stat-number">$0.00</div><div class="stat-label">Cost on repeat runs</div></div>
+  </div>
+  <p>AWS Bedrock is the enterprise choice for teams already in the AWS ecosystem — managed access to Claude, Llama, Titan, and more, with IAM, VPC, and compliance built in. I run a Bedrock-backed document processing pipeline for a regulated industry workflow. Everything is solid architecturally — but the per-token costs on recurring document types were climbing well beyond what was necessary.</p>
+  <p>The issue: <strong>Bedrock's <code>invoke_model</code> is stateless.</strong> Every invocation is a fresh cold start. The same contract classification, the same compliance check — full foundation model cost every time.</p>
+
+  <h2>Where Bedrock costs accumulate</h2>
+  <ul>
+    <li>Document classification and extraction over recurring templates</li>
+    <li>Compliance checking agents that re-evaluate the same rule sets</li>
+    <li>Scheduled Bedrock Agents workflows running on recurring inputs</li>
+    <li>Knowledge base queries over stable document corpora</li>
+  </ul>
+
+  <h2>Execution-level caching with Mnemon</h2>
+  <pre><code>pip install mnemon-ai</code></pre>
+  <pre><code>import mnemon
+import boto3, json
+
+m = mnemon.init()
+bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
+
+def run_bedrock(goal, inputs, *_):
+    body = json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 1024,
+        "messages": [{"role": "user", "content": f"{goal}: {inputs['document']}"}]
+    })
+    response = bedrock.invoke_model(
+        modelId="anthropic.claude-sonnet-4-6-20250514-v1:0",
+        body=body
+    )
+    return json.loads(response["body"].read())["content"][0]["text"]
+
+result = m.run(
+    goal="classify and extract key fields from contract",
+    inputs={"document": "Service Agreement between Acme Corp and Beta Ltd..."},
+    generation_fn=run_bedrock,
+)
+
+print(result["output"])
+print(result["tokens_saved"])
+print(result["cache_level"])</code></pre>
+  <p>Second invocation with same or similar document: 2.66ms, zero Bedrock tokens, $0.00.</p>
+
+  <h2>With LangChain + Bedrock</h2>
+  <pre><code>import mnemon
+mnemon.init()  # auto-patches BaseChatModel
+
+from langchain_aws import ChatBedrock
+
+llm = ChatBedrock(model_id="anthropic.claude-sonnet-4-6-20250514-v1:0")
+response = llm.invoke("Summarize compliance findings for Q2 audit")
+# cache hit → 2.66ms, 0 tokens</code></pre>
+
+  <h2>Results on enterprise document pipeline</h2>
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per invocation (avg)</td><td>~1,400</td><td><strong>~95</strong></td></tr>
+    <tr><td>Bedrock API calls</td><td>1</td><td><strong>0.07</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>8–18s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (300 docs/day)</td><td>~$252</td><td><strong>~$17</strong></td></tr>
+  </table>
+
+  <div class="note">Works with all Bedrock-hosted models: Claude, Llama, Mistral, Titan, Cohere, and AI21.</div>
+  <hr />
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+  <div class="tags"><span class="tag">aws-bedrock</span><span class="tag">enterprise</span><span class="tag">python</span><span class="tag">ai-cost-reduction</span><span class="tag">execution-cache</span></div>
+  <div class="footer"><a href="/Mnemon/blog/">← All posts</a> · <a href="/Mnemon/blog/reduce-claude-api-costs">Reduce Claude costs →</a></div>
+</div>
+</body>
+</html>

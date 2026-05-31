@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How to Cut LiteLLM API Costs by 93% — Mnemon</title>
+  <meta name="description" content="LiteLLM proxies all your LLM calls but doesn't cache execution results. Here's how to add execution caching to any LiteLLM workflow and cut costs by 93%." />
+  <meta name="keywords" content="litellm cost reduction, litellm cache, reduce litellm costs, litellm optimization python, litellm caching, cut litellm api costs, litellm token cost, litellm production cost, reduce litellm token usage, litellm api bill, litellm python cache, litellm agent cost, litellm execution cache, litellm proxy cache" />
+  <meta property="og:title" content="How to Cut LiteLLM API Costs by 93% — Mnemon" />
+  <meta property="og:description" content="LiteLLM routes your LLM calls — Mnemon caches the results. Together they eliminate 93% of costs." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/litellm-cost-reduction" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/litellm-cost-reduction" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"How to Cut LiteLLM API Costs by 93% with One Import","author":{"@type":"Person","name":"Mahika Jadhav"},"datePublished":"2026-05-31","publisher":{"@type":"Organization","name":"Mnemon"},"url":"https://smartass-4ever.github.io/Mnemon/blog/litellm-cost-reduction"}</script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; } a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; } .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; } td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; } li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="breadcrumb"><a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › LiteLLM Cost Reduction</div>
+  <h1>How I Cut My LiteLLM API Costs by 93% with One Import</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 5 min read</p>
+
+  <p>LiteLLM is excellent for multi-provider LLM routing — one interface for OpenAI, Anthropic, Gemini, Bedrock, and 100+ other providers. It handles fallbacks, load balancing, and spend tracking. What it doesn't do: execution caching. Every <code>litellm.completion()</code> call routes to a provider and bills you — even for inputs you've processed before.</p>
+  <p><strong>LiteLLM routes your calls. Mnemon caches the results.</strong> Together they eliminate 93% of costs on recurring workloads.</p>
+
+  <h2>Adding execution caching to LiteLLM</h2>
+  <pre><code>pip install mnemon-ai</code></pre>
+  <pre><code>import mnemon
+m = mnemon.init()
+
+import litellm
+
+def run_litellm(goal, inputs, *_):
+    response = litellm.completion(
+        model="gpt-4o-mini",  # or "claude-haiku-4-5", "gemini/gemini-1.5-flash", etc.
+        messages=[{"role": "user", "content": f"{goal}: {inputs['text']}"}]
+    )
+    return response.choices[0].message.content
+
+result = m.run(
+    goal="classify customer feedback sentiment and category",
+    inputs={"text": "The new dashboard is confusing, I can't find the export button"},
+    generation_fn=run_litellm,
+)
+
+print(result["output"])         # classification result
+print(result["tokens_saved"])   # tokens not sent to any provider
+print(result["cache_level"])    # "system1" | "system2" | "miss"</code></pre>
+  <p>Second call with same or similar feedback: 2.66ms, zero provider tokens, $0.00.</p>
+
+  <h2>With LiteLLM fallbacks</h2>
+  <pre><code>import mnemon
+m = mnemon.init()
+
+def run_with_fallback(goal, inputs, *_):
+    # LiteLLM handles fallbacks — Mnemon caches the result regardless of which provider answered
+    response = litellm.completion(
+        model="gpt-4o",
+        fallbacks=["claude-sonnet-4-6", "gemini/gemini-1.5-pro"],
+        messages=[{"role": "user", "content": inputs["query"]}]
+    )
+    return response.choices[0].message.content
+
+result = m.run(
+    goal="generate weekly engineering summary",
+    inputs={"query": "Summarize PRs, incidents, and deploy frequency for this week"},
+    generation_fn=run_with_fallback,
+)
+# Cache hit: skips LiteLLM entirely — no provider called, no fallback needed</code></pre>
+
+  <h2>With LangChain + LiteLLM</h2>
+  <pre><code>import mnemon
+mnemon.init()  # auto-patches BaseChatModel
+
+from langchain_community.chat_models import ChatLiteLLM
+
+llm = ChatLiteLLM(model="gpt-4o-mini")
+response = llm.invoke("Analyze weekly sales metrics")
+# cache hit → 2.66ms, 0 tokens across all providers</code></pre>
+
+  <h2>Why this pairing works well</h2>
+  <p>LiteLLM's strength is routing and fallbacks — it ensures your calls get answered reliably. Mnemon's strength is remembering the answers and not asking again. On a cache hit, LiteLLM's routing logic is never invoked — you save both the token cost and the routing overhead.</p>
+
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per run (avg)</td><td>~1,000</td><td><strong>~68</strong></td></tr>
+    <tr><td>Provider API calls</td><td>1</td><td><strong>0.07</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>2–15s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (1k runs/day)</td><td>~$150</td><td><strong>~$10</strong></td></tr>
+  </table>
+
+  <div class="note">Mnemon works with any LiteLLM-supported provider — the cache is provider-agnostic. If you switch from OpenAI to Anthropic, cached results still apply.</div>
+  <hr />
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub</a>
+  <a href="https://pypi.org/project/mnemon-ai/" style="color:#58a6ff; margin-left: 8px;">pip install mnemon-ai</a>
+  <div class="tags"><span class="tag">litellm</span><span class="tag">multi-provider</span><span class="tag">python</span><span class="tag">ai-cost-reduction</span><span class="tag">execution-cache</span></div>
+  <div class="footer"><a href="/Mnemon/blog/">← All posts</a> · <a href="/Mnemon/blog/llm-agent-caching-python">Full caching guide →</a></div>
+</div>
+</body>
+</html>

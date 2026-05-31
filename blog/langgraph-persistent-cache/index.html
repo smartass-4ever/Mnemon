@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LangGraph Persistent Cache Across Runs — Mnemon</title>
+  <meta name="description" content="LangGraph graphs are stateless between invocations. Here's how to add a persistent execution cache that survives restarts and eliminates repeat LLM costs across graph runs." />
+  <meta name="keywords" content="langgraph persistent cache, langgraph cache across runs, langgraph cache between invocations, langgraph state cache, langgraph memory across runs, langgraph execution cache, langgraph cache responses, persist langgraph cache, langgraph cross-session cache, langgraph caching tutorial, langgraph reduce costs, langgraph checkpointer cache, langgraph cache nodes" />
+  <meta property="og:title" content="LangGraph Persistent Cache Across Runs — Mnemon" />
+  <meta property="og:description" content="LangGraph graphs reset between invocations. Here's how to add persistent execution caching." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/langgraph-persistent-cache" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/langgraph-persistent-cache" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"LangGraph Persistent Cache Across Runs","author":{"@type":"Person","name":"Mahika Jadhav"},"datePublished":"2026-05-31","publisher":{"@type":"Organization","name":"Mnemon"},"url":"https://smartass-4ever.github.io/Mnemon/blog/langgraph-persistent-cache"}</script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; } a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; } .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; } td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; } li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="breadcrumb"><a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › LangGraph Persistent Cache</div>
+  <h1>LangGraph Persistent Cache Across Runs — How to Stop Re-Paying Every Invocation</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 6 min read</p>
+
+  <p>LangGraph's checkpointer gives you persistence <em>within</em> a thread — you can resume a conversation or workflow mid-flight. But across separate invocations with the same or similar inputs, LangGraph starts the LLM work from scratch every time. There's no cross-invocation execution cache built in.</p>
+  <p>If your graph processes recurring workflows — the same type of input arriving daily, weekly, or on a schedule — you're paying for the same LLM reasoning repeatedly.</p>
+
+  <h2>The difference: checkpointer vs execution cache</h2>
+  <ul>
+    <li><strong>LangGraph checkpointer:</strong> Persists state <em>within</em> a thread so you can resume an interrupted run. Doesn't help when you invoke the graph fresh on a new but similar input.</li>
+    <li><strong>Execution cache (Mnemon):</strong> Persists the <em>result</em> of a graph invocation so that similar future invocations skip the LLM entirely.</li>
+  </ul>
+  <p>Both are useful. They solve different problems.</p>
+
+  <h2>Adding persistent execution caching to LangGraph</h2>
+  <pre><code>pip install mnemon-ai</code></pre>
+  <pre><code>import mnemon
+mnemon.init()  # patches BaseChatModel — all LangGraph LLM nodes cached automatically
+
+from langgraph.graph import StateGraph, END
+from langchain_openai import ChatOpenAI
+from typing import TypedDict
+
+llm = ChatOpenAI(model="gpt-4o-mini")
+
+class State(TypedDict):
+    input: str
+    analysis: str
+    summary: str
+
+def analyze_node(state: State) -> State:
+    result = llm.invoke(f"Analyze this: {state['input']}")
+    return {"analysis": result.content}
+
+def summarize_node(state: State) -> State:
+    result = llm.invoke(f"Summarize: {state['analysis']}")
+    return {"summary": result.content}
+
+graph = StateGraph(State)
+graph.add_node("analyze", analyze_node)
+graph.add_node("summarize", summarize_node)
+graph.set_entry_point("analyze")
+graph.add_edge("analyze", "summarize")
+graph.add_edge("summarize", END)
+app = graph.compile()
+
+# Invocation 1 — hits LLM, caches both node results
+result1 = app.invoke({"input": "Q1 sales report: revenue up 12%, EMEA weak"})
+
+# Invocation 2 (new process, new session, same input)
+result2 = app.invoke({"input": "Q1 sales report: revenue up 12%, EMEA weak"})
+# 2.66ms · 0 tokens · $0.00 — both nodes served from cache</code></pre>
+
+  <h2>Explicit wrapping for full control</h2>
+  <pre><code>import mnemon
+m = mnemon.init()
+
+def run_graph(goal, inputs, *_):
+    return app.invoke({"input": inputs["report"]})["summary"]
+
+result = m.run(
+    goal="weekly sales analysis and executive summary",
+    inputs={"report": "Q2 revenue: $4.2M, +8% QoQ, enterprise segment leading"},
+    generation_fn=run_graph,
+)
+
+print(result["cache_level"])      # "system1" | "system2" | "miss"
+print(result["tokens_saved"])
+print(result["latency_saved_ms"])</code></pre>
+
+  <div class="note">The explicit <code>m.run()</code> wrapper lets Mnemon match semantically similar inputs — "Q2 revenue report" and "Q2 sales summary" hit the same cache entry via System 2.</div>
+
+  <h2>Results on recurring graph workloads</h2>
+  <table>
+    <tr><th>Metric</th><th>Without Mnemon</th><th>With Mnemon</th></tr>
+    <tr><td>Tokens per invocation (avg)</td><td>~1,800</td><td><strong>~122</strong></td></tr>
+    <tr><td>LLM node calls</td><td>2–4</td><td><strong>0.14</strong></td></tr>
+    <tr><td>Latency (cache hit)</td><td>12–25s</td><td><strong>2.66ms</strong></td></tr>
+    <tr><td>Monthly cost (200 invocations/day)</td><td>~$432</td><td><strong>~$29</strong></td></tr>
+  </table>
+
+  <hr />
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">GitHub — pip install mnemon-ai</a>
+  <div class="tags"><span class="tag">langgraph</span><span class="tag">caching</span><span class="tag">python</span><span class="tag">persistent-cache</span><span class="tag">execution-cache</span></div>
+  <div class="footer"><a href="/Mnemon/blog/">← All posts</a> · <a href="/Mnemon/blog/langgraph-token-cost-reduction">LangGraph cost guide →</a></div>
+</div>
+</body>
+</html>

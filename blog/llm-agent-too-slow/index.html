@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My LLM Agent Is Too Slow — How to Fix AI Agent Latency — Mnemon</title>
+  <meta name="description" content="LLM agent taking 15–30 seconds? Here's every technique for reducing AI agent latency — from model selection to execution caching that brings repeat runs to 2.66ms." />
+  <meta name="keywords" content="llm agent too slow, ai agent slow, reduce llm agent latency, llm agent performance, speed up llm agent, ai agent latency reduction, llm slow production, langchain agent slow, openai agent latency, reduce ai agent response time, llm agent timeout, slow llm inference, llm agent optimization speed, ai agent 30 seconds too slow" />
+  <meta property="og:title" content="My LLM Agent Is Too Slow — How to Fix AI Agent Latency — Mnemon" />
+  <meta property="og:description" content="LLM agents taking 15–30 seconds? Here's every technique that cuts latency." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://smartass-4ever.github.io/Mnemon/blog/llm-agent-too-slow" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="canonical" href="https://smartass-4ever.github.io/Mnemon/blog/llm-agent-too-slow" />
+  <link rel="sitemap" type="application/xml" href="/Mnemon/sitemap.xml" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"My LLM Agent Is Too Slow — How to Fix AI Agent Latency","author":{"@type":"Person","name":"Mahika Jadhav"},"datePublished":"2026-05-31","publisher":{"@type":"Organization","name":"Mnemon"},"url":"https://smartass-4ever.github.io/Mnemon/blog/llm-agent-too-slow"}</script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+    a { color: #58a6ff; text-decoration: none; } a:hover { text-decoration: underline; }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    .breadcrumb { font-size: 0.85rem; color: #8b949e; margin-bottom: 32px; }
+    .breadcrumb a { color: #8b949e; } .breadcrumb a:hover { color: #58a6ff; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; line-height: 1.3; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 36px 0 12px; color: #f0f6fc; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+    p { margin-bottom: 16px; color: #c9d1d9; }
+    pre { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.875rem; margin: 16px 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.875rem; }
+    p code, li code { background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #e6edf3; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; }
+    th { background: #161b22; padding: 10px 14px; text-align: left; color: #8b949e; font-weight: 600; border-bottom: 1px solid #21262d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; color: #c9d1d9; } td strong { color: #3fb950; }
+    ul, ol { padding-left: 24px; margin-bottom: 16px; color: #c9d1d9; } li { margin-bottom: 6px; }
+    .meta { color: #8b949e; font-size: 0.875rem; margin-bottom: 32px; }
+    .note { background: #161b22; border-left: 3px solid #3fb950; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 0.9rem; color: #8b949e; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 32px 0; }
+    .cta { background: #238636; color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 8px 8px 8px 0; }
+    .cta:hover { background: #2ea043; text-decoration: none; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #21262d; color: #8b949e; font-size: 0.85rem; }
+    .tags { margin-top: 32px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tag { background: #161b22; border: 1px solid #21262d; color: #8b949e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="breadcrumb"><a href="/Mnemon/">Mnemon</a> › <a href="/Mnemon/blog/">Blog</a> › LLM Agent Too Slow</div>
+  <h1>My LLM Agent Is Too Slow — How to Fix AI Agent Latency</h1>
+  <p class="meta">By Mahika Jadhav · May 31, 2026 · 6 min read</p>
+
+  <p>15–30 seconds per agent run is a latency problem that kills user experience and makes scheduled pipelines unpredictable. LLM inference is slow — but most of the latency you're experiencing is <em>avoidable</em>. Here's the full diagnostic and fix.</p>
+
+  <h2>First: where is the time actually going?</h2>
+  <p>Add timing to every LLM call to find your bottleneck:</p>
+  <pre><code>import time
+from openai import OpenAI
+client = OpenAI()
+
+start = time.time()
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": your_prompt}]
+)
+print(f"LLM call: {time.time() - start:.2f}s")
+print(f"Output tokens: {response.usage.completion_tokens}")
+print(f"Input tokens: {response.usage.prompt_tokens}")</code></pre>
+  <p>Common culprits: large output length, slow model, many sequential steps, network overhead.</p>
+
+  <h2>Fix 1: Execution caching — 2.66ms for recurring inputs</h2>
+  <p>If your agent processes recurring inputs (any pattern that repeats across runs), <a href="https://github.com/smartass-4ever/Mnemon">Mnemon</a> turns repeat runs from 15–30s into 2.66ms. No network call, no model invocation — just a local cache lookup.</p>
+  <pre><code>pip install mnemon-ai</code></pre>
+  <pre><code>import mnemon
+mnemon.init()
+
+from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(model="gpt-4o")
+
+# First call: 18s (normal LLM latency)
+response = llm.invoke("Generate security audit summary for prod-api")
+
+# Second call (same/similar): 2.66ms
+response = llm.invoke("Generate security audit summary for prod-api")
+print("Done")</code></pre>
+  <p><strong>Impact: 7,500× faster on cache hits.</strong> Best fix for any recurring workload.</p>
+
+  <h2>Fix 2: Switch to a faster model</h2>
+  <table>
+    <tr><th>Model</th><th>Typical latency</th><th>Notes</th></tr>
+    <tr><td>GPT-4o</td><td>8–25s</td><td>Most capable, slowest</td></tr>
+    <tr><td>GPT-4o-mini</td><td>2–8s</td><td>3× faster, 15× cheaper</td></tr>
+    <tr><td>Claude Haiku</td><td>1–4s</td><td>Fastest Claude model</td></tr>
+    <tr><td>Groq (Llama 3)</td><td>0.5–2s</td><td>Hardware-accelerated, fastest</td></tr>
+  </table>
+  <p>For latency-critical paths, Groq's hardware inference gives 500+ tokens/sec — 10× faster than GPT-4o for many workloads.</p>
+
+  <h2>Fix 3: Reduce output length</h2>
+  <p>Output generation is the slowest part of LLM inference. Every token takes time. If your prompt says "explain in detail", you're generating 500+ tokens when you might need 20.</p>
+  <pre><code># Slow: open-ended output
+"Analyze this data and tell me what you find"
+
+# Fast: constrained output
+"Analyze this data. Reply with JSON: {status, anomalies[], recommendation}. Be concise."
+
+# Also add a hard cap:
+client.chat.completions.create(model="gpt-4o", max_tokens=200, ...)</code></pre>
+  <p><strong>Impact: 2–5× faster</strong> for verbose workloads.</p>
+
+  <h2>Fix 4: Parallelize independent steps</h2>
+  <p>Multi-step agents often run steps sequentially when they could run in parallel:</p>
+  <pre><code>import asyncio
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(model="gpt-4o-mini")
+
+async def run_parallel():
+    # These don't depend on each other — run them simultaneously
+    results = await asyncio.gather(
+        llm.ainvoke("Summarize topic A"),
+        llm.ainvoke("Summarize topic B"),
+        llm.ainvoke("Summarize topic C"),
+    )
+    return results
+# 3 sequential 8s calls → 1 parallel 8s call</code></pre>
+
+  <h2>Fix 5: Stream the response</h2>
+  <p>For user-facing features, streaming shows output immediately rather than waiting for full completion:</p>
+  <pre><code>for chunk in client.chat.completions.create(
+    model="gpt-4o", stream=True,
+    messages=[{"role": "user", "content": prompt}]
+):
+    print(chunk.choices[0].delta.content or "", end="", flush=True)</code></pre>
+  <p>Users see the first token in ~1s instead of waiting 15–30s for the full response.</p>
+
+  <h2>Latency reduction summary</h2>
+  <table>
+    <tr><th>Technique</th><th>Latency impact</th><th>Best for</th></tr>
+    <tr><td>Execution caching</td><td><strong>18s → 2.66ms</strong></td><td>Recurring inputs</td></tr>
+    <tr><td>Groq instead of GPT-4o</td><td>18s → 1–2s</td><td>All workloads</td></tr>
+    <tr><td>Constrain output length</td><td>2–5× faster</td><td>Verbose outputs</td></tr>
+    <tr><td>Parallelize steps</td><td>N× faster</td><td>Independent multi-step</td></tr>
+    <tr><td>Streaming</td><td>TTFB 1s</td><td>User-facing UI</td></tr>
+  </table>
+
+  <hr />
+  <a class="cta" href="https://github.com/smartass-4ever/Mnemon">pip install mnemon-ai</a>
+  <div class="tags"><span class="tag">latency</span><span class="tag">performance</span><span class="tag">llm-agents</span><span class="tag">python</span><span class="tag">execution-cache</span></div>
+  <div class="footer"><a href="/Mnemon/blog/">← All posts</a> · <a href="/Mnemon/blog/production-llm-agent-optimization">Production optimization →</a></div>
+</div>
+</body>
+</html>
