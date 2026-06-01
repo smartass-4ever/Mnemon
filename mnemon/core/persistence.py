@@ -743,6 +743,15 @@ class EROSDatabase:
             )
             self._conn.commit()
 
+    async def get_total_hits(self, tenant_id: str) -> int:
+        """Sum of all cache hits across all days for this tenant."""
+        async with self._lock:
+            row = self._conn.execute(
+                "SELECT COALESCE(SUM(hits), 0) AS total FROM usage_ledger WHERE tenant_id=?",
+                (tenant_id,),
+            ).fetchone()
+        return int(row["total"]) if row else 0
+
     # ──────────────────────────────────────────
     # AUDIT LOG
     # ──────────────────────────────────────────

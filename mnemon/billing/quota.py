@@ -63,6 +63,36 @@ class QuotaEnforcer:
     async def record_hit(self) -> None:
         self._daily_hits += 1
         await self._db.record_daily_hit(self._tenant_id, self._today)
+        await self._check_milestone()
+
+    async def _check_milestone(self) -> None:
+        """Print a one-time message when total cache hits reaches 10.
+
+        At 10 hits the fragment library has seen enough variety to start
+        compounding. This is the moment savings become visible.
+        """
+        try:
+            import os as _os, sys as _sys
+            db_dir = getattr(self._db, "_db_dir", ".")
+            flag = _os.path.join(db_dir, f".mnemon_milestone10_{self._tenant_id}")
+            if _os.path.exists(flag):
+                return
+            total = await self._db.get_total_hits(self._tenant_id)
+            if total >= 10:
+                try:
+                    _os.makedirs(db_dir, exist_ok=True)
+                    open(flag, "w").close()
+                except OSError:
+                    pass
+                print(
+                    "\nMnemon: 10 cache hits reached — your fragment library is warming up.\n"
+                    "  Common steps are now cached. Savings compound from here.\n"
+                    "  The longer you run Mnemon, the less you pay your LLM provider.\n"
+                    "  Track your savings: mnemon.get().stats\n",
+                    file=_sys.stderr, flush=True,
+                )
+        except Exception:
+            pass
 
     @property
     def is_pro(self) -> bool:

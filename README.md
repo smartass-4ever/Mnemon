@@ -180,12 +180,12 @@ Mnemon is free for individual use. Pro is for production workloads.
 
 | | Free | Pro |
 |---|:---:|:---:|
-| Cache hits per day | 25 | Unlimited |
+| Cache hits per day | 100 | Unlimited |
 | All caching modes (System 1 + System 2) | ✅ | ✅ |
 | Experience Bus learning loop | ✅ | ✅ |
 | MOTH auto-instrumentation | ✅ | ✅ |
 | Production workloads | ❌ | ✅ |
-| Price | $0 | $49/month |
+| Price | $0 | $29/month |
 
 **Upgrade to Pro:**
 
@@ -208,11 +208,33 @@ Or pass it directly:
 m = mnemon.init(license_key="your-license-key-here")
 ```
 
-Get a license key at **[mnemon.lemonsqueezy.com](https://mnemon.lemonsqueezy.com)**
+Get a license key at **[mnemon.lemonsqueezy.com/checkout/buy/23828905-b5e2-4946-bd60-9d669f379b1e](https://mnemon.lemonsqueezy.com/checkout/buy/23828905-b5e2-4946-bd60-9d669f379b1e)**
+
+No money? Email **mahikajadhav22@gmail.com** with what you're building — get 1 month free.
 
 When the free tier limit is reached, your agent keeps running — it just calls the LLM normally instead of serving from cache. No crashes, no errors.
 
 > **Already using Mnemon?** If you integrated before pricing was introduced, email mahikajadhav22@gmail.com and I'll sort you out.
+
+---
+
+## How value compounds over time
+
+Mnemon does not save you money on day one. It saves you money on day 30.
+
+Here is what actually happens:
+
+**First run:** everything is a miss. Mnemon caches what your agent did.
+
+**Runs 2–10:** common steps start hitting the cache. You see token savings in your terminal. The fragment library is building.
+
+**After 10+ cache hits:** the fragment library has seen enough of your workflows. Common steps — "authenticate user", "validate input", "generate report", "check rate limits" — are cached from previous runs. Only genuinely novel work goes to the LLM.
+
+**Month 2 onwards:** hit rates of 50–80% on recurring workflows. The cache covers your patterns. You pay for new work only.
+
+The longer you run Mnemon, the more it knows about your agent's workflows, and the less you pay per run. A support bot that handles the same issue types daily reaches 70%+ hit rate within two weeks. A code review pipeline reaches 60%+ within a month as security patterns accumulate.
+
+**You will see a message in your terminal when you hit 10 cache hits.** That's when the compounding begins.
 
 ---
 
