@@ -315,8 +315,9 @@ class Mnemon:
                     if not self._silent:
                         import sys as _sys
                         print(
-                            "Mnemon: free tier daily limit reached -- "
-                            "upgrade to Pro for unlimited caching: https://mnemon.lemonsqueezy.com/checkout/buy/23828905-b5e2-4946-bd60-9d669f379b1e",
+                            "Mnemon: free tier daily limit reached (100 hits/day).\n"
+                            "  → Upgrade to Pro (unlimited): https://mnemon.lemonsqueezy.com/checkout/buy/23828905-b5e2-4946-bd60-9d669f379b1e\n"
+                            "  → Get 1 month free: email mahikajadhav22@gmail.com — tell us what you're building",
                             file=_sys.stderr, flush=True,
                         )
                     template = await generation_fn(goal, inputs, context, caps, constraints)
