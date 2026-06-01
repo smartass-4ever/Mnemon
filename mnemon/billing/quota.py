@@ -17,7 +17,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-FREE_TIER_DAILY_HITS = 25
+FREE_TIER_DAILY_HITS = 100
 LEMON_SQUEEZY_VALIDATE_URL = "https://api.lemonsqueezy.com/v1/licenses/validate"
 
 
