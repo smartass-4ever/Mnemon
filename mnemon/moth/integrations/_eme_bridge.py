@@ -51,12 +51,57 @@ class MothCache:
             pass
         return None
 
+    def _quota(self) -> Optional[Any]:
+        try:
+            if self._m._m and self._m._m._quota:
+                return self._m._m._quota
+        except Exception:
+            pass
+        return None
+
+    def _check_quota(self) -> bool:
+        """Return True if a cache hit may be served. False = free tier exhausted."""
+        quota = self._quota()
+        if quota is None:
+            return True
+        try:
+            allowed = self._m._run(quota.can_serve_cache_hit())
+            if not allowed:
+                try:
+                    silent = getattr(self._m, "_kwargs", {}).get("silent", False)
+                    if not silent:
+                        import sys as _sys
+                        print(
+                            "Mnemon: free tier daily limit reached -- "
+                            "upgrade to Pro for unlimited caching: "
+                            "https://mnemon.lemonsqueezy.com/checkout/buy/23828905-b5e2-4946-bd60-9d669f379b1e",
+                            file=_sys.stderr, flush=True,
+                        )
+                except Exception:
+                    pass
+            return allowed
+        except Exception:
+            return True  # fail open — never block on quota errors
+
+    def _record_hit(self) -> None:
+        quota = self._quota()
+        if quota is None:
+            return
+        try:
+            self._m._run(quota.record_hit())
+        except Exception:
+            pass
+
     # ── Sync ─────────────────────────────────────────────────────────────────
 
     def check(self, query: str, capabilities: List[str], hash_key: str) -> Optional[Any]:
-        """Check hash cache, then persistent DB, then EME semantic. Returns stored object or None."""
+        """Check quota, then hash cache, persistent DB, and EME semantic."""
+        if not self._check_quota():
+            return None
+
         cached = self._hash_cache.get(hash_key)
         if cached is not None:
+            self._record_hit()
             return cached
 
         db = self._db()
@@ -64,6 +109,7 @@ class MothCache:
             text = db.get_moth_cache(hash_key)
             if text:
                 logger.debug(f"Mnemon: {self._source} persistent cache hit")
+                self._record_hit()
                 return text
 
         eme = self._eme()
@@ -75,11 +121,11 @@ class MothCache:
                     obj = self._obj_store.get(tid)
                     if obj is not None:
                         logger.debug(f"Mnemon: {self._source} EME semantic hit")
+                        self._record_hit()
                         return obj
                     if text:
-                        # Cold start: process restarted, obj_store is empty but
-                        # EME still has the text. Return text so caller can synthesize.
                         logger.debug(f"Mnemon: {self._source} EME cold-start text hit")
+                        self._record_hit()
                         return text
             except Exception as e:
                 logger.debug(f"Mnemon: {self._source} EME sync check failed — {e}")
@@ -111,9 +157,22 @@ class MothCache:
     async def async_check(
         self, query: str, capabilities: List[str], hash_key: str
     ) -> Optional[Any]:
-        """Async: check hash cache, then persistent DB, then EME semantic."""
+        """Async: check quota, then hash cache, persistent DB, and EME semantic."""
+        quota = self._quota()
+        if quota:
+            try:
+                if not await quota.can_serve_cache_hit():
+                    return None
+            except Exception:
+                pass
+
         cached = self._hash_cache.get(hash_key)
         if cached is not None:
+            if quota:
+                try:
+                    await quota.record_hit()
+                except Exception:
+                    pass
             return cached
 
         db = self._db()
@@ -121,6 +180,11 @@ class MothCache:
             text = db.get_moth_cache(hash_key)
             if text:
                 logger.debug(f"Mnemon: {self._source} persistent cache hit (async)")
+                if quota:
+                    try:
+                        await quota.record_hit()
+                    except Exception:
+                        pass
                 return text
 
         eme = self._eme()
@@ -132,9 +196,19 @@ class MothCache:
                     obj = self._obj_store.get(tid)
                     if obj is not None:
                         logger.debug(f"Mnemon: {self._source} EME async semantic hit")
+                        if quota:
+                            try:
+                                await quota.record_hit()
+                            except Exception:
+                                pass
                         return obj
                     if text:
                         logger.debug(f"Mnemon: {self._source} EME async cold-start text hit")
+                        if quota:
+                            try:
+                                await quota.record_hit()
+                            except Exception:
+                                pass
                         return text
             except Exception as e:
                 logger.debug(f"Mnemon: {self._source} EME async check failed — {e}")
