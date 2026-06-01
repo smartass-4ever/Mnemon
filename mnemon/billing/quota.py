@@ -85,10 +85,10 @@ class QuotaEnforcer:
                 except OSError:
                     pass
                 print(
-                    "\nMnemon: 10 cache hits reached — your fragment library is warming up.\n"
-                    "  Common steps are now cached. Savings compound from here.\n"
-                    "  The longer you run Mnemon, the less you pay your LLM provider.\n"
-                    "  Track your savings: mnemon.get().stats\n",
+                    "\nMnemon: 10 cache hits. It might not feel like much yet — but it's working.\n"
+                    "  Your fragment library is building. Every run, Mnemon learns more of your\n"
+                    "  agent's patterns. The savings aren't linear — they compound. The longer\n"
+                    "  you stick with this, the less you pay. Give it a few more weeks.\n",
                     file=_sys.stderr, flush=True,
                 )
         except Exception:
