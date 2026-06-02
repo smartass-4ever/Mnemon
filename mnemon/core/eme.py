@@ -331,6 +331,10 @@ class ANNIndex:
             vec = vec / norm
         async with self._lock:
             mat, ids = self._shards.get(tenant_id, (None, []))
+            # Embedder dimension changed (e.g. hash-projection → sentence-transformers).
+            # Reset shard rather than mixing incompatible vectors.
+            if mat is not None and mat.shape[1] != vec.shape[0]:
+                mat, ids = None, []
             ids = ids + [seg_id]
             mat = vec.reshape(1, -1) if mat is None else np.vstack([mat, vec.reshape(1, -1)])
             self._shards[tenant_id] = (mat, ids)
@@ -404,6 +408,8 @@ class TemplateIndex:
             mat, ids = self._shards.get(tenant_id, (None, []))
             if template_id in ids:
                 return   # already indexed, skip
+            if mat is not None and mat.shape[1] != vec.shape[0]:
+                mat, ids = None, []
             ids = ids + [template_id]
             mat = vec.reshape(1, -1) if mat is None else np.vstack([mat, vec.reshape(1, -1)])
             self._shards[tenant_id] = (mat, ids)
