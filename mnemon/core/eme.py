@@ -2071,6 +2071,75 @@ class ExecutionMemoryEngine:
     # CACHE WRITE
     # ──────────────────────────────────────────
 
+    def _decompose_to_bricks(self, template: Any, capabilities: List[str]) -> List[Dict]:
+        """
+        Break any template into the smallest independently reusable bricks.
+
+        Lego model: every cached plan must dissolve into individual fragments
+        so future plans — even completely different ones — can pull individual
+        bricks by semantic similarity and only generate what they're missing.
+
+        Rules:
+        1. Structured output (list/dict with steps): use adapter.decompose() as-is.
+           Each step is already a brick.
+        2. String output + capabilities provided: split into one brick per
+           capability, aligned by semantic similarity between output sections
+           and capability labels.  Each brick gets a '_capability_intent' so
+           the fragment library stores it under a meaningful name.
+        3. String output, no capabilities: split on paragraph/section boundaries
+           (double newlines, markdown headers, numbered lines). Each paragraph
+           is a brick with its own embedding rather than one opaque blob.
+        """
+        # Rule 1: already structured — adapter handles it
+        if not isinstance(template, str):
+            return self.adapter.decompose(template)
+
+        raw_segs = self.adapter.decompose(template)
+
+        # Rule 1b: adapter already split it into multiple segments
+        if len(raw_segs) > 1:
+            return raw_segs
+
+        # Single-segment string — needs splitting
+        text = str(template).strip()
+
+        # Split into natural sections: double-newline, markdown headers, numbered lines
+        import re as _re
+        parts = _re.split(r'\n{2,}|(?=^#{1,3} )|(?=^\d+\. )', text, flags=_re.MULTILINE)
+        parts = [p.strip() for p in parts if p.strip() and len(p.strip()) > 15]
+
+        if not parts:
+            return raw_segs  # nothing meaningful to split
+
+        # Rule 2: capabilities provided — assign each part to the nearest capability
+        if capabilities and len(capabilities) >= 2:
+            cap_embeddings = [self._embed_sync(c, full=False) for c in capabilities]
+            bricks: List[Dict] = []
+            assigned: List[set] = [set() for _ in capabilities]
+
+            for j, part in enumerate(parts):
+                part_sig = self._embed_sync(part[:200], full=False)
+                best_cap_idx = max(
+                    range(len(capabilities)),
+                    key=lambda k: SimpleEmbedder.cosine_similarity(part_sig, cap_embeddings[k])
+                )
+                brick_id = f"brick_{j}_{hashlib.md5(part.encode()).hexdigest()[:8]}"
+                bricks.append({
+                    "id": brick_id,
+                    "content": part,
+                    "_capability_intent": capabilities[best_cap_idx],
+                })
+            return bricks if bricks else raw_segs
+
+        # Rule 3: no capabilities — each paragraph is its own brick
+        return [
+            {
+                "id": f"brick_{j}_{hashlib.md5(p.encode()).hexdigest()[:8]}",
+                "content": p,
+            }
+            for j, p in enumerate(parts)
+        ] if len(parts) > 1 else raw_segs
+
     async def _cache_template(
         self,
         goal: str,
@@ -2155,7 +2224,38 @@ class ExecutionMemoryEngine:
                 self._system1_cache[fp.full_hash] = template_id
                 await self._template_index.add(self.tenant_id, template_id, goal_embedding)
 
-            logger.debug(f"Template cached: {template_id} ({len(segments)} segments)")
+            # Lego brick injection — separate from template segments.
+            # Template segments drive System 2 retrieval (leave them intact).
+            # Bricks are extra fine-grained fragments added to the library so
+            # Fragment Assembly can pull individual pieces from any past run
+            # into a completely different future plan.
+            bricks = self._decompose_to_bricks(template, capabilities)
+            if len(bricks) > len(segments_data):
+                for j, b in enumerate(bricks):
+                    b_content = b.get("content", b)
+                    b_intent = b.get("_capability_intent") or self._extract_intent(b)
+                    b_sig = self._embed_sync(b_intent, full=False)
+                    if not b_sig:
+                        continue
+                    b_id = b.get("id", f"brick_{template_id}_{j}")
+                    brick_seg = TemplateSegment(
+                        segment_id=b_id,
+                        tenant_id=self.tenant_id,
+                        content=b_content,
+                        fingerprint=hashlib.md5(
+                            json.dumps(b_content, default=str).encode()
+                        ).hexdigest()[:16],
+                        signature=b_sig,
+                        intent=b_intent,
+                        is_generated=False,
+                        confidence=1.0,
+                        success_rate=1.0,
+                    )
+                    await self._write_behind.enqueue(brick_seg)
+                    await self._fragment_index.add(self.tenant_id, b_id, b_sig)
+                    self._fragment_map[b_id] = brick_seg
+
+            logger.debug(f"Template cached: {template_id} ({len(segments)} segments, {len(bricks)} bricks)")
             return len(segments)
 
         except Exception as e:
