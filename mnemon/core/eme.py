@@ -895,23 +895,17 @@ class ExecutionMemoryEngine:
                 continue
             goal_sim = SimpleEmbedder.cosine_similarity(goal_embedding, t.embedding)
 
-            # Approach A: fragment overlap as an additive score component.
-            # A template whose segments are structurally relevant to this goal
-            # can be selected even when goal-string similarity is below the
-            # normal MIN_GOAL_SIMILARITY threshold (0.60), as long as enough
-            # segments overlap (FRAGMENT_OVERLAP_GATE = 0.60).
             fragment_overlap = self._compute_fragment_overlap(t.segments, goal_sig_for_overlap)
-            if goal_sim < MIN_GOAL_SIMILARITY_RELAXED and fragment_overlap < FRAGMENT_OVERLAP_GATE:
-                continue
-
             score = self._multi_component_similarity(
                 fp, t.fingerprint, goal_embedding, t.embedding,
                 capabilities, list(t.tool_versions.keys())
             )
-            # Fragment overlap adds on top of the multi-component score.
-            # High overlap (e.g. 0.80) contributes +0.24 — enough to surface
-            # a template that was previously below the 0.70 threshold.
             score = min(1.0, score + fragment_overlap * FRAGMENT_OVERLAP_WEIGHT)
+            # Gate: skip only when raw goal similarity, fragment overlap, AND
+            # intent-based score are all too low. Intent score can rescue a low
+            # raw cosine — no funnel, both run together.
+            if goal_sim < MIN_GOAL_SIMILARITY_RELAXED and fragment_overlap < FRAGMENT_OVERLAP_GATE and score < self.threshold:
+                continue
 
             # Apply collective cross-tenant boost to proven pre-warmed templates
             if t.is_prewarmed and self._proven_boosts:
@@ -1052,7 +1046,14 @@ class ExecutionMemoryEngine:
     ) -> float:
         """Weighted four-component similarity score."""
         goal_sim   = SimpleEmbedder.cosine_similarity(embed1, embed2)
-        schema_sim = 1.0 if fp1.input_schema_hash == fp2.input_schema_hash else 0.3
+        # Exact value match → 1.0; same structure different values → 0.85; different structure → 0.3
+        if fp1.input_schema_hash == fp2.input_schema_hash:
+            schema_sim = 1.0
+        elif (fp1.structural_schema_hash and fp2.structural_schema_hash
+              and fp1.structural_schema_hash == fp2.structural_schema_hash):
+            schema_sim = 0.85
+        else:
+            schema_sim = 0.3
         ctx_sim    = 1.0 if fp1.context_hash == fp2.context_hash else 0.4
 
         if caps1 and caps2:

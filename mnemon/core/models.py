@@ -112,12 +112,17 @@ class ComputationFingerprint:
     """
     Five-component fingerprint for System 1 exact matching.
     Tool version hashing prevents stale cache hits after API changes.
+    structural_schema_hash: key-set only (no values) — used by System 2 schema
+    similarity so {"team": "backend"} and {"team": "frontend"} score as
+    structurally identical rather than taking the 0.3 mismatch penalty.
+    Not included in full_hash — System 1 still requires exact value match.
     """
-    goal_hash:         str
-    input_schema_hash: str
-    context_hash:      str
-    capability_hash:   str
-    constraint_hash:   str
+    goal_hash:               str
+    input_schema_hash:       str
+    structural_schema_hash:  str = ""
+    context_hash:            str = ""
+    capability_hash:         str = ""
+    constraint_hash:         str = ""
 
     @property
     def full_hash(self) -> str:
@@ -144,9 +149,11 @@ class ComputationFingerprint:
             s = json.dumps(obj, sort_keys=True) if isinstance(obj, (dict, list)) else str(obj)
             return hashlib.md5(s.encode()).hexdigest()[:16]
 
+        structural = sorted(str(k) for k in input_schema.keys()) if isinstance(input_schema, dict) else []
         return cls(
             goal_hash=_h(goal),
             input_schema_hash=_h(input_schema),
+            structural_schema_hash=_h(structural),
             context_hash=_h(context),
             capability_hash=_h(sorted(capabilities)),
             constraint_hash=_h(constraints),
