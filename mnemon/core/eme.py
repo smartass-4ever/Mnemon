@@ -2038,6 +2038,16 @@ class ExecutionMemoryEngine:
         """Call the real expensive function. Cache result on success."""
         template = await generation_fn(goal, inputs, context, capabilities, constraints)
 
+        if template is None:
+            return EMEResult(
+                status="miss",
+                template=None,
+                template_id=None,
+                segments_reused=0,
+                segments_generated=0,
+                cache_level="miss",
+            )
+
         segment_count = await self._cache_template(goal, template, fp, capabilities)
 
         return EMEResult(

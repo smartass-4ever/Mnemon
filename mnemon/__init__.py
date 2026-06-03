@@ -440,7 +440,8 @@ class Mnemon:
                 else:
                     future_str = None
                 welcome_flag = os.path.join(mnemon_home, f".welcomed_{self.tenant_id}")
-                if not os.path.exists(welcome_flag):
+                old_flag = os.path.join(self._db_dir, f".mnemon_welcomed_{self.tenant_id}")
+                if not os.path.exists(welcome_flag) and not os.path.exists(old_flag):
                     try:
                         open(welcome_flag, "w").close()
                     except OSError:
@@ -832,6 +833,9 @@ class MnemonSync:
             self._loop.close()
             self._loop = None
             self._m = None
+            global _instance
+            if _instance is self:
+                _instance = None
 
     def __repr__(self) -> str:
         tenant = self._kwargs.get("tenant_id", "default")
@@ -889,6 +893,14 @@ def init(
     """
     global _instance
     if _instance is not None:
+        if tenant_id and tenant_id != _instance._kwargs.get("tenant_id"):
+            import sys as _sys
+            print(
+                f"Mnemon: init() already called with tenant '{_instance._kwargs.get('tenant_id')}' — "
+                f"ignoring tenant='{tenant_id}'. Call mnemon.get() to retrieve the active instance, "
+                f"or restart the process to use a different tenant.",
+                file=_sys.stderr, flush=True,
+            )
         return _instance
 
     resolved_tenant  = tenant_id or _detect_tenant_id()

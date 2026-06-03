@@ -13,6 +13,11 @@ lme_test.txt
 lme_full.txt
 locomo_fixed_full.txt
 mnemon.config.json
+mnemon_bus_*.json
+mnemon_stats_*.json
+.mnemon_*
+.welcomed_*
+.first_hit_*
 *.egg-info/
 build/
 dist/

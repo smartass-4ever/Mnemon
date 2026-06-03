@@ -312,10 +312,16 @@ def track_cache_miss(m: Any, source: str) -> None:
             return
         db_dir    = getattr(inner, "_db_dir", ".")
         tenant_id = getattr(inner, "tenant_id", "default")
-        flag = _os.path.join(db_dir, f".mnemon_welcomed_{tenant_id}")
-        if not _os.path.exists(flag):
+        mnemon_home = _os.path.join(_os.path.expanduser("~"), ".mnemon")
+        try:
+            _os.makedirs(mnemon_home, exist_ok=True)
+        except OSError:
+            mnemon_home = db_dir
+        flag     = _os.path.join(mnemon_home, f".welcomed_{tenant_id}")
+        old_flag = _os.path.join(db_dir, f".mnemon_welcomed_{tenant_id}")
+        if not _os.path.exists(flag) and not _os.path.exists(old_flag):
             try:
-                open(flag, "w").close()
+                open(flag, "w").close()  # write to new ~/.mnemon location
             except OSError:
                 pass
             msg = (
