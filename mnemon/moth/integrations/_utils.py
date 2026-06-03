@@ -319,13 +319,23 @@ def track_cache_miss(m: Any, source: str) -> None:
             except OSError:
                 pass
             msg = (
-                f"Mnemon [{source}]: first run — response cached, next call will be instant\n"
-                f"  Thank you for installing Mnemon!"
-                f" Drop a line at mahikajadhav22@gmail.com if caching isn't working.\n"
-                f"  I can also personally integrate this into your workflow — same email."
+                f"Mnemon: you're in. First response cached.\n"
+                "\n"
+                "  Here's how this works: every response your agent gets is cached.\n"
+                "  As it runs, Mnemon breaks each interaction into reusable pieces and\n"
+                "  builds a fragment library specific to your workflows. By week two,\n"
+                "  almost every step is coming from that library — your agent is\n"
+                "  essentially running for free on the parts it's done before.\n"
+                "\n"
+                "  It needs a little time to build that library. The first week will\n"
+                "  feel slow. Stick with it — the compounding kicks in fast.\n"
+                "\n"
+                "  Mnemon is still early and it will occasionally glitch. If something\n"
+                "  looks wrong, email mahikajadhav22@gmail.com — I'll look at it personally.\n"
+                "  We're building this in the open and your feedback shapes what gets fixed next."
             )
         else:
-            msg = f"Mnemon [{source}]: new input — cached, next call will be instant"
+            msg = f"Mnemon: new input — cached, next call will be instant"
         print(msg, file=_sys.stderr, flush=True)
     except Exception:
         pass

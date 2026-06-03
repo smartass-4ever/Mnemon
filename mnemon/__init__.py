@@ -411,6 +411,8 @@ class Mnemon:
                 if secs > 0:
                     msg += f" |{secs:.1f}s faster"
             elif cache_level == "miss":
+                if self._embedder:
+                    self._embedder.warn_if_inactive()
                 mnemon_home = os.path.join(os.path.expanduser("~"), ".mnemon")
                 try:
                     os.makedirs(mnemon_home, exist_ok=True)

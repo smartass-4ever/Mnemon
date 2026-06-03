@@ -180,6 +180,8 @@ class SimpleEmbedder:
         self._backend = None  # loaded on first use
         self.dim = 384        # reported dim before load; updated after
         self.backend_name = "pending"
+        self._st_installed = False
+        self._system2_warned = False
 
     def _load(self) -> None:
         if self._backend is not None:
@@ -203,22 +205,30 @@ class SimpleEmbedder:
         self._backend = HashProjectionEmbedder()
         self.dim = 64
         self.backend_name = "hash-projection"
-        import sys as _sys
         import importlib.util as _ilu
-        _st_installed = _ilu.find_spec("sentence_transformers") is not None
-        if _st_installed:
+        self._st_installed = _ilu.find_spec("sentence_transformers") is not None
+
+    def warn_if_inactive(self) -> None:
+        """Print a one-time System 2 warning on the first cache miss. No-op if already warned or active."""
+        self._load()
+        if self.system2_active or self._system2_warned:
+            return
+        self._system2_warned = True
+        import sys as _sys
+        if self._st_installed:
             print(
-                "Mnemon: System 2 semantic recall is inactive (sentence-transformers failed to load).\n"
-                "  Fix with: pip install torch --upgrade\n"
-                "  Or use:   export OPENAI_API_KEY=...  (OpenAI embeddings)",
+                "Mnemon: System 2 semantic matching is inactive"
+                " (sentence-transformers installed but failed to load).\n"
+                "  Fix: pip install torch --upgrade\n"
+                "  Or:  export OPENAI_API_KEY=...  (uses OpenAI embeddings instead)",
                 file=_sys.stderr, flush=True,
             )
         else:
             print(
-                "Mnemon: System 2 semantic recall is inactive (hash-projection fallback).\n"
-                "  Enable it with one of:\n"
-                "    pip install mnemon-ai[full]   # offline, no API key needed\n"
-                "    export OPENAI_API_KEY=...     # uses OpenAI embeddings",
+                "Mnemon: System 2 semantic matching is inactive"
+                " — exact-match only until you enable it.\n"
+                "  Fix: pip install mnemon-ai[full]   # offline, no API key needed\n"
+                "  Or:  export OPENAI_API_KEY=...     # uses OpenAI embeddings",
                 file=_sys.stderr, flush=True,
             )
 
