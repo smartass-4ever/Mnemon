@@ -335,7 +335,7 @@ def track_cache_miss(m: Any, source: str) -> None:
                 "  We're building this in the open and your feedback shapes what gets fixed next."
             )
         else:
-            msg = f"Mnemon: new input — cached, next call will be instant"
+            msg = "Mnemon: banked  runs free next time"
         print(msg, file=_sys.stderr, flush=True)
     except Exception:
         pass
@@ -359,12 +359,36 @@ def track_cache_hit(
     try:
         silent = getattr(m, "_kwargs", {}).get("silent", False)
         if not silent:
-            import sys as _sys
+            import sys as _sys, os as _os
             total_tokens = (input_tokens or 0) + (output_tokens or 0) if (input_tokens or output_tokens) else (tokens or 0)
             cost = total_tokens * 0.000003
-            msg = f"Mnemon: cache hit [{source}]"
-            if total_tokens:
-                msg += f" · {total_tokens:,} tokens saved · ~${cost:.4f}"
+            cost_str = f"${cost:.4f}" if cost >= 0.0001 else "<$0.01"
+            inner = getattr(m, "_m", None)
+            tenant_id = getattr(inner, "tenant_id", "default") if inner else "default"
+            mnemon_home = _os.path.join(_os.path.expanduser("~"), ".mnemon")
+            try:
+                _os.makedirs(mnemon_home, exist_ok=True)
+            except OSError:
+                pass
+            first_hit_flag = _os.path.join(mnemon_home, f".first_hit_{tenant_id}")
+            if not _os.path.exists(first_hit_flag):
+                try:
+                    open(first_hit_flag, "w").close()
+                except OSError:
+                    pass
+                if total_tokens:
+                    msg = (
+                        f"Mnemon: first free call. it's working.\n"
+                        f"  {total_tokens:,} tokens  {cost_str}\n"
+                        f"  every call from here compounds. keep going."
+                    )
+                else:
+                    msg = "Mnemon: first free call. it's working. keep going."
+            else:
+                if total_tokens:
+                    msg = f"Mnemon: free  {total_tokens:,} tokens  {cost_str}"
+                else:
+                    msg = "Mnemon: free call"
             print(msg, file=_sys.stderr, flush=True)
     except Exception:
         pass

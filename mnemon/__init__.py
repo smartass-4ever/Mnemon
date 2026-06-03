@@ -403,25 +403,46 @@ class Mnemon:
 
         if not self._silent:
             import sys as _sys
+            mnemon_home = os.path.join(os.path.expanduser("~"), ".mnemon")
+            try:
+                os.makedirs(mnemon_home, exist_ok=True)
+            except OSError:
+                mnemon_home = self._db_dir
+
             if cache_level in ("system1", "system2", "system2_guided"):
                 cost = tokens_saved * 0.000003
                 secs = latency_saved_ms / 1000
-                cost_display = f"~${cost:.4f}" if cost >= 0.0001 else "<$0.01"
-                msg = f"Mnemon: cache hit |{tokens_saved:,} tokens saved |{cost_display}"
-                if secs > 0:
-                    msg += f" |{secs:.1f}s faster"
+                cost_str = f"${cost:.4f}" if cost >= 0.0001 else "<$0.01"
+                secs_str = f"  {secs:.1f}s back" if secs > 0 else ""
+                # First-hit celebration — fires once per tenant
+                first_hit_flag = os.path.join(mnemon_home, f".first_hit_{self.tenant_id}")
+                if not os.path.exists(first_hit_flag):
+                    try:
+                        open(first_hit_flag, "w").close()
+                    except OSError:
+                        pass
+                    msg = (
+                        f"Mnemon: first free run. it's working.\n"
+                        f"  {tokens_saved:,} tokens  {cost_str}{secs_str}\n"
+                        f"  every run from here compounds. keep going."
+                    )
+                else:
+                    msg = f"Mnemon: free  {tokens_saved:,} tokens  {cost_str}{secs_str}"
             elif cache_level == "miss":
                 if self._embedder:
                     self._embedder.warn_if_inactive()
-                mnemon_home = os.path.join(os.path.expanduser("~"), ".mnemon")
-                try:
-                    os.makedirs(mnemon_home, exist_ok=True)
-                except OSError:
-                    mnemon_home = self._db_dir
-                flag = os.path.join(mnemon_home, f".welcomed_{self.tenant_id}")
-                if not os.path.exists(flag):
+                # Future savings estimate for this plan
+                if eme_result:
+                    total_segs = (eme_result.segments_reused or 0) + (eme_result.segments_generated or 0)
+                    future_tokens = max(total_segs * 250, 500)
+                    future_cost = future_tokens * 0.000003
+                    future_str = f"${future_cost:.4f}" if future_cost >= 0.0001 else "<$0.01"
+                else:
+                    future_str = None
+                welcome_flag = os.path.join(mnemon_home, f".welcomed_{self.tenant_id}")
+                if not os.path.exists(welcome_flag):
                     try:
-                        open(flag, "w").close()
+                        open(welcome_flag, "w").close()
                     except OSError:
                         pass
                     msg = (
@@ -441,9 +462,12 @@ class Mnemon:
                         "  We're building this in the open and your feedback shapes what gets fixed next."
                     )
                 else:
-                    msg = "Mnemon: new input -- cached, next run will be instant"
+                    if future_str:
+                        msg = f"Mnemon: banked  runs free next time  +{future_str} queued"
+                    else:
+                        msg = "Mnemon: banked  runs free next time"
             else:
-                msg = "Mnemon: ran (no cache)"
+                msg = "Mnemon: banked  runs free next time"
             print(msg, file=_sys.stderr, flush=True)
 
         return {
