@@ -429,8 +429,6 @@ class Mnemon:
                 else:
                     msg = f"Mnemon: free  {tokens_saved:,} tokens  {cost_str}{secs_str}"
             elif cache_level == "miss":
-                if self._embedder:
-                    self._embedder.warn_if_inactive()
                 # Future savings estimate for this plan
                 if eme_result:
                     total_segs = (eme_result.segments_reused or 0) + (eme_result.segments_generated or 0)
@@ -441,7 +439,12 @@ class Mnemon:
                     future_str = None
                 welcome_flag = os.path.join(mnemon_home, f".welcomed_{self.tenant_id}")
                 old_flag = os.path.join(self._db_dir, f".mnemon_welcomed_{self.tenant_id}")
-                if not os.path.exists(welcome_flag) and not os.path.exists(old_flag):
+                is_first_run = not os.path.exists(welcome_flag) and not os.path.exists(old_flag)
+                # Only warn about System 2 on subsequent misses — not on first run
+                # where the welcome message already has the user's attention.
+                if self._embedder and not is_first_run:
+                    self._embedder.warn_if_inactive()
+                if is_first_run:
                     try:
                         open(welcome_flag, "w").close()
                     except OSError:
