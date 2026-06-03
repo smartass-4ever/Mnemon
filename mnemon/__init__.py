@@ -109,12 +109,11 @@ class Mnemon:
         if bus_enabled:
             self._bus = ExperienceBus(tenant_id=tenant_id, db=self._db)
         if eme_enabled and bus_enabled:
-            import os as _os
             self._system_db = SystemDatabase(
-                db_path=_os.path.join(db_dir, f"mnemon_system_{tenant_id}.db")
+                db_path=os.path.join(db_dir, f"mnemon_system_{tenant_id}.db")
             )
             self._signal_db = SignalDatabase(
-                db_path=_os.path.join(db_dir, f"mnemon_signal_{tenant_id}.db")
+                db_path=os.path.join(db_dir, f"mnemon_signal_{tenant_id}.db")
             )
             self._retrospector = Retrospector(
                 bus=self._bus, eme=self._eme, memory=None,
