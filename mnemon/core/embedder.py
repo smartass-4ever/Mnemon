@@ -42,7 +42,7 @@ def _try_load_sentence_transformers():
     except ImportError:
         return None
     except Exception as e:
-        logger.warning(f"sentence-transformers found but failed to load: {e}")
+        logger.debug(f"sentence-transformers model load error: {e}")
         return None
 
 
@@ -204,13 +204,23 @@ class SimpleEmbedder:
         self.dim = 64
         self.backend_name = "hash-projection"
         import sys as _sys
-        print(
-            "Mnemon: System 2 semantic recall is inactive (hash-projection fallback).\n"
-            "  Enable it with one of:\n"
-            "    pip install mnemon-ai[full]   # offline, no API key needed\n"
-            "    export OPENAI_API_KEY=...     # uses OpenAI embeddings",
-            file=_sys.stderr, flush=True,
-        )
+        import importlib.util as _ilu
+        _st_installed = _ilu.find_spec("sentence_transformers") is not None
+        if _st_installed:
+            print(
+                "Mnemon: System 2 semantic recall is inactive (sentence-transformers failed to load).\n"
+                "  Fix with: pip install torch --upgrade\n"
+                "  Or use:   export OPENAI_API_KEY=...  (OpenAI embeddings)",
+                file=_sys.stderr, flush=True,
+            )
+        else:
+            print(
+                "Mnemon: System 2 semantic recall is inactive (hash-projection fallback).\n"
+                "  Enable it with one of:\n"
+                "    pip install mnemon-ai[full]   # offline, no API key needed\n"
+                "    export OPENAI_API_KEY=...     # uses OpenAI embeddings",
+                file=_sys.stderr, flush=True,
+            )
 
     def embed(self, text: str) -> List[float]:
         self._load()

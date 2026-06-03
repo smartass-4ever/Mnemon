@@ -43,6 +43,7 @@ class AnthropicIntegration(MnemonIntegration):
         return importlib.util.find_spec("anthropic") is not None
 
     def patch(self, mnemon: Any) -> None:
+        import anthropic  # full init first — avoids circular import when user imports anthropic after mnemon.init()
         import anthropic.resources.messages as _mod
 
         self._mnemon = mnemon

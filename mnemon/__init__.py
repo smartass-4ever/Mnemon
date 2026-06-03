@@ -299,51 +299,33 @@ class Mnemon:
         start_time  = time.time()
 
         if self._eme:
-            try:
-                eme_result = await self._eme.run(
-                    goal=goal, inputs=inputs, context=context,
-                    capabilities=caps, constraints=constraints,
-                    generation_fn=generation_fn, task_id=task_id,
-                    memory_context=None,
-                )
-                # Quota gate: if free tier is exhausted, bypass the cache hit
-                if (
-                    eme_result
-                    and eme_result.cache_level in ("system1", "system2", "system2_guided")
-                    and not await self._quota.can_serve_cache_hit()
-                ):
-                    if not self._silent:
-                        import sys as _sys
-                        print(
-                            "Mnemon: free tier daily limit reached (100 hits/day).\n"
-                            "  → Upgrade to Pro (unlimited): https://mnemon.lemonsqueezy.com/checkout/buy/23828905-b5e2-4946-bd60-9d669f379b1e\n"
-                            "  → Get 1 month free: email mahikajadhav22@gmail.com — tell us what you're building",
-                            file=_sys.stderr, flush=True,
-                        )
-                    template = await generation_fn(goal, inputs, context, caps, constraints)
-                    eme_result = EMEResult(status="miss", template=template, template_id=None)
-                elif eme_result and eme_result.cache_level in ("system1", "system2", "system2_guided"):
-                    await self._quota.record_hit()
-            except Exception as e:
-                logger.warning(f"EME failed: {e} -- direct generation")
-                try:
-                    from mnemon.core import ph_telemetry
-                    ph_telemetry._fire("cache_error", {"error_type": type(e).__name__})
-                except Exception:
-                    pass
-                try:
-                    template = await generation_fn(goal, inputs, context, caps, constraints)
-                    eme_result = EMEResult(status="fallback", template=template, template_id=None)
-                except Exception as gen_e:
-                    logger.error(f"Generation failed: {gen_e}")
-                    eme_result = None
-        else:
-            try:
+            eme_result = await self._eme.run(
+                goal=goal, inputs=inputs, context=context,
+                capabilities=caps, constraints=constraints,
+                generation_fn=generation_fn, task_id=task_id,
+                memory_context=None,
+            )
+            # Quota gate: if free tier is exhausted, bypass the cache hit
+            if (
+                eme_result
+                and eme_result.cache_level in ("system1", "system2", "system2_guided")
+                and not await self._quota.can_serve_cache_hit()
+            ):
+                if not self._silent:
+                    import sys as _sys
+                    print(
+                        "Mnemon: free tier daily limit reached (100 hits/day).\n"
+                        "  → Upgrade to Pro (unlimited): https://mnemon.lemonsqueezy.com/checkout/buy/23828905-b5e2-4946-bd60-9d669f379b1e\n"
+                        "  → Get 1 month free: email mahikajadhav22@gmail.com — tell us what you're building",
+                        file=_sys.stderr, flush=True,
+                    )
                 template = await generation_fn(goal, inputs, context, caps, constraints)
                 eme_result = EMEResult(status="miss", template=template, template_id=None)
-            except Exception as e:
-                logger.error(f"Generation failed (eme disabled): {e}")
-                eme_result = None
+            elif eme_result and eme_result.cache_level in ("system1", "system2", "system2_guided"):
+                await self._quota.record_hit()
+        else:
+            template = await generation_fn(goal, inputs, context, caps, constraints)
+            eme_result = EMEResult(status="miss", template=template, template_id=None)
 
         latency_ms = (time.time() - start_time) * 1000
 
@@ -424,7 +406,8 @@ class Mnemon:
             if cache_level in ("system1", "system2", "system2_guided"):
                 cost = tokens_saved * 0.000003
                 secs = latency_saved_ms / 1000
-                msg = f"Mnemon: cache hit |{tokens_saved:,} tokens saved |~${cost:.4f}"
+                cost_display = f"~${cost:.4f}" if cost >= 0.0001 else "<$0.01"
+                msg = f"Mnemon: cache hit |{tokens_saved:,} tokens saved |{cost_display}"
                 if secs > 0:
                     msg += f" |{secs:.1f}s faster"
             elif cache_level == "miss":
@@ -549,6 +532,12 @@ class Mnemon:
             stats["telemetry"] = self._telemetry.get_report()
         stats["db"] = self._db.get_stats()
         return stats
+
+    @property
+    def active_integrations(self) -> List[str]:
+        # MOTH framework patching is only activated via mnemon.init() (MnemonSync).
+        # The async Mnemon class is the core engine; use mnemon.init() for zero-code-change patching.
+        return []
 
 
 def _cancel_all_tasks(loop: asyncio.AbstractEventLoop) -> None:
@@ -788,22 +777,34 @@ class MnemonSync:
                         cost_str = f"${real_cost:.4f}" if cost_is_real else f"~${real_cost:.4f}"
                     else:
                         cost_str = f"~${total_tokens * 0.000003:.4f}"
+                    cost_display = cost_str if float(cost_str.lstrip("~$")) >= 0.0001 else "<$0.01"
                     parts.append(
-                        f"~{total_tokens:,} tokens saved |{cost_str}"
+                        f"~{total_tokens:,} tokens saved |{cost_display}"
                         + (f" |{secs_saved:.1f}s faster" if secs_saved > 0 else "")
                     )
                 if plans_cached > 0:
                     future_tokens = self._m._session_future_tokens
                     future_cost   = future_tokens * 0.000003
+                    future_cost_display = f"~${future_cost:.4f}" if future_cost >= 0.0001 else "<$0.01"
                     parts.append(
                         f"{plans_cached} plan(s) cached → "
-                        f"next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})"
+                        f"next run saves ~{future_tokens:,} tokens ({future_cost_display})"
                     )
                 if parts:
                     print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stderr, flush=True)
             self._loop.close()
             self._loop = None
             self._m = None
+
+    def __repr__(self) -> str:
+        tenant = self._kwargs.get("tenant_id", "default")
+        if self._moth is None and self._patch_thread is not None and self._patch_thread.is_alive():
+            patched = "patching..."
+        elif self._moth is not None and self._moth.active:
+            patched = ", ".join(self._moth.active)
+        else:
+            patched = "none"
+        return f"<Mnemon tenant={tenant!r} patched=[{patched}]>"
 
 
 # ── Global instance ──────────────────────────────────────────────────────────

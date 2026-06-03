@@ -168,7 +168,11 @@ async def cmd_init(args):
     print("\nPersistence backend:")
     print("  1. SQLite (local, zero config) -- recommended for development")
     print("  2. Redis (production ready)    -- recommended for production")
-    choice = input("Choose [1]: ").strip() or "1"
+    try:
+        choice = input("Choose [1]: ").strip() or "1"
+    except EOFError:
+        choice = "1"
+        print("1  (non-interactive — defaulting to SQLite)")
     db_dir = "." if choice == "1" else None
     if db_dir:
         print(f"  Using SQLite: mnemon_tenant_<tenant_id>.db in current directory")
@@ -350,7 +354,12 @@ async def cmd_doctor(args):
         s2   = emb.system2_active
         msg  = f"{name} ({dim}-dim) -- System 2 {'active' if s2 else 'INACTIVE'}"
         if not s2:
-            msg += " -- pip install mnemon-ai[full] or set OPENAI_API_KEY"
+            import importlib.util as _ilu
+            _st_installed = _ilu.find_spec("sentence_transformers") is not None
+            if _st_installed:
+                msg += " -- sentence-transformers installed but model failed (try: pip install torch --upgrade)"
+            else:
+                msg += " -- fix: pip install mnemon-ai[full]  or  export OPENAI_API_KEY=..."
         checks.append(("Embedder / System 2", s2, msg))
     except Exception as e:
         checks.append(("Embedder / System 2", False, str(e)))

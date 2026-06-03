@@ -1695,11 +1695,7 @@ class ExecutionMemoryEngine:
         # generation_fn always receives goal; context is often ignored by user code.
         guided_goal = self._format_guided_goal(goal, brief)
 
-        try:
-            raw_output = await generation_fn(guided_goal, inputs, enriched, capabilities, constraints)
-        except Exception as e:
-            logger.error(f"Guided generation failed: {e}")
-            return None
+        raw_output = await generation_fn(guided_goal, inputs, enriched, capabilities, constraints)
 
         gap_fills = self._parse_gap_fills(raw_output, pending_gaps, all_segments)
 
@@ -1955,13 +1951,9 @@ class ExecutionMemoryEngine:
         enriched["_mnemon_brief"] = brief
         guided_goal = self._format_guided_goal(goal, brief)
 
-        try:
-            raw_output = await generation_fn(
-                guided_goal, inputs, enriched, capabilities, constraints
-            )
-        except Exception as e:
-            logger.error(f"Fragment assembly guided generation failed: {e}")
-            return None
+        raw_output = await generation_fn(
+            guided_goal, inputs, enriched, capabilities, constraints
+        )
 
         # Build GapFillRequest objects for the parser
         pending_gaps = [
@@ -2044,17 +2036,7 @@ class ExecutionMemoryEngine:
         fp: ComputationFingerprint,
     ) -> EMEResult:
         """Call the real expensive function. Cache result on success."""
-        try:
-            template = await generation_fn(goal, inputs, context, capabilities, constraints)
-        except Exception as e:
-            logger.error(f"Full generation failed: {e}")
-            return EMEResult(
-                status="error",
-                template=None,
-                template_id=None,
-                cache_level="miss",
-                validation_passed=False,
-            )
+        template = await generation_fn(goal, inputs, context, capabilities, constraints)
 
         segment_count = await self._cache_template(goal, template, fp, capabilities)
 
