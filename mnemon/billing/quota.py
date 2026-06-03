@@ -85,10 +85,14 @@ class QuotaEnforcer:
                 except OSError:
                     pass
                 print(
-                    "\nMnemon: 10 cache hits. It might not feel like much yet — but it's working.\n"
-                    "  Your fragment library is building. Every run, Mnemon learns more of your\n"
-                    "  agent's patterns. The savings aren't linear — they compound. The longer\n"
-                    "  you stick with this, the less you pay. Give it a few more weeks.\n",
+                    "\nMnemon: 10 cache hits — the library is starting to take shape.\n"
+                    "\n"
+                    "  This is the part where it starts to get interesting. Mnemon has now\n"
+                    "  seen enough of your agent's patterns to begin reusing plan pieces\n"
+                    "  across runs. The hit rate will climb from here — not linearly, but\n"
+                    "  in jumps as each new workflow pattern gets absorbed.\n"
+                    "\n"
+                    "  Keep running it. Week two is where people usually notice the difference.\n",
                     file=_sys.stderr, flush=True,
                 )
         except Exception:

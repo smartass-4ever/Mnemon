@@ -423,9 +423,20 @@ class Mnemon:
                     except OSError:
                         pass
                     msg = (
-                        "Mnemon: first run complete -- execution cached, next run will be instant\n"
-                        "  Docs & examples: https://github.com/smartass-4ever/Mnemon\n"
-                        "  Issues or questions: https://github.com/smartass-4ever/Mnemon/issues"
+                        "Mnemon: you're in. First plan cached.\n"
+                        "\n"
+                        "  Here's how this works: every new plan your agent runs gets cached.\n"
+                        "  As it runs, Mnemon breaks each plan into reusable pieces and builds\n"
+                        "  a fragment library that's specific to your workflows. By week two,\n"
+                        "  almost every step of every plan is coming from that library — your\n"
+                        "  agent is essentially running for free on the parts it's done before.\n"
+                        "\n"
+                        "  It needs a little time to build that library. The first week will\n"
+                        "  feel slow. Stick with it — the compounding kicks in fast.\n"
+                        "\n"
+                        "  Mnemon is still early and it will occasionally glitch. If something\n"
+                        "  looks wrong, email mahikajadhav22@gmail.com — I'll look at it personally.\n"
+                        "  We're building this in the open and your feedback shapes what gets fixed next."
                     )
                 else:
                     msg = "Mnemon: new input -- cached, next run will be instant"
