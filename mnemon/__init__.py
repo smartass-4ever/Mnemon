@@ -269,7 +269,7 @@ class Mnemon:
                     f"next run saves ~{self._session_future_tokens:,} tokens (~${future_cost:.4f})"
                 )
             if parts:
-                print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stderr, flush=True)
+                print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stdout, flush=True)
 
     async def __aenter__(self):
         await self.start()
@@ -316,7 +316,7 @@ class Mnemon:
                         "Mnemon: free tier daily limit reached (100 hits/day).\n"
                         "  → Upgrade to Pro (unlimited): https://mnemon.lemonsqueezy.com/checkout/buy/23828905-b5e2-4946-bd60-9d669f379b1e\n"
                         "  → Get 1 month free: email mahikajadhav22@gmail.com — tell us what you're building",
-                        file=_sys.stderr, flush=True,
+                        file=_sys.stdout, flush=True,
                     )
                 template = await generation_fn(goal, inputs, context, caps, constraints)
                 eme_result = EMEResult(status="miss", template=template, template_id=None)
@@ -471,7 +471,7 @@ class Mnemon:
                         msg = "Mnemon: banked  runs free next time"
             else:
                 msg = "Mnemon: banked  runs free next time"
-            print(msg, file=_sys.stderr, flush=True)
+            print(msg, file=_sys.stdout, flush=True)
 
         return {
             "output":           output,
@@ -639,7 +639,7 @@ class MnemonSync:
                         import sys as _sys
                         print(
                             f"Mnemon: {', '.join(activated)} patched -- caching active",
-                            file=_sys.stderr, flush=True,
+                            file=_sys.stdout, flush=True,
                         )
                 except Exception:
                     pass
@@ -650,7 +650,7 @@ class MnemonSync:
                     "  Install one of: anthropic, openai, langchain, langgraph, crewai\n"
                     "  Or use m.run() directly for explicit caching.\n"
                     "  Docs: https://github.com/smartass-4ever/Mnemon",
-                    file=_sys.stderr, flush=True,
+                    file=_sys.stdout, flush=True,
                 )
         except Exception as e:
             logger.warning(f"Mnemon moth failed to start: {e} -- framework auto-patching disabled")
@@ -735,7 +735,7 @@ class MnemonSync:
                     f"next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})"
                 )
             if parts:
-                print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stderr, flush=True)
+                print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stdout, flush=True)
 
     @property
     def active_integrations(self) -> List[str]:
@@ -831,7 +831,7 @@ class MnemonSync:
                         f"next run saves ~{future_tokens:,} tokens ({future_cost_display})"
                     )
                 if parts:
-                    print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stderr, flush=True)
+                    print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stdout, flush=True)
             self._loop.close()
             self._loop = None
             self._m = None
@@ -901,7 +901,7 @@ def init(
                 f"Mnemon: init() already called with tenant '{_instance._kwargs.get('tenant_id')}' — "
                 f"ignoring tenant='{tenant_id}'. Call mnemon.get() to retrieve the active instance, "
                 f"or restart the process to use a different tenant.",
-                file=_sys.stderr, flush=True,
+                file=_sys.stdout, flush=True,
             )
         return _instance
 

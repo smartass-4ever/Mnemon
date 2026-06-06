@@ -93,7 +93,7 @@ class QuotaEnforcer:
                     "  in jumps as each new workflow pattern gets absorbed.\n"
                     "\n"
                     "  Keep running it. Week two is where people usually notice the difference.\n",
-                    file=_sys.stderr, flush=True,
+                    file=_sys.stdout, flush=True,
                 )
         except Exception:
             pass
