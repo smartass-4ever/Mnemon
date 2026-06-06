@@ -6,6 +6,8 @@
 
 **Stop paying for work your agent already did.**
 
+*Python execution cache for LLM agents — reduce OpenAI, Anthropic, and Gemini token costs by 93% with one import. Works with LangChain, CrewAI, AutoGen, and LangGraph.*
+
 [![PyPI](https://img.shields.io/pypi/v/mnemon-ai?color=blue&label=PyPI)](https://pypi.org/project/mnemon-ai/)
 [![Python](https://img.shields.io/pypi/pyversions/mnemon-ai)](https://pypi.org/project/mnemon-ai/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -42,7 +44,7 @@ mnemon demo     # see it working in 30 seconds, no API key needed
 
 ---
 
-## What Mnemon does
+## How Mnemon reduces LLM token costs
 
 Mnemon has three components. They work together automatically.
 
@@ -326,13 +328,38 @@ Mnemon never crashes the system it wraps.
 
 ## vs. everything else
 
-| | Mnemon | Mem0 | LangMem | Roll your own |
-|---|:---:|:---:|:---:|:---:|
-| Execution caching (skip LLM entirely) | ✅ | ❌ | ❌ | ❌ |
-| System learning loop | ✅ | ❌ | ❌ | ❌ |
-| Zero-code auto-instrumentation | ✅ | ❌ | ❌ | ❌ |
-| Fully local (no cloud, no API) | ✅ | ❌ | ❌ | ✅ |
-| One-line setup | ✅ | ❌ | ❌ | ❌ |
+| | Mnemon | LangChain Cache | Mem0 | LangMem | Roll your own |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Execution caching (skip LLM entirely) | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Semantic matching (similar inputs hit cache) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Segment-level plan caching | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Zero-code auto-instrumentation | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Works across all frameworks | ✅ | LangChain only | ❌ | LangChain only | ❌ |
+| System learning loop | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Fully local (no cloud, no API) | ✅ | ✅ | ❌ | ❌ | ✅ |
+| One-line setup | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+---
+
+## Frequently asked questions
+
+**How is this different from LangChain's built-in cache?**
+LangChain's `set_llm_cache` caches responses by exact string match — "weekly report for Acme" and "weekly report for Acme Corp" are two different keys. Mnemon adds semantic matching (similar inputs hit the same cache entry), segment-level plan caching (only the changed parts of a workflow get regenerated), and a learning loop that improves hit rates over time. It also works across every framework, not just LangChain.
+
+**Does this work with OpenAI / Anthropic / Gemini / Groq?**
+Yes. MOTH patches the SDK at startup, so any framework built on top of these SDKs inherits caching automatically: OpenAI SDK, Anthropic SDK, Google Generative AI, Groq, LangChain, LangGraph, CrewAI, AutoGen.
+
+**Does it require Redis or a database server?**
+No. Mnemon uses SQLite by default — local, zero setup, no external dependencies. Redis is optionally supported (`pip install mnemon-ai[redis]`) for multi-instance deployments.
+
+**Will it break my existing code?**
+No. Mnemon wraps your LLM calls and fails silently if anything goes wrong — your agent always falls back to direct LLM calls. It has never caused a production outage.
+
+**How quickly will I see token savings?**
+First run: zero savings (everything is cached for next time). Run 2+: common steps start hitting the cache. After ~10 cache hits the fragment library kicks in and hit rates climb to 50–80% on recurring workflows.
+
+**What Python versions are supported?**
+Python 3.10, 3.11, and 3.12.
 
 ---
 

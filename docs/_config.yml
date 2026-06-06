@@ -1,0 +1,22 @@
+title: Mnemon Blog
+description: >
+  Cut LLM agent token costs by 93%. Execution cache for LangChain, CrewAI,
+  AutoGen, LangGraph — zero tokens on repeat runs, 2.66ms latency.
+url: "https://smartass-4ever.github.io"
+baseurl: "/Mnemon"
+theme: minima
+
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+author:
+  name: Mahika Jadhav
+  email: mahikajadhav22@gmail.com
+
+minima:
+  skin: dark
+
+header_pages:
+  - about.md
