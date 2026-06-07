@@ -110,7 +110,6 @@ def test_rag_pipeline():
 
     hits = sum(1 for r in results[1:] if r in ("system1", "system2"))
     print(f"\n  Fragment assembly hits: {hits}/2 (runs 2-3)")
-    return hits
 
 
 def test_reasoning_workflow():
@@ -145,7 +144,6 @@ def test_reasoning_workflow():
 
     hits = sum(1 for r in results[1:] if r in ("system1", "system2"))
     print(f"\n  Fragment assembly hits: {hits}/2 (runs 2-3)")
-    return hits
 
 
 def test_tool_orchestration():
@@ -180,7 +178,6 @@ def test_tool_orchestration():
 
     hits = sum(1 for r in results[1:] if r in ("system1", "system2"))
     print(f"\n  Fragment assembly hits: {hits}/2 (runs 2-3)")
-    return hits
 
 
 def main():
