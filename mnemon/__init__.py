@@ -29,7 +29,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from mnemon.core.models import (
-    ExperienceSignal, SignalType, RiskLevel, MNEMON_VERSION
+    ExperienceSignal, SignalType, RiskLevel, MNEMON_VERSION, COST_PER_TOKEN_USD
 )
 from mnemon.core.persistence import EROSDatabase
 from mnemon.core.embedder import SimpleEmbedder
@@ -47,10 +47,7 @@ from mnemon.billing.quota import QuotaEnforcer
 
 logger = logging.getLogger(__name__)
 
-# Blended cost estimate used for savings display. Based on ~$3/M output tokens
-# (roughly Sonnet 3.5 / GPT-4o-mini mid-2026). Actual savings depend on the
-# model in use — this is a conservative estimate shown to users.
-_COST_PER_TOKEN_USD: float = 0.000003
+_COST_PER_TOKEN_USD = COST_PER_TOKEN_USD  # module-level alias kept for back-compat
 
 
 class Mnemon:
@@ -105,6 +102,8 @@ class Mnemon:
         self._signal_db:    Optional[SignalDatabase]        = None
         self._prewarm_fragments  = prewarm_fragments
         self._prewarm_templates  = prewarm_templates
+        import threading as _threading
+        self._prewarm_done = _threading.Event()
 
         if eme_enabled:
             self._eme = ExecutionMemoryEngine(
@@ -152,6 +151,8 @@ class Mnemon:
             asyncio.run(self._prewarm_library_async())
         except Exception as e:
             logger.debug(f"Mnemon: prewarm library thread failed -- {e}")
+        finally:
+            self._prewarm_done.set()
 
     async def _prewarm_library_async(self) -> None:
         """Async body of prewarm -- runs in the daemon thread's own event loop."""

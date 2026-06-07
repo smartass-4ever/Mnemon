@@ -299,31 +299,12 @@ class TestCrewAIIntegration:
         assert Task.execute_sync is original
 
     def test_task_cache_hit(self):
-        from mnemon.moth.integrations.crewai import CrewAIIntegration, _task_cache
-        from crewai.task import Task
-
-        _task_cache.clear()
+        from mnemon.moth.integrations.crewai import CrewAIIntegration, _task_cache_key
 
         integration = CrewAIIntegration()
         m = _StubMnemon()
         integration.patch(m)
-
-        call_count = 0
-        original_execute = integration._original_execute_sync
-
-        def fake_execute(_self, agent=None, context=None, tools=None):
-            nonlocal call_count
-            call_count += 1
-            return "task_output"
-
-        # Replace original so cache miss calls our fake
-        integration._original_execute_sync = fake_execute
-
-        # Re-patch with updated original
         integration.unpatch()
-        _task_cache.clear()
-        # Manually test cache logic
-        from mnemon.moth.integrations.crewai import _task_cache_key
 
         class FakeTask:
             description = "analyze the data"
@@ -336,30 +317,19 @@ class TestCrewAIIntegration:
         assert key.startswith("crewai_task:")
 
     def test_task_cache_prevents_repeat_execution(self):
-        """Verify task output is cached and second identical call is served from cache."""
-        from mnemon.moth.integrations.crewai import CrewAIIntegration, _task_cache
+        """Verify patch/unpatch cycle leaves Task.execute_sync in original state."""
+        from mnemon.moth.integrations.crewai import CrewAIIntegration
         from crewai.task import Task
 
-        _task_cache.clear()
-        call_count = 0
+        original_exec = Task.execute_sync
+
         integration = CrewAIIntegration()
         m = _StubMnemon()
         integration.patch(m)
-
-        original_exec = integration._original_execute_sync
-
-        def counting_exec(_self, agent=None, context=None, tools=None):
-            nonlocal call_count
-            call_count += 1
-            return "result"
-
-        integration._original_execute_sync = counting_exec
-        integration.unpatch()
-        _task_cache.clear()
-        integration.patch(m)
-        integration._original_execute_sync = counting_exec
+        assert Task.execute_sync is not original_exec
 
         integration.unpatch()
+        assert Task.execute_sync is original_exec
 
 
 # ── Anthropic integration shape ───────────────────────────────────────────────

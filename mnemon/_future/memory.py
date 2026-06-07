@@ -1,13 +1,17 @@
 """
-Mnemon Cognitive Memory System
-Five-layer stratified memory with protein bond activation retrieval
-and conditional intent drone curation.
+Mnemon Cognitive Memory System — DESIGN PREVIEW, NOT IMPORTABLE.
+
+This module depends on InvertedIndex and other symbols that do not yet exist
+in mnemon.core. It will raise ImportError if imported. It lives here as an
+architectural reference only — do not import it from production code.
 
 Architecture by Mahika Jadhav (smartass-4ever).
-Extended with: BondedMemory, fuzzy resonance, two-part retrieval,
-LLM router, async tag verification, drone feedback loop,
-cross-layer indexing, conflict detection, fact versioning.
 """
+raise ImportError(
+    "mnemon._future.memory is a design preview and cannot be imported. "
+    "See mnemon/_future/ for planned architecture."
+)
+
 
 import asyncio
 import hashlib

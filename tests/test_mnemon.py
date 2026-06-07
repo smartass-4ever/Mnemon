@@ -11,6 +11,7 @@ import json
 import sys
 import os
 import time
+import uuid
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -297,12 +298,17 @@ def test_fragment_library_loads():
 
 
 async def test_prewarm_on_start():
+    import tempfile
     eros = Mnemon(
-        tenant_id="prewarm_test", agent_id="agent",
-        db_dir="/tmp",
+        tenant_id=f"prewarm_{uuid.uuid4().hex[:8]}", agent_id="agent",
+        db_dir=tempfile.mkdtemp(),
         prewarm_fragments=True,
     )
     await eros.start()
+    # Wait for the background prewarm thread to signal completion (up to 60s).
+    await asyncio.get_event_loop().run_in_executor(
+        None, lambda: eros._prewarm_done.wait(timeout=60)
+    )
 
     stats = eros.get_stats()
     assert stats["db"]["fragments"] > 0, "Fragments should load on start"

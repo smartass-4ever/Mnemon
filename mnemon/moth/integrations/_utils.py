@@ -363,9 +363,9 @@ def track_cache_hit(
         silent = getattr(m, "_kwargs", {}).get("silent", False)
         if not silent:
             import sys as _sys, os as _os
-            from mnemon import _COST_PER_TOKEN_USD
+            from mnemon.core.models import COST_PER_TOKEN_USD
             total_tokens = (input_tokens or 0) + (output_tokens or 0) if (input_tokens or output_tokens) else (tokens or 0)
-            cost = total_tokens * _COST_PER_TOKEN_USD
+            cost = total_tokens * COST_PER_TOKEN_USD
             cost_str = f"${cost:.4f}" if cost >= 0.0001 else "<$0.01"
             inner = getattr(m, "_m", None)
             tenant_id = getattr(inner, "tenant_id", "default") if inner else "default"

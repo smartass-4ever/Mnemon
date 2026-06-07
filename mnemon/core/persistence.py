@@ -27,7 +27,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 7
 
 
 class SchemaError(Exception):
@@ -223,7 +223,7 @@ class EROSDatabase:
         Releases the event loop during disk I/O so other coroutines can run.
         Caller must already hold self._lock.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, fn)
 
     # ──────────────────────────────────────────
@@ -260,6 +260,7 @@ class EROSDatabase:
             3: self._migration_v3_to_v4,
             4: self._migration_v4_to_v5,
             5: self._migration_v5_to_v6,
+            6: self._migration_v6_to_v7,
         }
 
         for v in range(current, CURRENT_SCHEMA_VERSION):
@@ -485,6 +486,37 @@ class EROSDatabase:
             )
         """)
         self._conn.commit()
+
+    async def _migration_v6_to_v7(self):
+        """Clear MD5-era cache tables after hash algorithm upgrade to SHA-256.
+
+        v1.1.6 switched fingerprint hashes (execution_templates, fragment_library)
+        and prompt hashes (moth_hash_cache) from MD5 to SHA-256. Existing rows
+        used MD5 keys that can never match new SHA-256 lookups — they would
+        accumulate as unreachable dead data. This migration purges them cleanly
+        so the cache rebuilds from scratch on the next run.
+
+        Unaffected tables (memories, semantic_facts, session_health, audit_log,
+        usage_ledger, belief_registry, llm_call_log) are left intact.
+        """
+        import sys as _sys
+        cleared = False
+        for table in ("execution_templates", "fragment_library", "moth_hash_cache"):
+            try:
+                cursor = self._conn.execute(
+                    f"DELETE FROM {table} WHERE tenant_id=?", (self.tenant_id,)
+                )
+                if cursor.rowcount > 0:
+                    cleared = True
+            except Exception:
+                pass  # table may not exist yet on fresh installs — nothing to clear
+        self._conn.commit()
+        if cleared:
+            print(
+                "Mnemon: cache updated (MD5 -> SHA-256). "
+                "One cold start, then back to normal.",
+                file=_sys.stdout, flush=True,
+            )
 
     # ──────────────────────────────────────────
     # EXECUTION TEMPLATES (EME)
