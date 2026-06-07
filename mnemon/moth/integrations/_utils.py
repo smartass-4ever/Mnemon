@@ -338,7 +338,8 @@ def track_cache_miss(m: Any, source: str) -> None:
                 "  Questions? Email mahikajadhav22@gmail.com — I read every one."
             )
             print(msg, file=_sys.stdout, flush=True)
-        # Subsequent misses are silent — the agent is doing new work, which is normal.
+        else:
+            print("Mnemon: new — storing for next time", file=_sys.stdout, flush=True)
     except Exception:
         pass
     try:
