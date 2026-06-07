@@ -54,15 +54,21 @@ v2 scale improvements (for large agent counts + large data):
 """
 
 import asyncio
+import contextvars
 import hashlib
 import json
 import logging
 import struct
 import time
+import uuid
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+
+# Per-request context variable — set at the top of every EME.run() call.
+# Automatically propagated into asyncio Tasks and ThreadPoolExecutor workers.
+_request_id: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
 import numpy as np
 
@@ -79,6 +85,16 @@ from .embedder import SimpleEmbedder
 from .signal_db import SignalDatabase
 
 logger = logging.getLogger(__name__)
+
+
+class _RequestIdFilter(logging.Filter):
+    """Injects the current request_id into every log record from this module."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = _request_id.get("-")
+        return True
+
+
+logger.addFilter(_RequestIdFilter())
 
 # ─────────────────────────────────────────────
 # THRESHOLDS
@@ -703,6 +719,7 @@ class ExecutionMemoryEngine:
         Caches successful results automatically.
         """
         run_start = time.time()
+        _request_id.set(uuid.uuid4().hex[:8])
 
         fp = ComputationFingerprint.build(
             goal=goal,

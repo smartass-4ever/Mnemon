@@ -16,7 +16,10 @@ import threading
 import urllib.request
 from typing import List
 
-_KEY = "phc_kgVmx3ixuEj5qQ2zDKniQrWxeRj4dfurm79LrDLce8eQ"
+_KEY = os.environ.get(
+    "MNEMON_POSTHOG_KEY",
+    "phc_kgVmx3ixuEj5qQ2zDKniQrWxeRj4dfurm79LrDLce8eQ",
+)
 _URL = "https://us.i.posthog.com/capture/"
 _ENABLED = os.environ.get("MNEMON_NO_TELEMETRY", "").strip() != "1"
 

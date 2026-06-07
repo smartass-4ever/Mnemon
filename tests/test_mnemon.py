@@ -35,10 +35,6 @@ DB_DIR = "/tmp"
 TENANT = "test_tenant"
 
 
-def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
-
-
 async def make_eros(llm=None, **kwargs) -> "Mnemon":
     import uuid
     eros = Mnemon(

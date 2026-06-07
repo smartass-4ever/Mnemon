@@ -73,7 +73,7 @@ class QuotaEnforcer:
         """
         try:
             import os as _os, sys as _sys
-            db_dir = getattr(self._db, "_db_dir", ".")
+            db_dir = getattr(self._db, "db_dir", ".")
             flag = _os.path.join(db_dir, f".mnemon_milestone10_{self._tenant_id}")
             if _os.path.exists(flag):
                 return
@@ -114,7 +114,7 @@ class QuotaEnforcer:
 
     async def _validate_license(self, key: str) -> bool:
         import os, time as _time, hashlib as _hl
-        cache_dir = getattr(self._db, "_db_dir", ".")
+        cache_dir = getattr(self._db, "db_dir", ".")
         key_hash  = _hl.sha256(key.encode()).hexdigest()[:16]
         flag_valid   = os.path.join(cache_dir, f".mnemon_lic_{key_hash}_ok")
         flag_invalid = os.path.join(cache_dir, f".mnemon_lic_{key_hash}_fail")

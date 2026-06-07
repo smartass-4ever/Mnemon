@@ -147,7 +147,7 @@ class ComputationFingerprint:
         def _h(obj) -> str:
             import json
             s = json.dumps(obj, sort_keys=True) if isinstance(obj, (dict, list)) else str(obj)
-            return hashlib.md5(s.encode()).hexdigest()[:16]
+            return hashlib.sha256(s.encode()).hexdigest()[:16]
 
         structural = sorted(str(k) for k in input_schema.keys()) if isinstance(input_schema, dict) else []
         return cls(

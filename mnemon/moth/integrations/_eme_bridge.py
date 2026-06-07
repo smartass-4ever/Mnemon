@@ -75,7 +75,7 @@ class MothCache:
                             "Mnemon: free tier daily limit reached (100 hits/day).\n"
                             "  → Upgrade to Pro (unlimited): https://mnemon.lemonsqueezy.com/checkout/buy/23828905-b5e2-4946-bd60-9d669f379b1e\n"
                             "  → Get 1 month free: email mahikajadhav22@gmail.com — tell us what you're building",
-                            file=_sys.stderr, flush=True,
+                            file=_sys.stdout, flush=True,
                         )
                 except Exception:
                     pass

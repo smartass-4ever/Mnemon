@@ -5,16 +5,20 @@ Redis interface stub ready for distributed scale.
 """
 
 import asyncio
+import concurrent.futures
 import os
 import re
 import sqlite3
+import threading
 import json
 import time
 import logging
 from collections import OrderedDict
-from typing import Dict, List, Optional, Any
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 from dataclasses import asdict
 from pathlib import Path
+
+_T = TypeVar("_T")
 
 from .models import (
     ExecutionTemplate, TemplateSegment, ComputationFingerprint,
@@ -163,6 +167,12 @@ class EROSDatabase:
             self.db_path = f"{db_dir}/mnemon_tenant_{tenant_id}.db"
         self._conn: Optional[sqlite3.Connection] = None
         self._lock = asyncio.Lock()
+        # Sync lock for the two synchronous moth-cache methods called from threads
+        self._sync_lock = threading.Lock()
+        # Single-thread executor keeps DB access off the event loop thread
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=f"mnemon-db-{tenant_id[:8]}"
+        )
 
     async def connect(self):
         if self.db_path != ":memory:":
@@ -205,6 +215,16 @@ class EROSDatabase:
         if self._conn:
             self._conn.close()
             self._conn = None
+        self._executor.shutdown(wait=False)
+
+    async def _db_exec(self, fn: Callable[[], _T]) -> _T:
+        """Run a synchronous DB callable in the dedicated thread pool.
+
+        Releases the event loop during disk I/O so other coroutines can run.
+        Caller must already hold self._lock.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self._executor, fn)
 
     # ──────────────────────────────────────────
     # SCHEMA MIGRATION
@@ -536,30 +556,36 @@ class EROSDatabase:
         self, tenant_id: str, fingerprint_hash: str
     ) -> Optional[ExecutionTemplate]:
         async with self._lock:
-            row = self._conn.execute(
-                "SELECT * FROM execution_templates WHERE tenant_id=? AND fingerprint_hash=?",
-                (tenant_id, fingerprint_hash)
-            ).fetchone()
+            row = await self._db_exec(
+                lambda: self._conn.execute(
+                    "SELECT * FROM execution_templates WHERE tenant_id=? AND fingerprint_hash=?",
+                    (tenant_id, fingerprint_hash)
+                ).fetchone()
+            )
         if not row:
             return None
         return self._row_to_template(row)
 
     async def fetch_all_templates(self, tenant_id: str) -> List[ExecutionTemplate]:
         async with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM execution_templates WHERE tenant_id=? ORDER BY last_used_at DESC",
-                (tenant_id,)
-            ).fetchall()
+            rows = await self._db_exec(
+                lambda: self._conn.execute(
+                    "SELECT * FROM execution_templates WHERE tenant_id=? ORDER BY last_used_at DESC",
+                    (tenant_id,)
+                ).fetchall()
+            )
         return [self._row_to_template(r) for r in rows]
 
     async def fetch_prewarmed_templates(self, tenant_id: str) -> List[ExecutionTemplate]:
         """Return only pre-warmed (library) templates for a tenant."""
         async with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM execution_templates "
-                "WHERE tenant_id=? AND is_prewarmed=1 ORDER BY last_used_at DESC",
-                (tenant_id,)
-            ).fetchall()
+            rows = await self._db_exec(
+                lambda: self._conn.execute(
+                    "SELECT * FROM execution_templates "
+                    "WHERE tenant_id=? AND is_prewarmed=1 ORDER BY last_used_at DESC",
+                    (tenant_id,)
+                ).fetchall()
+            )
         return [self._row_to_template(r) for r in rows]
 
     async def update_template_outcome(
@@ -842,10 +868,11 @@ class EROSDatabase:
     def get_moth_cache(self, hash_key: str) -> Optional[str]:
         """Look up a cached response text by exact hash key. Returns None on miss."""
         try:
-            row = self._conn.execute(
-                "SELECT text FROM moth_hash_cache WHERE hash_key=? AND tenant_id=?",
-                (hash_key, self.tenant_id),
-            ).fetchone()
+            with self._sync_lock:
+                row = self._conn.execute(
+                    "SELECT text FROM moth_hash_cache WHERE hash_key=? AND tenant_id=?",
+                    (hash_key, self.tenant_id),
+                ).fetchone()
             return row["text"] if row else None
         except Exception:
             return None
@@ -853,12 +880,13 @@ class EROSDatabase:
     def set_moth_cache(self, hash_key: str, text: str, source: str) -> None:
         """Persist a response text keyed by hash. Survives process restarts."""
         try:
-            self._conn.execute(
-                """INSERT OR REPLACE INTO moth_hash_cache
-                   (hash_key, tenant_id, source, text, stored_at) VALUES (?,?,?,?,?)""",
-                (hash_key, self.tenant_id, source, text, time.time()),
-            )
-            self._conn.commit()
+            with self._sync_lock:
+                self._conn.execute(
+                    """INSERT OR REPLACE INTO moth_hash_cache
+                       (hash_key, tenant_id, source, text, stored_at) VALUES (?,?,?,?,?)""",
+                    (hash_key, self.tenant_id, source, text, time.time()),
+                )
+                self._conn.commit()
         except Exception:
             pass
 
