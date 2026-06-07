@@ -138,8 +138,12 @@ class Mnemon:
         self._session_tokens_saved:    int   = 0
         self._session_latency_saved_ms: float = 0.0
         self._session_calls:           int   = 0
+        self._session_hits:            int   = 0
         self._session_plans_cached:    int   = 0
         self._session_future_tokens:   int   = 0
+
+        from mnemon.core.feedback import FeedbackTracker
+        self._feedback = FeedbackTracker(tenant_id=tenant_id, db_dir=db_dir)
 
     def _prewarm_library_thread(self) -> None:
         """Daemon thread: compute embeddings and store curated library on first run.
@@ -278,6 +282,54 @@ class Mnemon:
             if parts:
                 print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stdout, flush=True)
 
+        # ── feedback loop ─────────────────────────────────────────────────
+        try:
+            import sys as _sys
+            from mnemon.core import ph_telemetry
+            summary = self._feedback.lifetime_summary()
+            ph_telemetry.track_session_end(
+                session_hits=self._session_hits,
+                session_runs=self._session_calls,
+                tokens_saved=self._session_tokens_saved,
+                lifetime_hits=summary["total_hits"],
+                lifetime_runs=summary["total_runs"],
+                frameworks=[],
+            )
+        except Exception:
+            pass
+
+        if not self._silent:
+            try:
+                import sys as _sys
+                from mnemon.core.models import COST_PER_TOKEN_USD as _cpu
+
+                if self._feedback.should_warn_zero_hits():
+                    print(
+                        "\nMnemon: no cache hits yet after "
+                        f"{self._feedback.lifetime_summary()['total_runs']} runs.\n"
+                        "  Your inputs may be too variable for exact-match caching.\n"
+                        "  Try `mnemon doctor` or email mahikajadhav22@gmail.com — "
+                        "I'll help you figure out why.\n",
+                        file=_sys.stdout, flush=True,
+                    )
+                    self._feedback.mark_zero_hit_warned()
+
+                nudge = self._feedback.get_weekly_nudge()
+                if nudge and nudge["runs"] > 0:
+                    hits   = nudge["hits"]
+                    runs   = nudge["runs"]
+                    tokens = nudge["tokens"]
+                    cost   = tokens * _cpu
+                    hit_pct = int(100 * hits / runs) if runs > 0 else 0
+                    cost_str = f"${cost:.4f}" if cost >= 0.0001 else "<$0.01"
+                    print(
+                        f"\nMnemon this week: {runs} runs · {hits} hits ({hit_pct}%) · {cost_str} saved\n",
+                        file=_sys.stdout, flush=True,
+                    )
+                    self._feedback.mark_nudge_sent()
+            except Exception:
+                pass
+
     async def __aenter__(self):
         await self.start()
         return self
@@ -395,12 +447,21 @@ class Mnemon:
 
         self._session_calls += 1
         if eme_result:
+            is_hit = eme_result.cache_level in ("system1", "system2", "system2_guided")
             self._session_tokens_saved      += eme_result.tokens_saved or 0
             self._session_latency_saved_ms  += eme_result.latency_saved_ms or 0.0
+            if is_hit:
+                self._session_hits += 1
             if eme_result.cache_level in ("miss", "system2_guided"):
                 self._session_plans_cached  += 1
                 total_segs = (eme_result.segments_reused or 0) + (eme_result.segments_generated or 0)
                 self._session_future_tokens += max(total_segs * 250, 500)
+            try:
+                self._feedback.record_run(
+                    hit=is_hit, tokens_saved=eme_result.tokens_saved or 0
+                )
+            except Exception:
+                pass
 
         output = eme_result.template if eme_result else None
         cache_level = eme_result.cache_level if eme_result else "error"
@@ -622,10 +683,12 @@ class MnemonSync:
         self._moth = None
         self._patch_thread = None  # background thread that loads + applies SDK patches
         from mnemon.moth.stats import MothStats
+        from mnemon.core.feedback import FeedbackTracker
         _db_dir    = kwargs.get("db_dir", ".")
         _tenant    = kwargs.get("tenant_id", "default")
         _stats_path = os.path.join(_db_dir, f"mnemon_stats_{_tenant}.json")
-        self._stats = MothStats(persist_path=_stats_path)
+        self._stats    = MothStats(persist_path=_stats_path)
+        self._feedback = FeedbackTracker(tenant_id=_tenant, db_dir=_db_dir)
 
     def _patch_frameworks(self) -> None:
         """Background thread: import framework SDKs and apply patches."""
@@ -746,6 +809,56 @@ class MnemonSync:
                 )
             if parts:
                 print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stdout, flush=True)
+
+        # ── feedback loop ─────────────────────────────────────────────────
+        try:
+            from mnemon.core import ph_telemetry
+            moth_hits = self._stats.summary.get("total_hits", 0)
+            moth_runs = self._stats.summary.get("total_calls", 0)
+            summary   = self._feedback.lifetime_summary()
+            frameworks = list(self._moth.active) if self._moth else []
+            ph_telemetry.track_session_end(
+                session_hits=moth_hits,
+                session_runs=moth_runs,
+                tokens_saved=self._stats.summary.get("tokens_saved_est", 0),
+                lifetime_hits=summary["total_hits"],
+                lifetime_runs=summary["total_runs"],
+                frameworks=frameworks,
+            )
+        except Exception:
+            pass
+
+        if not self._kwargs.get("silent", False):
+            try:
+                import sys as _sys
+                from mnemon.core.models import COST_PER_TOKEN_USD as _cpu
+
+                if self._feedback.should_warn_zero_hits():
+                    lt = self._feedback.lifetime_summary()
+                    print(
+                        f"\nMnemon: no cache hits yet after {lt['total_runs']} runs.\n"
+                        "  Your inputs may be too variable for exact-match caching.\n"
+                        "  Try `mnemon doctor` or email mahikajadhav22@gmail.com — "
+                        "I'll help you figure out why.\n",
+                        file=_sys.stdout, flush=True,
+                    )
+                    self._feedback.mark_zero_hit_warned()
+
+                nudge = self._feedback.get_weekly_nudge()
+                if nudge and nudge["runs"] > 0:
+                    hits    = nudge["hits"]
+                    runs    = nudge["runs"]
+                    tokens  = nudge["tokens"]
+                    cost    = tokens * _cpu
+                    hit_pct = int(100 * hits / runs) if runs > 0 else 0
+                    cost_str = f"${cost:.4f}" if cost >= 0.0001 else "<$0.01"
+                    print(
+                        f"\nMnemon this week: {runs} runs · {hits} hits ({hit_pct}%) · {cost_str} saved\n",
+                        file=_sys.stdout, flush=True,
+                    )
+                    self._feedback.mark_nudge_sent()
+            except Exception:
+                pass
 
     @property
     def active_integrations(self) -> List[str]:

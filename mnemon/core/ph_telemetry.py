@@ -77,3 +77,24 @@ def track_miss(framework: str) -> None:
 
 def track_init(frameworks: List[str]) -> None:
     _fire("init", {"frameworks": frameworks})
+
+
+def track_session_end(
+    session_hits: int,
+    session_runs: int,
+    tokens_saved: int,
+    lifetime_hits: int,
+    lifetime_runs: int,
+    frameworks: List[str],
+) -> None:
+    hit_rate = round(session_hits / session_runs, 3) if session_runs > 0 else 0.0
+    _fire("session_end", {
+        "session_hits":   session_hits,
+        "session_runs":   session_runs,
+        "session_hit_rate": hit_rate,
+        "tokens_saved":   tokens_saved,
+        "lifetime_hits":  lifetime_hits,
+        "lifetime_runs":  lifetime_runs,
+        "had_any_hit":    session_hits > 0,
+        "frameworks":     frameworks,
+    })

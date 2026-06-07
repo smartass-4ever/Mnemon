@@ -347,6 +347,11 @@ def track_cache_miss(m: Any, source: str) -> None:
         ph_telemetry.track_miss(framework=source)
     except Exception:
         pass
+    try:
+        if hasattr(m, "_feedback") and m._feedback is not None:
+            m._feedback.record_run(hit=False)
+    except Exception:
+        pass
 
 
 def track_cache_hit(
@@ -405,6 +410,12 @@ def track_cache_hit(
         from mnemon.core import ph_telemetry
         total_tokens = (input_tokens or 0) + (output_tokens or 0) if (input_tokens or output_tokens) else (tokens or 0)
         ph_telemetry.track_hit(framework=source, cache_level="moth", tokens_saved=total_tokens, latency_ms=latency_ms)
+    except Exception:
+        pass
+    try:
+        total_tokens = (input_tokens or 0) + (output_tokens or 0) if (input_tokens or output_tokens) else (tokens or 0)
+        if hasattr(m, "_feedback") and m._feedback is not None:
+            m._feedback.record_run(hit=True, tokens_saved=total_tokens)
     except Exception:
         pass
     try:
