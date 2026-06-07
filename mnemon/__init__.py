@@ -47,6 +47,11 @@ from mnemon.billing.quota import QuotaEnforcer
 
 logger = logging.getLogger(__name__)
 
+# Blended cost estimate used for savings display. Based on ~$3/M output tokens
+# (roughly Sonnet 3.5 / GPT-4o-mini mid-2026). Actual savings depend on the
+# model in use — this is a conservative estimate shown to users.
+_COST_PER_TOKEN_USD: float = 0.000003
+
 
 class Mnemon:
     def __init__(
@@ -256,14 +261,14 @@ class Mnemon:
             import sys as _sys
             parts = []
             if self._session_tokens_saved > 0:
-                cost_usd = self._session_tokens_saved * 0.000003
+                cost_usd = self._session_tokens_saved * _COST_PER_TOKEN_USD
                 secs_saved = self._session_latency_saved_ms / 1000
                 parts.append(
                     f"{self._session_tokens_saved:,} tokens saved |${cost_usd:.4f}"
                     + (f" |{secs_saved:.1f}s faster" if secs_saved > 0 else "")
                 )
             if self._session_plans_cached > 0:
-                future_cost = self._session_future_tokens * 0.000003
+                future_cost = self._session_future_tokens * _COST_PER_TOKEN_USD
                 parts.append(
                     f"{self._session_plans_cached} plan(s) cached → "
                     f"next run saves ~{self._session_future_tokens:,} tokens (~${future_cost:.4f})"
@@ -409,7 +414,7 @@ class Mnemon:
                 mnemon_home = self._db_dir
 
             if cache_level in ("system1", "system2", "system2_guided"):
-                cost = tokens_saved * 0.000003
+                cost = tokens_saved * _COST_PER_TOKEN_USD
                 secs = latency_saved_ms / 1000
                 cost_str = f"${cost:.4f}" if cost >= 0.0001 else "<$0.01"
                 secs_str = f"  {secs:.1f}s back" if secs > 0 else ""
@@ -432,7 +437,7 @@ class Mnemon:
                 if eme_result:
                     total_segs = (eme_result.segments_reused or 0) + (eme_result.segments_generated or 0)
                     future_tokens = max(total_segs * 250, 500)
-                    future_cost = future_tokens * 0.000003
+                    future_cost = future_tokens * _COST_PER_TOKEN_USD
                     future_str = f"${future_cost:.4f}" if future_cost >= 0.0001 else "<$0.01"
                 else:
                     future_str = None
@@ -722,14 +727,14 @@ class MnemonSync:
                 if real_cost is not None:
                     cost_str = f"${real_cost:.4f}" if cost_is_real else f"~${real_cost:.4f}"
                 else:
-                    cost_str = f"~${total_tokens * 0.000003:.4f}"
+                    cost_str = f"~${total_tokens * _COST_PER_TOKEN_USD:.4f}"
                 parts.append(
                     f"~{total_tokens:,} tokens saved |{cost_str}"
                     + (f" |{secs_saved:.1f}s faster" if secs_saved > 0 else "")
                 )
             if plans_cached > 0:
                 future_tokens = self._m._session_future_tokens
-                future_cost   = future_tokens * 0.000003
+                future_cost   = future_tokens * _COST_PER_TOKEN_USD
                 parts.append(
                     f"{plans_cached} plan(s) cached → "
                     f"next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})"
@@ -816,7 +821,7 @@ class MnemonSync:
                     if real_cost is not None:
                         cost_str = f"${real_cost:.4f}" if cost_is_real else f"~${real_cost:.4f}"
                     else:
-                        cost_str = f"~${total_tokens * 0.000003:.4f}"
+                        cost_str = f"~${total_tokens * _COST_PER_TOKEN_USD:.4f}"
                     cost_display = cost_str if float(cost_str.lstrip("~$")) >= 0.0001 else "<$0.01"
                     parts.append(
                         f"~{total_tokens:,} tokens saved |{cost_display}"
@@ -824,7 +829,7 @@ class MnemonSync:
                     )
                 if plans_cached > 0:
                     future_tokens = self._m._session_future_tokens
-                    future_cost   = future_tokens * 0.000003
+                    future_cost   = future_tokens * _COST_PER_TOKEN_USD
                     future_cost_display = f"~${future_cost:.4f}" if future_cost >= 0.0001 else "<$0.01"
                     parts.append(
                         f"{plans_cached} plan(s) cached → "

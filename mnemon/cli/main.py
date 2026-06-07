@@ -25,22 +25,33 @@ import time
 
 
 def detect_framework() -> str:
-    """Detect which agent framework is installed."""
-    try:
-        import crewai
-        return "crewai"
-    except ImportError:
-        pass
-    try:
-        import langchain
-        return "langchain"
-    except ImportError:
-        pass
-    try:
-        import letta
-        return "letta"
-    except ImportError:
-        pass
+    """Detect which agent framework the *current project* uses.
+
+    Reads requirements.txt / pyproject.toml in the working directory so we
+    don't falsely report a framework that happens to be installed globally.
+    Falls back to import-based detection only when a project file explicitly
+    lists the package.
+    """
+    import re
+
+    project_deps: set[str] = set()
+    for fname in ("requirements.txt", "pyproject.toml", "setup.cfg", "Pipfile"):
+        try:
+            with open(fname) as f:
+                project_deps.update(re.findall(r"[\w-]+", f.read().lower()))
+        except FileNotFoundError:
+            pass
+
+    candidates = [("crewai", "crewai"), ("langchain", "langchain"), ("letta", "letta")]
+    for pkg_name, framework in candidates:
+        # Only trust global import if the project's own dependency files mention it.
+        if pkg_name.replace("-", "") in project_deps or pkg_name in project_deps:
+            try:
+                __import__(pkg_name.replace("-", "_"))
+                return framework
+            except ImportError:
+                pass
+
     return "generic"
 
 
@@ -212,7 +223,21 @@ async def cmd_init(args):
         json.dump(config, f, indent=2)
     print(f"\nConfiguration saved to {config_path}")
 
-    # Quick benchmark
+    # Quick benchmark (SQLite only -- Redis needs a live server to be configured first)
+    if db_dir is None:
+        print("\nSkipping benchmark -- configure MNEMON_REDIS_URL and run 'mnemon health' to verify.")
+        print(f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Ready. Add two lines to your agent:
+
+  import mnemon
+  mnemon.init()   # auto-patches your installed frameworks
+
+  Docs: https://github.com/smartass-4ever/Mnemon
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+""")
+        return
+
     print("\nRunning quick benchmark...")
     from mnemon import Mnemon
 
@@ -454,6 +479,8 @@ async def cmd_stats(args):
 def main():
     if sys.platform == "win32":
         sys.stdout.reconfigure(encoding="utf-8")
+        # utf-8-sig strips the BOM that PowerShell injects when piping to native exes
+        sys.stdin.reconfigure(encoding="utf-8-sig")
 
     parser = argparse.ArgumentParser(
         prog="mnemon",

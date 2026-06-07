@@ -573,7 +573,8 @@ class ExecutionMemoryEngine:
         self.drone_fn = drone_fn  # async (goal: str, step_intent: str) -> bool
 
         # System 1: in-memory hash lookup, sub-millisecond
-        self._system1_cache: Dict[str, str] = {}   # fingerprint_hash → template_id
+        self._system1_cache: Dict[str, str] = {}          # fingerprint_hash → template_id
+        self._system1_reverse_map: Dict[str, str] = {}    # template_id → fingerprint_hash
 
         # v2 scale structures
         self._fragment_index = ANNIndex()
@@ -630,7 +631,9 @@ class ExecutionMemoryEngine:
         """
         templates = await self.db.fetch_all_templates(self.tenant_id)
         for t in templates:
-            self._system1_cache[t.fingerprint.full_hash] = t.template_id
+            fh = t.fingerprint.full_hash
+            self._system1_cache[fh] = t.template_id
+            self._system1_reverse_map[t.template_id] = fh
             if t.embedding:
                 await self._template_index.add(self.tenant_id, t.template_id, t.embedding)
 
@@ -805,7 +808,8 @@ class ExecutionMemoryEngine:
             self.tenant_id, fp.full_hash
         )
         if not template:
-            del self._system1_cache[fp.full_hash]
+            self._system1_cache.pop(fp.full_hash, None)
+            self._system1_reverse_map.pop(template_id, None)
             return None
 
         if template.needs_reverification:
@@ -814,7 +818,8 @@ class ExecutionMemoryEngine:
                 logger.info(f"Template {template_id} failed re-verification — evicting")
                 await self.db.delete_template(self.tenant_id, template_id)
                 await self._template_index.remove(self.tenant_id, template_id)
-                del self._system1_cache[fp.full_hash]
+                self._system1_cache.pop(fp.full_hash, None)
+                self._system1_reverse_map.pop(template_id, None)
                 return None
             template.needs_reverification = False
             await self.db.write_template(template)
@@ -823,7 +828,8 @@ class ExecutionMemoryEngine:
             logger.info(f"Template {template_id} evicted — high failure rate")
             await self.db.delete_template(self.tenant_id, template_id)
             await self._template_index.remove(self.tenant_id, template_id)
-            del self._system1_cache[fp.full_hash]
+            self._system1_cache.pop(fp.full_hash, None)
+            self._system1_reverse_map.pop(template_id, None)
             return None
 
         hydrated = self._hydrate(template, inputs)
@@ -837,7 +843,7 @@ class ExecutionMemoryEngine:
             segments_reused=len(template.segments),
             segments_generated=0,
             tokens_saved=tokens_saved,
-            latency_saved_ms=20000,
+            latency_saved_ms=max(tokens_saved * 15, 1000),
             cache_level="system1",
         )
 
@@ -954,7 +960,7 @@ class ExecutionMemoryEngine:
                 segments_reused=len(matched),
                 segments_generated=0,
                 tokens_saved=tokens_saved,
-                latency_saved_ms=len(matched) * 2500,
+                latency_saved_ms=max(tokens_saved * 15, 500),
                 cache_level="system2",
                 fragment_ids_used=list(self._trace_frags_buf),
             )
@@ -1038,8 +1044,8 @@ class ExecutionMemoryEngine:
         )
 
     def _system1_reverse(self) -> Dict[str, str]:
-        """Reverse lookup: template_id → fingerprint_hash. Built on demand, cheap."""
-        return {v: k for k, v in self._system1_cache.items()}
+        """Reverse lookup: template_id → fingerprint_hash. O(1) — maintained incrementally."""
+        return self._system1_reverse_map
 
     def _multi_component_similarity(
         self,
@@ -2164,7 +2170,7 @@ class ExecutionMemoryEngine:
                         segment_id=seg_data.get("id", f"seg_{i}"),
                         tenant_id=self.tenant_id,
                         content=content,
-                        fingerprint=hashlib.md5(content_str.encode()).hexdigest()[:16],
+                        fingerprint=hashlib.sha256(content_str.encode()).hexdigest()[:32],
                         signature=sig,
                         intent=intent,
                         dependencies=seg_data.get("depends_on", []),
@@ -2214,6 +2220,7 @@ class ExecutionMemoryEngine:
 
                 # Update both indices before releasing lock
                 self._system1_cache[fp.full_hash] = template_id
+                self._system1_reverse_map[template_id] = fp.full_hash
                 await self._template_index.add(self.tenant_id, template_id, goal_embedding)
 
             # Lego brick injection — separate from template segments.
@@ -2299,19 +2306,22 @@ class ExecutionMemoryEngine:
     def _hydrate(self, template: ExecutionTemplate, inputs: Dict) -> Any:
         """Instantiate cached template with current variable values."""
         segs = template.segments
+        # JSON-encode each value so substitution into a JSON string never
+        # produces invalid JSON (e.g. values containing quotes or backslashes).
+        # json.dumps gives the quoted form; strip the outer quotes to get the
+        # safe interior string (e.g. 'Acme "Corp"' → 'Acme \\"Corp\\"').
+        safe = {k: json.dumps(str(v))[1:-1] for k, v in inputs.items()}
         if len(segs) == 1:
-            # Single-segment: return content directly so type is preserved.
-            # Multi-segment wraps in a list (plans, DAGs, step sequences).
             content_str = json.dumps(segs[0].content, default=str)
-            for key, value in inputs.items():
-                content_str = content_str.replace(f"${{{key}}}", str(value))
+            for key, value in safe.items():
+                content_str = content_str.replace(f"${{{key}}}", value)
             try:
                 return json.loads(content_str)
             except json.JSONDecodeError:
                 return content_str
         plan_str = json.dumps([s.content for s in segs], default=str)
-        for key, value in inputs.items():
-            plan_str = plan_str.replace(f"${{{key}}}", str(value))
+        for key, value in safe.items():
+            plan_str = plan_str.replace(f"${{{key}}}", value)
         try:
             return json.loads(plan_str)
         except json.JSONDecodeError:
@@ -2340,8 +2350,8 @@ class ExecutionMemoryEngine:
         if template and template.should_evict:
             await self.db.delete_template(self.tenant_id, template_id)
             await self._template_index.remove(self.tenant_id, template_id)
-            if fp_hash in self._system1_cache:
-                del self._system1_cache[fp_hash]
+            self._system1_cache.pop(fp_hash, None)
+            self._system1_reverse_map.pop(template_id, None)
             logger.info(f"Template {template_id} evicted — failure rate > 50%")
             # Fire-and-forget: record cross-tenant failure signal for each segment
             if self.signal_db:

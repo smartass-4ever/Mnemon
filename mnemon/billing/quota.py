@@ -113,6 +113,13 @@ class QuotaEnforcer:
         return max(0, FREE_TIER_DAILY_HITS - self._daily_hits)
 
     async def _validate_license(self, key: str) -> bool:
+        import os, time as _time, hashlib as _hl
+        cache_dir = getattr(self._db, "_db_dir", ".")
+        key_hash  = _hl.sha256(key.encode()).hexdigest()[:16]
+        flag_valid   = os.path.join(cache_dir, f".mnemon_lic_{key_hash}_ok")
+        flag_invalid = os.path.join(cache_dir, f".mnemon_lic_{key_hash}_fail")
+        ttl = 86400  # 24 hours
+
         try:
             payload = json.dumps({"license_key": key}).encode()
             req = urllib.request.Request(
@@ -123,8 +130,26 @@ class QuotaEnforcer:
             )
             with urllib.request.urlopen(req, timeout=4) as resp:
                 data = json.loads(resp.read())
-                return bool(data.get("valid", False))
+                valid = bool(data.get("valid", False))
+            try:
+                if valid:
+                    open(flag_valid, "w").close()
+                    if os.path.exists(flag_invalid):
+                        os.remove(flag_invalid)
+                else:
+                    open(flag_invalid, "w").close()
+                    if os.path.exists(flag_valid):
+                        os.remove(flag_valid)
+            except OSError:
+                pass
+            return valid
         except Exception as e:
-            # Fail open — never block a paying user because of a network blip
-            logger.debug(f"Mnemon: license validation failed ({e}) — assuming valid")
-            return True
+            logger.warning(f"Mnemon: license validation network error ({e}) — checking local cache")
+            for flag, result in [(flag_valid, True), (flag_invalid, False)]:
+                try:
+                    if os.path.exists(flag) and (_time.time() - os.path.getmtime(flag)) < ttl:
+                        return result
+                except OSError:
+                    pass
+            logger.warning("Mnemon: no cached license result — treating as invalid (fail closed)")
+            return False

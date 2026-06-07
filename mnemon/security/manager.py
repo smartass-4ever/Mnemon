@@ -333,6 +333,8 @@ class SecurityManager:
         Pre-write security check.
         Returns: {allowed, sensitivity, content_to_store}
         """
+        content = scrub_injection(content)
+
         if not self.config:
             return {"allowed": True, "sensitivity": ContentSensitivity.INTERNAL, "content": content}
 
