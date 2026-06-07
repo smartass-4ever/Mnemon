@@ -32,9 +32,9 @@ def prompt_hash(messages: List[Dict], system: Optional[str], model: str) -> str:
             {"m": messages, "s": system or "", "model": model},
             sort_keys=True, default=str,
         )
-        return hashlib.md5(key.encode()).hexdigest()
+        return hashlib.sha256(key.encode()).hexdigest()
     except Exception:
-        return hashlib.md5(str(messages).encode()).hexdigest()
+        return hashlib.sha256(str(messages).encode()).hexdigest()
 
 
 def extract_query(messages: List[Dict], system: Optional[str] = None) -> str:
@@ -325,24 +325,20 @@ def track_cache_miss(m: Any, source: str) -> None:
             except OSError:
                 pass
             msg = (
-                f"Mnemon: you're in. First response cached.\n"
+                "Mnemon: you're in. First call stored — next time it's free.\n"
                 "\n"
-                "  Here's how this works: every response your agent gets is cached.\n"
-                "  As it runs, Mnemon breaks each interaction into reusable pieces and\n"
-                "  builds a fragment library specific to your workflows. By week two,\n"
-                "  almost every step is coming from that library — your agent is\n"
-                "  essentially running for free on the parts it's done before.\n"
+                "  Here's how this works: every LLM response your agent gets is cached.\n"
+                "  As your agent runs, Mnemon breaks each response into reusable pieces\n"
+                "  and builds a fragment library specific to your workflows. By week two,\n"
+                "  almost every call is served from that library — your agent runs\n"
+                "  essentially for free on the work it's done before.\n"
                 "\n"
-                "  It needs a little time to build that library. The first week will\n"
-                "  feel slow. Stick with it — the compounding kicks in fast.\n"
+                "  It needs a little time to build that library. Stick with it.\n"
                 "\n"
-                "  Mnemon is still early and it will occasionally glitch. If something\n"
-                "  looks wrong, email mahikajadhav22@gmail.com — I'll look at it personally.\n"
-                "  We're building this in the open and your feedback shapes what gets fixed next."
+                "  Questions? Email mahikajadhav22@gmail.com — I read every one."
             )
-        else:
-            msg = "Mnemon: banked  runs free next time"
-        print(msg, file=_sys.stderr, flush=True)
+            print(msg, file=_sys.stdout, flush=True)
+        # Subsequent misses are silent — the agent is doing new work, which is normal.
     except Exception:
         pass
     try:
@@ -366,8 +362,9 @@ def track_cache_hit(
         silent = getattr(m, "_kwargs", {}).get("silent", False)
         if not silent:
             import sys as _sys, os as _os
+            from mnemon import _COST_PER_TOKEN_USD
             total_tokens = (input_tokens or 0) + (output_tokens or 0) if (input_tokens or output_tokens) else (tokens or 0)
-            cost = total_tokens * 0.000003
+            cost = total_tokens * _COST_PER_TOKEN_USD
             cost_str = f"${cost:.4f}" if cost >= 0.0001 else "<$0.01"
             inner = getattr(m, "_m", None)
             tenant_id = getattr(inner, "tenant_id", "default") if inner else "default"
@@ -395,7 +392,7 @@ def track_cache_hit(
                     msg = f"Mnemon: free  {total_tokens:,} tokens  {cost_str}"
                 else:
                     msg = "Mnemon: free call"
-            print(msg, file=_sys.stderr, flush=True)
+            print(msg, file=_sys.stdout, flush=True)
     except Exception:
         pass
     try:
@@ -487,10 +484,10 @@ def build_call_evidence(
         from mnemon.core.models import EvidenceRecord
         inner     = getattr(m, "_m", None)
         tenant_id = getattr(inner, "tenant_id", "unknown") if inner else "unknown"
-        task_id   = hashlib.md5(
+        task_id   = hashlib.sha256(
             f"moth:{framework}:{query[:40]}:{time.time():.3f}".encode()
         ).hexdigest()[:12]
-        goal_hash = hashlib.md5(query.encode()).hexdigest()[:16] if query else None
+        goal_hash = hashlib.sha256(query.encode()).hexdigest()[:16] if query else None
 
         if exc is not None:
             return FeedbackExtractor.from_exception(

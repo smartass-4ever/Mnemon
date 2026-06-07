@@ -264,17 +264,18 @@ class Mnemon:
                 cost_usd = self._session_tokens_saved * _COST_PER_TOKEN_USD
                 secs_saved = self._session_latency_saved_ms / 1000
                 parts.append(
-                    f"{self._session_tokens_saved:,} tokens saved |${cost_usd:.4f}"
-                    + (f" |{secs_saved:.1f}s faster" if secs_saved > 0 else "")
+                    f"{self._session_tokens_saved:,} tokens saved · ${cost_usd:.4f}"
+                    + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else "")
                 )
             if self._session_plans_cached > 0:
                 future_cost = self._session_future_tokens * _COST_PER_TOKEN_USD
+                n = self._session_plans_cached
+                label = "plan cached" if n == 1 else "plans cached"
                 parts.append(
-                    f"{self._session_plans_cached} plan(s) cached → "
-                    f"next run saves ~{self._session_future_tokens:,} tokens (~${future_cost:.4f})"
+                    f"{n} {label} — next run saves ~{self._session_future_tokens:,} tokens (~${future_cost:.4f})"
                 )
             if parts:
-                print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stdout, flush=True)
+                print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stdout, flush=True)
 
     async def __aenter__(self):
         await self.start()
@@ -471,12 +472,14 @@ class Mnemon:
                     )
                 else:
                     if future_str:
-                        msg = f"Mnemon: banked  runs free next time  +{future_str} queued"
+                        msg = f"Mnemon: new plan cached — next run saves ~{future_str}"
                     else:
-                        msg = "Mnemon: banked  runs free next time"
+                        msg = "Mnemon: new plan cached"
             else:
-                msg = "Mnemon: banked  runs free next time"
-            print(msg, file=_sys.stdout, flush=True)
+                # error or unknown cache level — stay silent
+                msg = None
+            if msg:
+                print(msg, file=_sys.stdout, flush=True)
 
         return {
             "output":           output,
@@ -729,18 +732,19 @@ class MnemonSync:
                 else:
                     cost_str = f"~${total_tokens * _COST_PER_TOKEN_USD:.4f}"
                 parts.append(
-                    f"~{total_tokens:,} tokens saved |{cost_str}"
-                    + (f" |{secs_saved:.1f}s faster" if secs_saved > 0 else "")
+                    f"~{total_tokens:,} tokens saved · {cost_str}"
+                    + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else "")
                 )
             if plans_cached > 0:
                 future_tokens = self._m._session_future_tokens
                 future_cost   = future_tokens * _COST_PER_TOKEN_USD
+                n = plans_cached
+                label = "plan cached" if n == 1 else "plans cached"
                 parts.append(
-                    f"{plans_cached} plan(s) cached → "
-                    f"next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})"
+                    f"{n} {label} — next run saves ~{future_tokens:,} tokens (~${future_cost:.4f})"
                 )
             if parts:
-                print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stdout, flush=True)
+                print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stdout, flush=True)
 
     @property
     def active_integrations(self) -> List[str]:
@@ -824,19 +828,20 @@ class MnemonSync:
                         cost_str = f"~${total_tokens * _COST_PER_TOKEN_USD:.4f}"
                     cost_display = cost_str if float(cost_str.lstrip("~$")) >= 0.0001 else "<$0.01"
                     parts.append(
-                        f"~{total_tokens:,} tokens saved |{cost_display}"
-                        + (f" |{secs_saved:.1f}s faster" if secs_saved > 0 else "")
+                        f"~{total_tokens:,} tokens saved · {cost_display}"
+                        + (f" · {secs_saved:.1f}s faster" if secs_saved > 0 else "")
                     )
                 if plans_cached > 0:
                     future_tokens = self._m._session_future_tokens
                     future_cost   = future_tokens * _COST_PER_TOKEN_USD
                     future_cost_display = f"~${future_cost:.4f}" if future_cost >= 0.0001 else "<$0.01"
+                    n = plans_cached
+                    label = "plan cached" if n == 1 else "plans cached"
                     parts.append(
-                        f"{plans_cached} plan(s) cached → "
-                        f"next run saves ~{future_tokens:,} tokens ({future_cost_display})"
+                        f"{n} {label} — next run saves ~{future_tokens:,} tokens ({future_cost_display})"
                     )
                 if parts:
-                    print("\nMnemon: " + " |".join(parts) + "\n", file=_sys.stdout, flush=True)
+                    print("\nMnemon: " + " · ".join(parts) + "\n", file=_sys.stdout, flush=True)
             self._loop.close()
             self._loop = None
             self._m = None

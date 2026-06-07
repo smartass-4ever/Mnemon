@@ -269,8 +269,13 @@ Ready. Add two lines to your agent:
     first_run_ms  = (t1 - t0) * 1000
     second_run_ms = (t2 - t1) * 1000
 
-    print(f"\n  First run:  {first_run_ms:.0f}ms  (cache: {r1['cache_level']})")
-    print(f"  Second run: {second_run_ms:.0f}ms (cache: {r2['cache_level']})")
+    def _label(level: str) -> str:
+        if level in ("system1", "system2", "system2_guided"):
+            return "cached"
+        return "new (LLM called)"
+
+    print(f"\n  First run:  {first_run_ms:.0f}ms  ({_label(r1['cache_level'])})")
+    print(f"  Second run: {second_run_ms:.0f}ms ({_label(r2['cache_level'])})")
     if r2["cache_level"] in ("system1", "system2"):
         saved = r2.get("tokens_saved", 0)
         print(f"  Tokens saved on second run: {saved}")
