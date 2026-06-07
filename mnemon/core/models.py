@@ -351,7 +351,7 @@ class FragmentEdge:
     known_issues:     List[str] = field(default_factory=list)
 
 
-MNEMON_VERSION = "1.1.5"
+MNEMON_VERSION = "1.1.6"
 
 # Blended cost estimate — ~$3/M output tokens (Sonnet 3.5 / GPT-4o-mini mid-2026).
 # Single source of truth imported by __init__.py and moth/integrations/_utils.py.
